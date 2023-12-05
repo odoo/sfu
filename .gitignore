@@ -1,0 +1,10 @@
+node_modules
+
+# made with jest coverage
+coverage
+/bundle
+
+# whitelist
+!.eslintrc.json
+!package.json
+!jsconfig.json

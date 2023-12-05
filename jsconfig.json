@@ -1,0 +1,12 @@
+{
+    "compilerOptions": {
+        "moduleResolution": "node",
+        "baseUrl": ".",
+        "target": "ES2022",
+        "paths": {
+            "#src/*": ["src/*"],
+            "#tests/*": ["tests/*"]
+        }
+    },
+    "include": ["**/*.js"]
+}
