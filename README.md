@@ -22,7 +22,7 @@ Build the client bundle
  ```
 
 Once the bundle is built, it can be added to the assets of your main server, and
-interacted with as described [here](#api-for-the-client).
+interacted with as described [here](#client-api-bundle).
 
 ## Deployment
 
@@ -82,9 +82,9 @@ See [server.js](./src/server.js) for more details.
 
 ## HTTP API
 
-- GET `/v1/stats`: returns the server statistics in JSON:
+- GET `/v1/stats`: returns the server statistics as an array with one entry per channel, in JSON:
     ```json
-    [ // one array entry per channel
+    [
         {
             "createDate": "2023-10-25T04:57:45.453Z",
             "uuid": "86079c25-9cf8-4d58-9dea-cef44cf845e2",
