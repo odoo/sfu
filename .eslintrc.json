@@ -1,0 +1,69 @@
+// Based on Odoo's .eslintrc.js
+{
+  "extends": ["eslint:recommended", "plugin:prettier/recommended", "plugin:node/recommended"],
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module"
+  },
+  "env": {
+    "node": true,
+    "browser": false,
+    "es2022": true
+  },
+  "overrides": [
+    {
+      "files": ["tests/utils/*.js", "tests/*.js"],
+      "plugins": ["jest", "import"],
+      "env": {
+        "jest": true,
+        "jest/globals": true
+      },
+      "extends": ["plugin:jest/recommended"]
+    },
+    {
+      "files": ["src/client.js"],
+      "env": {
+        "browser": true,
+        "node": false
+      }
+    },
+    {
+      "files": ["src/shared/*.js"],
+      "env": {
+        "browser": true,
+        "node": true
+      }
+    }
+  ],
+  "ignorePatterns": "dist/*",
+  "rules": {
+    "prettier/prettier": ["error", {
+      "tabWidth": 4,
+      "semi": true,
+      "singleQuote": false,
+      "printWidth": 100,
+      "endOfLine": "auto"
+    }],
+    "node/no-unsupported-features/es-syntax": "off",
+    "node/no-missing-import": "off",
+    "no-console": "error",
+    "no-undef": "error",
+    "no-restricted-globals": ["error", "event", "self"],
+    "no-const-assign": ["error"],
+    "no-debugger": ["error"],
+    "no-dupe-class-members": ["error"],
+    "no-dupe-keys": ["error"],
+    "no-dupe-args": ["error"],
+    "no-dupe-else-if": ["error"],
+    "no-unsafe-negation": ["error"],
+    "no-duplicate-imports": ["error"],
+    "valid-typeof": ["error"],
+    "no-unused-vars": ["error", { "vars": "all", "args": "none", "ignoreRestSiblings": false, "caughtErrors": "all" }],
+    "curly": ["error", "all"],
+    "no-restricted-syntax": ["error", "PrivateIdentifier"],
+    "prefer-const": ["error", {
+      "destructuring": "all",
+      "ignoreReadBeforeAssign": true
+    }]
+  }
+}
