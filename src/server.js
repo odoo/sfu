@@ -64,7 +64,7 @@ const processHandlers = {
 };
 
 // ==================== PROCESS ====================
-process.name = "discuss_sfu";
+process.name = "odoo_sfu";
 for (const [signal, handler] of Object.entries(processHandlers)) {
     process.on(signal, handler);
 }

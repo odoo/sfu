@@ -28,14 +28,14 @@ describe("Logger", () => {
             useColors: false,
         });
         logger.warn("test");
-        expect(messages.pop()).toBe("2023-09-15T08:29:00.000Z discuss-sfu :WARN: [test1] - test");
+        expect(messages.pop()).toBe("2023-09-15T08:29:00.000Z odoo-sfu :WARN: [test1] - test");
         const logger2 = new Logger("test2", {
             logLevel: "debug",
             timestamp: false,
             useColors: false,
         });
         logger2.debug("test");
-        expect(messages.pop()).toBe("discuss-sfu :DEBUG: [test2] - test");
+        expect(messages.pop()).toBe("odoo-sfu :DEBUG: [test2] - test");
     });
     test("logger respects log level", () => {
         const logEach = (logger) => {

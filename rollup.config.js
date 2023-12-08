@@ -16,7 +16,7 @@ export default {
     output: [
         {
             banner: "/* @odoo-module */",
-            file: "./bundle/discuss_sfu.js",
+            file: "./bundle/odoo_sfu.js",
             format: "es",
             outro,
         },
@@ -29,7 +29,7 @@ export default {
         }),
         license({
             thirdParty: {
-                output: "./bundle/discuss_sfu.licenses.txt",
+                output: "./bundle/odoo_sfu.licenses.txt",
             },
         }),
     ],
