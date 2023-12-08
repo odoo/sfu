@@ -1,4 +1,4 @@
-# Odoo: Discuss SFU
+# Odoo SFU
 
 ## Overview
 
@@ -132,7 +132,7 @@ The bundle built with the `build` script in [package.json](./package.json) can b
 in the client(js) code that implements the call feature like this:
 
 ```js
-import { SfuClient, SFU_CLIENT_STATE } from "/bundle/discuss_sfu.js";
+import { SfuClient, SFU_CLIENT_STATE } from "/bundle/odoo_sfu.js";
 const sfu = new SfuClient();
 ```
 `SfuClient` exposes the following API:

@@ -1,6 +1,6 @@
 {
-  "name": "discuss-sfu",
-  "description": "SFU server for discuss",
+  "name": "odoo-sfu",
+  "description": "Odoo's SFU server",
   "version": "1.0.0",
   "author": "Odoo",
   "license": "LGPL-3.0",

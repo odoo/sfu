@@ -59,7 +59,7 @@ export class Logger {
      */
     _log(logFn, level, text, color) {
         logFn(
-            `${this._getTimeStamp()}discuss-sfu ${this._colorize(
+            `${this._getTimeStamp()}odoo-sfu ${this._colorize(
                 `${level} [${this._name}] - ${text}`,
                 color
             )}`
