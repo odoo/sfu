@@ -15,7 +15,7 @@ export async function start() {
     }
     logger.info(`initialized ${workers.size} mediasoup workers`);
     logger.info(
-        `transport(RTC) layer at ${config.PUBLIC_IP}:${config.RTC_MIN_PORT}-${config.RTC_MAX_PORT}`,
+        `transport(RTC) layer at ${config.PUBLIC_IP}:${config.RTC_MIN_PORT}-${config.RTC_MAX_PORT}`
     );
 }
 
@@ -57,7 +57,7 @@ export async function getWorker() {
                     leastUsedWorker = worker;
                     lowestUsage = ru_maxrss;
                 }
-            })(),
+            })()
         );
     }
     await Promise.all(proms);

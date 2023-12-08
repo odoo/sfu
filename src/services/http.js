@@ -68,7 +68,7 @@ export async function start({ httpInterface = config.HTTP_INTERFACE, port = conf
                     JSON.stringify({
                         uuid: channel.uuid,
                         url: `${protocol}://${host}`,
-                    }),
+                    })
                 );
             } catch (error) {
                 logger.warn(`[${remoteAddress}] failed to create channel: ${error.message}`);
@@ -83,7 +83,7 @@ export async function start({ httpInterface = config.HTTP_INTERFACE, port = conf
                 /** @type {{ sessionIdsByChannel: Object<string, number[]> }} */
                 const claims = await auth.verify(jsonWebToken);
                 for (const [channelUuid, sessionIds] of Object.entries(
-                    claims.sessionIdsByChannel,
+                    claims.sessionIdsByChannel
                 )) {
                     const channel = Channel.records.get(channelUuid);
                     if (!channel) {
@@ -91,7 +91,7 @@ export async function start({ httpInterface = config.HTTP_INTERFACE, port = conf
                     }
                     if (!channel.remoteAddress === remoteAddress) {
                         logger.warn(
-                            `[${remoteAddress}] tried to disconnect sessions from channel ${channelUuid} but is not the owner`,
+                            `[${remoteAddress}] tried to disconnect sessions from channel ${channelUuid} but is not the owner`
                         );
                         return res.end();
                     }
@@ -198,7 +198,7 @@ class RouteListener {
                         });
                     } catch (error) {
                         logger.error(
-                            `[${remoteAddress}] ${error.message} when calling ${req.url}: ${error.message}`,
+                            `[${remoteAddress}] ${error.message} when calling ${req.url}: ${error.message}`
                         );
                         res.statusCode = 500; // Internal server error
                         return res.end();
