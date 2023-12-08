@@ -130,7 +130,7 @@ async function connect(webSocket, jsonWebToken) {
         });
     });
     webSocket.on("error", (error) =>
-        session.close({ code: SESSION_CLOSE_CODE.WS_ERROR, cause: error.message }),
+        session.close({ code: SESSION_CLOSE_CODE.WS_ERROR, cause: error.message })
     );
     // Not awaiting connect
     session.connect(bus, ice_servers);

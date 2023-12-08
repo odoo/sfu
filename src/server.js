@@ -54,7 +54,7 @@ const processHandlers = {
                     logger.info(`-- camera: ${camera} bps`);
                     logger.info(`-- screen: ${screen} bps`);
                     logger.info(`-- total: ${total} bps`);
-                })(),
+                })()
             );
         }
         await Promise.all(proms);

@@ -187,7 +187,7 @@ export class SfuClient extends EventTarget {
                 proms.push(
                     (async () => {
                         stats[type] = await producer.getStats();
-                    })(),
+                    })()
                 );
             }
         }
@@ -210,7 +210,7 @@ export class SfuClient extends EventTarget {
                 name: CLIENT_MESSAGE.INFO_CHANGE,
                 payload: { info, needRefresh },
             },
-            { batch: true },
+            { batch: true }
         );
     }
 
@@ -251,7 +251,7 @@ export class SfuClient extends EventTarget {
                 name: CLIENT_MESSAGE.CONSUMPTION_CHANGE,
                 payload: { sessionId, states },
             },
-            { batch: true },
+            { batch: true }
         );
     }
 
@@ -275,7 +275,7 @@ export class SfuClient extends EventTarget {
                     name: CLIENT_MESSAGE.PRODUCTION_CHANGE,
                     payload: { type, active: Boolean(track) },
                 },
-                { batch: true },
+                { batch: true }
             );
             return;
         }
@@ -390,7 +390,7 @@ export class SfuClient extends EventTarget {
                 () => {
                     webSocket.send(JSON.stringify(this._jsonWebToken));
                 },
-                { once: true },
+                { once: true }
             );
             /**
              * Receiving a message means that the server has authenticated the client and is ready to receive messages.
@@ -400,7 +400,7 @@ export class SfuClient extends EventTarget {
                 () => {
                     resolve(new Bus(webSocket));
                 },
-                { once: true },
+                { once: true }
             );
         });
     }
