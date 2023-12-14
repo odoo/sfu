@@ -17,7 +17,7 @@ const RECOVERY_DELAY = 1_000; // how much time after an error should pass before
 const SUPPORTED_TYPES = new Set(["audio", "camera", "screen"]);
 
 // https://mediasoup.org/documentation/v3/mediasoup-client/api/#ProducerOptions
-const PRODUCER_OPTIONS = {
+const DEFAULT_PRODUCER_OPTIONS = {
     stopTracks: false,
     disableTrackOnPause: false,
     zeroRtpOnPause: true,
@@ -116,6 +116,11 @@ export class SfuClient extends EventTarget {
         audio: null,
         camera: null,
         screen: null,
+    };
+    /** @type {Object<"audio" | "video", import("mediasoup-client").types.ProducerOptions>} */
+    _producerOptionsByKind = {
+        audio: DEFAULT_PRODUCER_OPTIONS,
+        video: DEFAULT_PRODUCER_OPTIONS,
     };
     /** @type {Function[]} */
     _cleanups = [];
@@ -284,7 +289,7 @@ export class SfuClient extends EventTarget {
         }
         try {
             this._producers[type] = await this._ctsTransport.produce({
-                ...PRODUCER_OPTIONS,
+                ...this._producerOptionsByKind[track.kind],
                 track,
                 appData: { type },
             });
@@ -599,7 +604,10 @@ export class SfuClient extends EventTarget {
                 return;
             }
             case SERVER_REQUEST.INIT_TRANSPORTS: {
-                const { capabilities, stcConfig, ctsConfig } = payload;
+                const { capabilities, stcConfig, ctsConfig, producerOptionsByKind } = payload;
+                if (producerOptionsByKind) {
+                    this._producerOptionsByKind = producerOptionsByKind;
+                }
                 if (!this._device.loaded) {
                     await this._device.load({ routerRtpCapabilities: capabilities });
                 }

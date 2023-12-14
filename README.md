@@ -49,8 +49,9 @@ The available environment variables are:
 - **RTC_MAX_PORT**: Upper bound for the range of ports used by the RTC server, must be open in both TCP and UDP
 - **MAX_BUF_IN**: if set, limits the incoming buffer size per session (user)
 - **MAX_BUF_OUT**: if set, limits the outgoing buffer size per session (user)
-- **MAX_BITRATE_IN**: if set, limits the incoming bitrate per session (user)
-- **MAX_BITRATE_OUT**: if set, limits the outgoing bitrate per session (user)
+- **MAX_BITRATE_IN**: if set, limits the incoming bitrate per session (user), defaults to 8mbps
+- **MAX_BITRATE_OUT**: if set, limits the outgoing bitrate per session (user), defaults to 10mbps
+- **MAX_VIDEO_BITRATE**: if set, defines the `maxBitrate` of the highest encoding layer (simulcast), defaults to 4mbps
 - **CHANNEL_SIZE**: the maximum amount of users per channel, defaults to 100
 - **WORKER_LOG_LEVEL**: "none" | "error" | "warn" | "debug", will only work if `DEBUG` is properly set.
 - **LOG_LEVEL**: "none" | "error" | "warn" | "info" | "debug" | "verbose"

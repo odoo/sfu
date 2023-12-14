@@ -16,7 +16,7 @@ const FALSY_INPUT = new Set(["disable", "false", "none", "no", "0"]);
 export const AUTH_KEY = process.env.AUTH_KEY;
 if (!AUTH_KEY && !process.env.JEST_WORKER_ID) {
     throw new Error(
-        "AUTH_KEY env variable is required, it is not possible to authenticate requests without it",
+        "AUTH_KEY env variable is required, it is not possible to authenticate requests without it"
     );
 }
 /**
@@ -29,7 +29,7 @@ if (!AUTH_KEY && !process.env.JEST_WORKER_ID) {
 export const PUBLIC_IP = process.env.PUBLIC_IP;
 if (!PUBLIC_IP && !process.env.JEST_WORKER_ID) {
     throw new Error(
-        "PUBLIC_IP env variable is required, clients cannot establish webRTC connections without it",
+        "PUBLIC_IP env variable is required, clients cannot establish webRTC connections without it"
     );
 }
 /**
@@ -69,7 +69,7 @@ export const PORT = Number(process.env.PORT) || 8070;
  */
 export const NUM_WORKERS = Math.min(
     Number(process.env.NUM_WORKERS) || Infinity,
-    os.availableParallelism(),
+    os.availableParallelism()
 );
 /**
  * A comma separated list of the audio codecs to use, if not provided the server will support all available codecs (listed below).
@@ -111,19 +111,29 @@ export const MAX_BUF_IN = (process.env.MAX_BUF_IN && Number(process.env.MAX_BUF_
  */
 export const MAX_BUF_OUT = (process.env.MAX_BUF_OUT && Number(process.env.MAX_BUF_OUT)) || 0;
 /**
- * The maximum incoming bitrate in bps for per session
+ * The maximum incoming bitrate in bps per session,
+ * This is what each user can upload.
  *
  * @type {number}
  */
 export const MAX_BITRATE_IN =
-    (process.env.MAX_BITRATE_IN && Number(process.env.MAX_BITRATE_IN)) || 0;
+    (process.env.MAX_BITRATE_IN && Number(process.env.MAX_BITRATE_IN)) || 8_000_000;
 /**
- * The maximum outgoing bitrate in bps for per session
+ * The maximum outgoing bitrate in bps per session,
+ * this is what each user can download.
  *
  * @type {number}
  */
 export const MAX_BITRATE_OUT =
-    (process.env.MAX_BITRATE_OUT && Number(process.env.MAX_BITRATE_OUT)) || 0;
+    (process.env.MAX_BITRATE_OUT && Number(process.env.MAX_BITRATE_OUT)) || 10_000_000;
+/**
+ * The maximum bitrate (in bps) for the highest encoding layer (simulcast) per video producer (= per video stream).
+ * see: `maxBitrate` @ https://www.w3.org/TR/webrtc/#dictionary-rtcrtpencodingparameters-members
+ *
+ * @type {number}
+ */
+export const MAX_VIDEO_BITRATE =
+    (process.env.MAX_VIDEO_BITRATE && Number(process.env.MAX_VIDEO_BITRATE)) || 4_000_000;
 /**
  * The maximum amount of concurrent users per channel
  *
@@ -181,6 +191,16 @@ export const timeouts = Object.freeze({
 // how many errors can occur before the session is closed, recovery attempts will be made until this limit is reached
 export const maxSessionErrors = 6;
 
+/**
+ * @type {import("mediasoup-client").types.ProducerOptions}
+ * https://mediasoup.org/documentation/v3/mediasoup-client/api/#ProducerOptions
+ */
+const baseProducerOptions = {
+    stopTracks: false,
+    disableTrackOnPause: false,
+    zeroRtpOnPause: true,
+};
+
 export const rtc = Object.freeze({
     // https://mediasoup.org/documentation/v3/mediasoup/api/#WorkerSettings
     workerSettings: {
@@ -207,6 +227,25 @@ export const rtc = Object.freeze({
     rtcTransportOptions: {
         maxSctpMessageSize: MAX_BUF_IN,
         sctpSendBufferSize: MAX_BUF_OUT,
+    },
+    producerOptionsByKind: {
+        /** @type {import("mediasoup-client").types.ProducerOptions} */
+        audio: baseProducerOptions,
+        /** @type {import("mediasoup-client").types.ProducerOptions} */
+        video: {
+            ...baseProducerOptions,
+            // for browsers using libwebrtc, values are set to allow simulcast layers to be made in that range
+            codecOptions: {
+                videoGoogleMinBitrate: 1_000,
+                videoGoogleStartBitrate: 1_000_000,
+                videoGoogleMaxBitrate: MAX_VIDEO_BITRATE * 2,
+            },
+            encodings: [
+                { scaleResolutionDownBy: 4, maxBitrate: Math.floor(MAX_VIDEO_BITRATE / 4) },
+                { scaleResolutionDownBy: 2, maxBitrate: Math.floor(MAX_VIDEO_BITRATE / 2) },
+                { scaleResolutionDownBy: 1, maxBitrate: MAX_VIDEO_BITRATE },
+            ],
+        },
     },
 });
 
