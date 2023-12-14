@@ -44,7 +44,7 @@ const processHandlers = {
                 (async () => {
                     const {
                         sessionsStats: {
-                            incomingBitrate: { audio, camera, screen, total },
+                            incomingBitRate: { audio, camera, screen, total },
                             count,
                         },
                     } = await channel.getStats();
