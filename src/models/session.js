@@ -315,6 +315,7 @@ export class Session extends EventEmitter {
                             dtlsParameters: this._ctsTransport.dtlsParameters,
                             sctpParameters: this._ctsTransport.sctpParameters,
                         },
+                        producerOptionsByKind: config.rtc.producerOptionsByKind,
                     },
                 });
                 await Promise.all([
