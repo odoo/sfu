@@ -158,13 +158,15 @@ export class SfuClient extends EventTarget {
      * @param {string} url
      * @param {string} jsonWebToken
      * @param {Object} [options]
+     * @param {string} [options.channelUUID]
      * @param {[]} [options.iceServers]
      */
-    async connect(url, jsonWebToken, { iceServers } = {}) {
+    async connect(url, jsonWebToken, { channelUUID, iceServers } = {}) {
         // saving the options for so that the parameters are saved for reconnection attempts
         this._url = url.replace(/^http/, "ws"); // makes sure the url is a websocket url
         this._jsonWebToken = jsonWebToken;
         this._iceServers = iceServers;
+        this._channelUUID = channelUUID;
         this._connectRetryDelay = INITIAL_RECONNECT_DELAY;
         this._device = this._createDevice();
         await this._connect();
@@ -393,7 +395,9 @@ export class SfuClient extends EventTarget {
             webSocket.addEventListener(
                 "open",
                 () => {
-                    webSocket.send(JSON.stringify(this._jsonWebToken));
+                    webSocket.send(
+                        JSON.stringify({ channelUUID: this._channelUUID, jwt: this._jsonWebToken })
+                    );
                 },
                 { once: true }
             );

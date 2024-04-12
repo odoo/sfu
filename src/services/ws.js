@@ -9,6 +9,12 @@ import { SESSION_CLOSE_CODE } from "#src/models/session.js";
 import { Channel } from "#src/models/channel.js";
 import { verify } from "#src/services/auth.js";
 
+/**
+ * @typedef Credentials
+ * @property {string} channelUUID
+ * @property {string} jwt
+ */
+
 const logger = new Logger("WS");
 /** @type {Map<number, import("ws").WebSocket>} */
 const unauthenticatedWebSockets = new Map();
@@ -44,8 +50,12 @@ export async function start(options) {
         }, config.timeouts.authentication);
         webSocket.once("message", async (message) => {
             try {
-                const jsonWebToken = JSON.parse(message);
-                const session = await connect(webSocket, jsonWebToken);
+                /** @type {Credentials | String} can be a string (the jwt) for backwards compatibility with version 1.1 and earlier */
+                const credentials = JSON.parse(message);
+                const session = await connect(webSocket, {
+                    channelUUID: credentials?.channelUUID,
+                    jwt: credentials.jwt || credentials,
+                });
                 session.remote = remoteAddress;
                 logger.info(`session [${session.name}] authenticated and created`);
                 webSocket.send(); // client can start using ws after this message.
@@ -91,17 +101,30 @@ export function close() {
 
 /**
  * @param {import("ws").WebSocket} webSocket
- * @param {string} jsonWebToken
+ * @param {Credentials}
  */
-async function connect(webSocket, jsonWebToken) {
+async function connect(webSocket, { channelUUID, jwt }) {
+    let channel = Channel.records.get(channelUUID);
     /** @type {{sfu_channel_uuid: string, session_id: number, ice_servers: Object[] }} */
-    const authResult = await verify(jsonWebToken);
+    const authResult = await verify(jwt, channel?.key);
     const { sfu_channel_uuid, session_id, ice_servers } = authResult;
-    if (!sfu_channel_uuid || !session_id) {
+    if (!channelUUID && sfu_channel_uuid) {
+        // Cases where the channelUUID is not provided in the credentials for backwards compatibility with version 1.1 and earlier.
+        channel = Channel.records.get(sfu_channel_uuid);
+        if (channel.key) {
+            throw new AuthenticationError(
+                "A channel with a key can only be accessed by providing a channelUUID in the credentials"
+            );
+        }
+    }
+    if (!channel) {
+        throw new AuthenticationError(`Channel does not exist`);
+    }
+    if (!session_id) {
         throw new AuthenticationError("Malformed JWT payload");
     }
     const bus = new Bus(webSocket, { batchDelay: config.timeouts.busBatch });
-    const { session } = Channel.join(sfu_channel_uuid, session_id);
+    const { session } = Channel.join(channel.uuid, session_id);
     session.once("close", ({ code }) => {
         let wsCloseCode = WS_CLOSE_CODE.CLEAN;
         switch (code) {

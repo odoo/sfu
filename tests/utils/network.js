@@ -51,6 +51,7 @@ export class LocalNetwork {
     async getChannelUUID(useWebRtc = true) {
         const jwt = this.makeJwt({
             iss: `http://${this.hostname}:${this.port}/`,
+            key: HMAC_B64_KEY,
         });
         const response = await fetch(
             `http://${this.hostname}:${this.port}/v${http.API_VERSION}/channel?webRTC=${useWebRtc}`,
@@ -59,7 +60,7 @@ export class LocalNetwork {
                 headers: {
                     Authorization: "jwt " + jwt,
                 },
-            },
+            }
         );
         const result = await response.json();
         return result.uuid;
@@ -104,6 +105,7 @@ export class LocalNetwork {
                 sfu_channel_uuid: channelUUID,
                 session_id: sessionId,
             }),
+            { channelUUID }
         );
         const channel = Channel.records.get(channelUUID);
         await isClientAuthenticated;

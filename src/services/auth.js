@@ -22,12 +22,13 @@ export function close() {
 
 /**
  * @param {string} jsonWebToken
+ * @param {WithImplicitCoercion<string>} [key] buffer/b64 str
  * @returns {Promise<any>} json serialized data
  * @throws {AuthenticationError}
  */
-export async function verify(jsonWebToken) {
+export async function verify(jsonWebToken, key = jwtKey) {
     try {
-        return jwt.verify(jsonWebToken, jwtKey, {
+        return jwt.verify(jsonWebToken, key, {
             algorithms: ["HS256"],
         });
     } catch {

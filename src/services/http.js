@@ -52,7 +52,7 @@ export async function start({ httpInterface = config.HTTP_INTERFACE, port = conf
         callback: async (req, res, { host, protocol, remoteAddress, searchParams }) => {
             try {
                 const jsonWebToken = req.headers.authorization?.split(" ")[1];
-                /** @type {{ iss: string }} */
+                /** @type {{ iss: string, key: string || undefined }} */
                 const claims = await auth.verify(jsonWebToken);
                 if (!claims.iss) {
                     logger.warn(`${remoteAddress}: missing issuer claim when creating channel`);
@@ -60,6 +60,7 @@ export async function start({ httpInterface = config.HTTP_INTERFACE, port = conf
                     return res.end();
                 }
                 const channel = await Channel.create(remoteAddress, claims.iss, {
+                    key: claims.key,
                     useWebRtc: searchParams.get("webRTC") !== "false",
                 });
                 res.setHeader("Content-Type", "application/json");
