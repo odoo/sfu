@@ -37,6 +37,8 @@ export class Channel extends EventEmitter {
     uuid;
     /** @type {string} short of uuid for logging */
     name;
+    /** @type {WithImplicitCoercion<string>} base 64 buffer key */
+    key;
     /** @type {import("mediasoup").types.Router}*/
     router;
     /** @type {Map<number, Session>} */
@@ -50,18 +52,19 @@ export class Channel extends EventEmitter {
      * @param {string} remoteAddress
      * @param {string} issuer
      * @param {Object} [options]
+     * @param {string} [options.key] if the key is set, authentication with this channel uses this key
      * @param {boolean} [options.useWebRtc=true] whether to use WebRTC:
      *  with webRTC: can stream audio/video
      *  without webRTC: can only use websocket
      */
-    static async create(remoteAddress, issuer, { useWebRtc = true } = {}) {
+    static async create(remoteAddress, issuer, { key, useWebRtc = true } = {}) {
         const safeIssuer = `${remoteAddress}::${issuer}`;
         const oldChannel = Channel.recordsByIssuer.get(safeIssuer);
         if (oldChannel) {
             logger.verbose(`reusing channel ${oldChannel.uuid}`);
             return oldChannel;
         }
-        const options = {};
+        const options = { key };
         if (useWebRtc) {
             options.worker = await getWorker();
             options.router = await options.worker.createRouter({
@@ -71,7 +74,9 @@ export class Channel extends EventEmitter {
         const channel = new Channel(remoteAddress, options);
         Channel.recordsByIssuer.set(safeIssuer, channel);
         Channel.records.set(channel.uuid, channel);
-        logger.info(`created channel ${channel.uuid} for ${safeIssuer}`);
+        logger.info(
+            `created channel ${channel.uuid} (${key ? "unique" : "global"} key) for ${safeIssuer}`
+        );
         const onWorkerDeath = () => {
             logger.warn(`worker died, closing channel ${channel.uuid}`);
             channel.close();
@@ -111,14 +116,16 @@ export class Channel extends EventEmitter {
     /**
      * @param {string} remoteAddress
      * @param {Object} [options]
+     * @param {string} [options.key]
      * @param {import("mediasoup").types.Worker} [options.worker]
      * @param {import("mediasoup").types.Router} [options.router]
      */
-    constructor(remoteAddress, { worker, router } = {}) {
+    constructor(remoteAddress, { key, worker, router } = {}) {
         super();
         const now = new Date();
         this.createDate = now.toISOString();
         this.remoteAddress = remoteAddress;
+        this.key = key && Buffer.from(key, "base64");
         this.uuid = crypto.randomUUID();
         this.name = `${remoteAddress}*${this.uuid.slice(-5)}`;
         this.router = router;
