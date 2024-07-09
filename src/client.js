@@ -38,7 +38,7 @@ const DEFAULT_PRODUCER_OPTIONS = {
  */
 
 /**
- * @typedef {'audio' | 'camera' | 'video' } streamType
+ * @typedef {'audio' | 'camera' | 'screen' } streamType
  */
 
 export const SFU_CLIENT_STATE = Object.freeze({
