@@ -22,6 +22,8 @@ export const SERVER_REQUEST = {
 };
 
 export const SERVER_MESSAGE = {
+    /** Signals that the server wants to send a message to all the other members of that channel */
+    BROADCAST: "BROADCAST",
     /** Signals the clients that one of the session in their channel has left. */
     SESSION_LEAVE: "SESSION_LEAVE",
     /**  Signals the clients that the info (talking, mute,...) of one of the session in their channel has changed. */
@@ -38,6 +40,8 @@ export const CLIENT_REQUEST = {
 };
 
 export const CLIENT_MESSAGE = {
+    /** Signals that the client wants to send a message to all the other members of that channel */
+    BROADCAST: "BROADCAST",
     /** Signals that the client wants to change how it consumes a track (like pausing or ending the download) */
     CONSUMPTION_CHANGE: "CONSUMPTION_CHANGE",
     /** Signals that the info (talking, mute,...) of this client has changed. */

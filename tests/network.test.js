@@ -263,4 +263,21 @@ describe("Full network", () => {
         const [closeEvent] = await closeProm;
         expect(closeEvent.code).toBe(SESSION_CLOSE_CODE.P_TIMEOUT);
     });
+    test("A client can broadcast arbitrary messages to other clients on a channel that does not have webRTC", async () => {
+        const channelUUID = await network.getChannelUUID(false);
+        const user1 = await network.connect(channelUUID, 1);
+        const user2 = await network.connect(channelUUID, 2);
+        const sender = await network.connect(channelUUID, 3);
+        const message = "hello";
+        sender.sfuClient.broadcast(message);
+        const prom1 = once(user1.sfuClient, "update");
+        const prom2 = once(user2.sfuClient, "update");
+        const [[event1], [event2]] = await Promise.all([prom1, prom2]);
+        expect(event1.detail.name).toEqual("broadcast");
+        expect(event2.detail.name).toEqual("broadcast");
+        expect(event1.detail.payload.senderId).toBe(sender.session.id);
+        expect(event2.detail.payload.senderId).toBe(sender.session.id);
+        expect(event1.detail.payload.message).toBe(message);
+        expect(event2.detail.payload.message).toBe(message);
+    });
 });
