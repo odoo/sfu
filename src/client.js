@@ -155,6 +155,19 @@ export class SfuClient extends EventTarget {
     }
 
     /**
+     * @param message any JSON serializable object
+     */
+    broadcast(message) {
+        this._bus.send(
+            {
+                name: CLIENT_MESSAGE.BROADCAST,
+                payload: message,
+            },
+            { batch: true }
+        );
+    }
+
+    /**
      * @param {string} url
      * @param {string} jsonWebToken
      * @param {Object} [options]
@@ -508,7 +521,7 @@ export class SfuClient extends EventTarget {
     /**
      * dispatches an event, intended for the client
      *
-     * @param { "disconnect" | "info_change" | "track" | "error"} name
+     * @param { "disconnect" | "info_change" | "track" | "error" | "broadcast"} name
      * @param [payload]
      * @fires SfuClient#update
      */
@@ -557,6 +570,9 @@ export class SfuClient extends EventTarget {
      */
     async _handleMessage({ name, payload }) {
         switch (name) {
+            case SERVER_MESSAGE.BROADCAST:
+                this._updateClient("broadcast", payload);
+                break;
             case SERVER_MESSAGE.SESSION_LEAVE:
                 {
                     const { sessionId } = payload;

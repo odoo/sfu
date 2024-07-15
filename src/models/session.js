@@ -507,6 +507,17 @@ export class Session extends EventEmitter {
      */
     async _handleMessage({ name, payload }) {
         switch (name) {
+            case CLIENT_MESSAGE.BROADCAST:
+                {
+                    this._broadcast({
+                        name: SERVER_MESSAGE.BROADCAST,
+                        payload: {
+                            senderId: this.id,
+                            message: payload,
+                        },
+                    });
+                }
+                break;
             case CLIENT_MESSAGE.CONSUMPTION_CHANGE:
                 {
                     /** @type {{ sessionId: number, states: Object<boolean> }} */

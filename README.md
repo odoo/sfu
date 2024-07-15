@@ -147,6 +147,25 @@ const sfu = new SfuClient();
     sfu.disconnect();
     sfu.state === SFU_CLIENT_STATE.DISCONNECTED; // true
     ```
+- broadcast()
+    ```js
+    // in the sender's client
+    sfu.broadcast("hello");
+    ```
+    ```js
+    // in the clients of other members of that channel
+    sfu.addEventListener("update", ({ detail: { name, payload } }) => {
+        switch (name) {
+            case "broadcast":
+                {
+                    const { senderId, message } = payload;
+                    console.log(`${senderId} says: "${message}"`); // 87 says "hello"
+                }
+                return;
+            // ...
+        }
+    });
+    ```
 - updateUpload()
     ```js
     const audioStream = await window.navigator.mediaDevices.getUserMedia({
