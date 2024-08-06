@@ -225,7 +225,7 @@ export class SfuClient extends EventTarget {
      */
     updateInfo(info, { needRefresh } = {}) {
         this._info = info;
-        this._bus.send(
+        this._bus?.send(
             {
                 name: CLIENT_MESSAGE.INFO_CHANGE,
                 payload: { info, needRefresh },
