@@ -224,8 +224,7 @@ export class SfuClient extends EventTarget {
      * @param {boolean} [param0.needRefresh] true if the server should refresh the local info from all sessions of this channel
      */
     updateInfo(info, { needRefresh } = {}) {
-        this._info = info;
-        this._bus.send(
+        this._bus?.send(
             {
                 name: CLIENT_MESSAGE.INFO_CHANGE,
                 payload: { info, needRefresh },
@@ -266,7 +265,7 @@ export class SfuClient extends EventTarget {
         if (!hasChanged) {
             return;
         }
-        this._bus.send(
+        this._bus?.send(
             {
                 name: CLIENT_MESSAGE.CONSUMPTION_CHANGE,
                 payload: { sessionId, states },
