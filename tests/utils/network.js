@@ -1,8 +1,8 @@
 import jwt from "jsonwebtoken";
 import { WebSocket } from "ws";
 import { Device } from "mediasoup-client";
-import { FakeHandler } from "mediasoup-client/lib/handlers/FakeHandler.js";
-import * as fakeParameters from "mediasoup-client/lib/tests/fakeParameters.js";
+import { FakeHandler } from "mediasoup-client/lib/handlers/FakeHandler";
+import * as fakeParameters from "mediasoup-client/lib/test/fakeParameters";
 
 import * as auth from "#src/services/auth.js";
 import * as http from "#src/services/http.js";

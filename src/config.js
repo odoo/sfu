@@ -205,8 +205,6 @@ export const rtc = Object.freeze({
     // https://mediasoup.org/documentation/v3/mediasoup/api/#WorkerSettings
     workerSettings: {
         logLevel: WORKER_LOG_LEVEL,
-        rtcMinPort: RTC_MIN_PORT,
-        rtcMaxPort: RTC_MAX_PORT,
     },
     // https://mediasoup.org/documentation/v3/mediasoup/api/#WebRtcServer-dictionaries
     rtcServerOptions: {
@@ -214,12 +212,20 @@ export const rtc = Object.freeze({
             {
                 protocol: "udp",
                 ip: RTC_INTERFACE,
-                announcedIp: PUBLIC_IP,
+                announcedAddress: PUBLIC_IP,
+                portRange: {
+                    min: RTC_MIN_PORT,
+                    max: RTC_MAX_PORT,
+                },
             },
             {
                 protocol: "tcp",
                 ip: RTC_INTERFACE,
-                announcedIp: PUBLIC_IP,
+                announcedAddress: PUBLIC_IP,
+                portRange: {
+                    min: RTC_MIN_PORT,
+                    max: RTC_MAX_PORT,
+                },
             },
         ],
     },

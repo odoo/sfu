@@ -10,7 +10,7 @@ import { once } from "node:events";
 import { FakeMediaStreamTrack } from "fake-mediastreamtrack";
 
 const HTTP_INTERFACE = "0.0.0.0";
-const PORT = 61255;
+const PORT = 6971;
 
 describe("HTTP", () => {
     /** @type {LocalNetwork} */

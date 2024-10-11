@@ -590,13 +590,13 @@ export class Session extends EventEmitter {
     async _handleRequest({ name, payload }) {
         switch (name) {
             case CLIENT_REQUEST.CONNECT_STC_TRANSPORT: {
-                const { dtlsParameters } = payload;
-                await this._stcTransport.connect({ dtlsParameters });
+                const { dtlsParameters, iceParameters } = payload;
+                await this._stcTransport.connect({ dtlsParameters, iceParameters });
                 return;
             }
             case CLIENT_REQUEST.CONNECT_CTS_TRANSPORT: {
-                const { dtlsParameters } = payload;
-                await this._ctsTransport.connect({ dtlsParameters });
+                const { dtlsParameters, iceParameters } = payload;
+                await this._ctsTransport.connect({ dtlsParameters, iceParameters });
                 return;
             }
             case CLIENT_REQUEST.INIT_PRODUCER: {
