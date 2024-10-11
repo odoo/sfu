@@ -58,7 +58,6 @@ export async function start(options) {
                 });
                 session.remote = remoteAddress;
                 logger.info(`session [${session.name}] authenticated and created`);
-                webSocket.send(); // client can start using ws after this message.
             } catch (error) {
                 logger.warn(`${error.message} : ${error.cause ?? ""}`);
                 if (error instanceof AuthenticationError) {
@@ -123,6 +122,7 @@ async function connect(webSocket, { channelUUID, jwt }) {
     if (!session_id) {
         throw new AuthenticationError("Malformed JWT payload");
     }
+    webSocket.send(); // client can start using ws after this message.
     const bus = new Bus(webSocket, { batchDelay: config.timeouts.busBatch });
     const { session } = Channel.join(channel.uuid, session_id);
     session.once("close", ({ code }) => {
