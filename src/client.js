@@ -454,11 +454,11 @@ export class SfuClient extends EventTarget {
             ...ctsConfig,
             iceServers: this._iceServers,
         });
-        transport.on("connect", async ({ dtlsParameters }, callback, errback) => {
+        transport.on("connect", async ({ dtlsParameters, iceParameters }, callback, errback) => {
             try {
                 await this._bus.request({
                     name: CLIENT_REQUEST.CONNECT_CTS_TRANSPORT,
-                    payload: { dtlsParameters },
+                    payload: { dtlsParameters, iceParameters },
                 });
                 callback();
             } catch (error) {
@@ -488,11 +488,11 @@ export class SfuClient extends EventTarget {
             ...stcConfig,
             iceServers: this._iceServers,
         });
-        transport.on("connect", async ({ dtlsParameters }, callback, errback) => {
+        transport.on("connect", async ({ dtlsParameters, iceParameters }, callback, errback) => {
             try {
                 await this._bus.request({
                     name: CLIENT_REQUEST.CONNECT_STC_TRANSPORT,
-                    payload: { dtlsParameters },
+                    payload: { dtlsParameters, iceParameters },
                 });
                 callback();
             } catch (error) {
