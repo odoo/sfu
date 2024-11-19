@@ -6,6 +6,7 @@ import * as config from "#src/config.js";
 import { Logger, parseBody, extractRequestInfo } from "#src/utils/utils.js";
 import { SESSION_CLOSE_CODE } from "#src/models/session.js";
 import { Channel } from "#src/models/channel.js";
+import { Recorder } from "#src/models/recorder.js";
 
 /**
  * @typedef {function} routeCallback
@@ -15,6 +16,7 @@ import { Channel } from "#src/models/channel.js";
  * @param {string} param2.remoteAddress
  * @param {string} param2.protocol
  * @param {string} param2.host
+ * @param {Object} param2.match name/value mapping of route variables
  * @param {URLSearchParams} param2.searchParams
  * @return {http.ServerResponse}
  */
@@ -75,6 +77,19 @@ export async function start({ httpInterface = config.HTTP_INTERFACE, port = conf
                 logger.warn(`[${remoteAddress}] failed to create channel: ${error.message}`);
             }
             return res.end();
+        },
+    });
+    routeListener.get(`/v${API_VERSION}/recording/<token>`, {
+        callback: async (req, res, { remoteAddress, match }) => {
+            try {
+                const { token } = match;
+                logger.info(`[${remoteAddress}]: requested recording ${token}`);
+                Recorder.records.get(token)?.pipeToResponse(res);
+                // res not ended as we are streaming
+            } catch (error) {
+                logger.error(`[${remoteAddress}] failed to obtain recording: ${error.message}`);
+                return res.end();
+            }
         },
     });
     routeListener.post(`/v${API_VERSION}/disconnect`, {
@@ -183,7 +198,8 @@ class RouteListener {
                 break;
         }
         for (const [pattern, options] of registeredRoutes) {
-            if (pathname === pattern) {
+            const match = this._extractPattern(pathname, pattern);
+            if (match) {
                 if (options?.cors) {
                     res.setHeader("Access-Control-Allow-Origin", options.cors);
                     res.setHeader("Access-Control-Allow-Methods", options.methods);
@@ -195,6 +211,7 @@ class RouteListener {
                             host,
                             protocol,
                             remoteAddress,
+                            match,
                             searchParams,
                         });
                     } catch (error) {
@@ -211,5 +228,33 @@ class RouteListener {
             }
         }
         return res.end();
+    }
+
+    /**
+     * Matches a pathname against a pattern with named parameters.
+     * @param {string} pathname - The URL path requested, e.g., "/channel/6/person/42/"
+     * @param {string} pattern - The pattern to match, e.g., "/channel/<channelId>/session/<sessionId>"
+     * @returns {object|undefined} - Returns undefined if no match. If matched, returns an object mapping keys to values,
+     * the object is empty if matching a pattern with no variables.
+     * eg: { channelId: "6", sessionId: "42" } | {} | undefined
+     */
+    _extractPattern(pathname, pattern) {
+        pathname = pathname.replace(/\/+$/, "");
+        pattern = pattern.replace(/\/+$/, "");
+        const paramNames = [];
+        const regexPattern = pattern.replace(/<([^>]+)>/g, (_, paramName) => {
+            paramNames.push(paramName);
+            return "([^/]+)";
+        });
+        const regex = new RegExp(`^${regexPattern}$`);
+        const match = pathname.match(regex);
+        if (!match) {
+            return;
+        }
+        const params = {};
+        paramNames.forEach((name, index) => {
+            params[name] = match[index + 1];
+        });
+        return params;
     }
 }

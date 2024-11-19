@@ -5,6 +5,7 @@ import { getAllowedCodecs, Logger } from "#src/utils/utils.js";
 import { AuthenticationError, OvercrowdedError } from "#src/utils/errors.js";
 import { Session, SESSION_CLOSE_CODE } from "#src/models/session.js";
 import { getWorker } from "#src/services/rtc.js";
+import { Recorder } from "#src/models/recorder.js";
 
 const logger = new Logger("CHANNEL");
 
@@ -39,6 +40,7 @@ export class Channel extends EventEmitter {
     name;
     /** @type {WithImplicitCoercion<string>} base 64 buffer key */
     key;
+    recorder;
     /** @type {import("mediasoup").types.Router}*/
     router;
     /** @type {Map<number, Session>} */
@@ -130,6 +132,7 @@ export class Channel extends EventEmitter {
         this.name = `${remoteAddress}*${this.uuid.slice(-5)}`;
         this.router = router;
         this._worker = worker;
+        this.recorder = new Recorder(this);
         this._onSessionClose = this._onSessionClose.bind(this);
     }
 
@@ -249,6 +252,7 @@ export class Channel extends EventEmitter {
         }
         clearTimeout(this._closeTimeout);
         this.sessions.clear();
+        this.recorder.stop();
         Channel.records.delete(this.uuid);
         /**
          * @event Channel#close
