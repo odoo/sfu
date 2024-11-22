@@ -20,6 +20,12 @@ const mediaCodecs = getAllowedCodecs();
  */
 
 /**
+ * @typedef {Object} Features
+ * @property {boolean} recording
+ * @property {boolean} webRtc
+ */
+
+/**
  * @fires Channel#sessionJoin
  * @fires Channel#sessionLeave
  * @fires Channel#close
@@ -40,6 +46,7 @@ export class Channel extends EventEmitter {
     name;
     /** @type {WithImplicitCoercion<string>} base 64 buffer key */
     key;
+    /** @type {Recorder | undefined} */
     recorder;
     /** @type {import("mediasoup").types.Router}*/
     router;
@@ -132,8 +139,20 @@ export class Channel extends EventEmitter {
         this.name = `${remoteAddress}*${this.uuid.slice(-5)}`;
         this.router = router;
         this._worker = worker;
-        this.recorder = new Recorder(this);
+        if (config.RECORDING) {
+            this.recorder = new Recorder(this);
+        }
         this._onSessionClose = this._onSessionClose.bind(this);
+    }
+
+    /**
+     * @type {Features}
+     */
+    get features() {
+        return {
+            recording: Boolean(this.recorder),
+            webRtc: Boolean(this.router),
+        };
     }
 
     /**
@@ -252,7 +271,7 @@ export class Channel extends EventEmitter {
         }
         clearTimeout(this._closeTimeout);
         this.sessions.clear();
-        this.recorder.stop();
+        this.recorder?.stop();
         Channel.records.delete(this.uuid);
         /**
          * @event Channel#close

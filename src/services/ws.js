@@ -122,7 +122,10 @@ async function connect(webSocket, { channelUUID, jwt }) {
     if (!session_id) {
         throw new AuthenticationError("Malformed JWT payload");
     }
-    webSocket.send(); // client can start using ws after this message.
+    const initData = {
+        features: channel.features,
+    };
+    webSocket.send(JSON.stringify(initData)); // client can start using ws after this message.
     const bus = new Bus(webSocket, { batchDelay: config.timeouts.busBatch });
     const { session } = Channel.join(channel.uuid, session_id);
     session.once("close", ({ code }) => {

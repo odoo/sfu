@@ -167,6 +167,24 @@ export const LOG_TIMESTAMP = !FALSY_INPUT.has(process.env.LOG_TIMESTAMP);
 export const LOG_COLOR = process.env.LOG_COLOR
     ? Boolean(process.env.LOG_COLOR)
     : process.stdout.isTTY;
+/**
+ * Whether recording is allowed
+ * If true, users can request their call to be recorded.
+ *
+ * e.g: RECORDING=1
+ *
+ * @type {boolean}
+ */
+export const RECORDING = Boolean(process.env.RECORDING ?? true);
+/**
+ * The file type of the recording output, this must be a fragmentable type.
+ * If not set, defaults to mp4
+ *
+ * e.g: RECORDING_FILE_TYPE=mp4
+ *
+ * @type {string}
+ */
+export const RECORDING_FILE_TYPE = process.env.RECORDING_FILE_TYPE || "mp4";
 
 // ------------------------------------------------------------
 // --------------------   SETTINGS   --------------------------

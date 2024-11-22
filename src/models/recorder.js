@@ -6,11 +6,11 @@ import fs from "node:fs";
 import { EventEmitter } from "node:events"; // TODO remove if unnecessary
 import { Logger } from "#src/utils/utils.js";
 import { STREAM_TYPE } from "#src/shared/enums.js";
+import { RECORDING_FILE_TYPE } from "#src/config.js";
 
 const logger = new Logger("RECORDER");
 const temp = os.tmpdir();
-const fileType = "mp4"; // TODO config
-const VIDEO_LIMIT = 4; // TODO config (and other name?)
+const VIDEO_LIMIT = 4;
 
 /**
  * @typedef {Object} RTPTransports
@@ -48,7 +48,7 @@ class FFMPEG extends EventEmitter {
             "-c:a",
             "aac", // audio codec
             "-f",
-            fileType,
+            RECORDING_FILE_TYPE,
             this._filePath,
         ];
     }
@@ -116,7 +116,7 @@ export class Recorder extends EventEmitter {
     constructor(channel) {
         super();
         this.channel = channel;
-        this.filePath = path.join(temp, `${this.uuid}.${fileType}`);
+        this.filePath = path.join(temp, `${this.uuid}.${RECORDING_FILE_TYPE}`);
         Recorder.records.set(this.uuid, this);
     }
 
@@ -138,6 +138,7 @@ export class Recorder extends EventEmitter {
                 session.producers[STREAM_TYPE.AUDIO],
                 STREAM_TYPE.AUDIO
             );
+            // TODO maybe some logic for priority on session id or stream type
             audioRtp && this._rtpTransports.audio.push(audioRtp);
             for (const type in [STREAM_TYPE.CAMERA, STREAM_TYPE.SCREEN]) {
                 if (this.videoCount < VIDEO_LIMIT) {
@@ -170,7 +171,7 @@ export class Recorder extends EventEmitter {
         // TODO check if this can be executed, otherwise end request, or throw error
         const fileStream = fs.createReadStream(this._filePath); // may need to be explicitly closed?
         res.writeHead(200, {
-            "Content-Type": `video/${fileType}`,
+            "Content-Type": `video/${RECORDING_FILE_TYPE}`,
             "Content-Disposition": "inline",
         });
         fileStream.pipe(res); // Pipe the file stream to the response
