@@ -1,14 +1,14 @@
-import child_process from "node:child_process";
 import path from "node:path";
 import fs from "node:fs";
-import { EventEmitter } from "node:events"; // TODO remove if unnecessary
-
-import { Logger, formatFfmpegSdp } from "#src/utils/utils.js";
-import { STREAM_TYPE } from "#src/shared/enums.js";
-import { LOG_LEVEL, recording } from "#src/config.js";
-import * as config from "#src/config.js";
 import * as https from "node:https";
 import http from "node:http";
+import { EventEmitter } from "node:events"; // TODO remove if unnecessary
+
+import { Logger } from "#src/utils/utils.js";
+import { STREAM_TYPE } from "#src/shared/enums.js";
+import { FFMPEG } from "#src/utils/ffmpeg.js";
+import { recording } from "#src/config.js";
+import * as config from "#src/config.js";
 
 const logger = new Logger("RECORDER");
 
@@ -41,85 +41,6 @@ export function clearDirectory() {
             });
         }
     });
-}
-/**
- * Wraps the FFMPEG process
- * TODO move in own file
- */
-class FFMPEG extends EventEmitter {
-    /** @type {child_process.ChildProcess} */
-    _process;
-    /** @type {string} */
-    _filePath;
-
-    get _args() {
-        const args = [
-            // TODO
-            "-protocol_whitelist",
-            "pipe,udp,rtp",
-            "-fflags",
-            "+genpts",
-            "-f",
-            "sdp",
-            "-i",
-            "pipe:0",
-            "-movflags",
-            "frag_keyframe+empty_moov+default_base_moof", // fragmented
-            "-c:v",
-            "libx264", // vid codec
-            "-c:a",
-            "aac", // audio codec
-            "-f",
-            recording.fileType,
-            this._filePath,
-        ];
-        if (LOG_LEVEL === "debug") {
-            args.unshift("-loglevel", "debug");
-        }
-        return args;
-    }
-
-    /**
-     * @param {string} filePath
-     */
-    constructor(filePath) {
-        super();
-        this._filePath = filePath;
-    }
-
-    /**
-     * @param {String[]} [sdp]
-     */
-    async spawn(sdp) {
-        this._process = child_process.spawn("ffmpeg", this._args, {
-            stdio: ["pipe", "pipe", process.stderr],
-        });
-
-        if (!this._process.stdin.writable) {
-            throw new Error("FFMPEG stdin not writable.");
-        }
-        this._process.stdin.write(sdp); // TODO (maybe pass args earlier)
-        this._process.stdin.end();
-
-        this._process.stdout.on("data", (chunk) => {
-            this.emit("data", chunk); // Emit data chunks as they become available
-            // may need to ues this to pipe to request if file stream does not work
-        });
-
-        this._process.on("close", (code) => {
-            if (code === 0) {
-                this.emit("success");
-            }
-        });
-
-        logger.debug(
-            `FFMPEG process (pid:${this._process.pid}) spawned, outputting to ${this._filePath}`
-        );
-    }
-
-    kill() {
-        this._process?.kill("SIGINT");
-    }
 }
 
 export class Recorder extends EventEmitter {
@@ -190,7 +111,7 @@ export class Recorder extends EventEmitter {
         this.filePath = path.join(recording.directory, `call_${Date.now()}.${recording.fileType}`);
         this.ffmpeg = new FFMPEG(this.filePath);
         try {
-            await this.ffmpeg.spawn(formatFfmpegSdp(audioRtps, videoRtps)); // args should be base on the rtp transports
+            await this.ffmpeg.spawn(audioRtps, videoRtps); // args should be base on the rtp transports
         } catch (error) {
             logger.error(`Failed to start recording: ${error.message}`);
             this.ffmpeg?.kill();
@@ -208,6 +129,8 @@ export class Recorder extends EventEmitter {
     }
     update(ids) {
         // TODO see if ffmpeg input can be re-configured at runtime, otherwise no support or full restart
+        // could also see if the consumer of the RtpTransport can be swapped at runtime, in which case, RtpTransport should
+        // be owned by the Recorder (4 RtpTransport per recorder, and consume on demand).
         return this.filePath;
     }
     stop() {
