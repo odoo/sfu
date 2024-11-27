@@ -61,10 +61,13 @@ export async function start({ httpInterface = config.HTTP_INTERFACE, port = conf
                     res.statusCode = 403; // forbidden
                     return res.end();
                 }
-                const channel = await Channel.create(remoteAddress, claims.iss, {
+                const { webRTC, uploadRoute } = searchParams;
+                const options = {
                     key: claims.key,
-                    useWebRtc: searchParams.get("webRTC") !== "false",
-                });
+                    useWebRtc: webRTC !== "false",
+                    uploadRoute,
+                };
+                const channel = await Channel.create(remoteAddress, claims.iss, options);
                 res.setHeader("Content-Type", "application/json");
                 res.statusCode = 200;
                 return res.end(
@@ -79,12 +82,12 @@ export async function start({ httpInterface = config.HTTP_INTERFACE, port = conf
             return res.end();
         },
     });
-    routeListener.get(`/v${API_VERSION}/recording/<token>`, {
+    routeListener.get(`/v${API_VERSION}/recording/<uuid>`, {
         callback: async (req, res, { remoteAddress, match }) => {
             try {
-                const { token } = match;
-                logger.info(`[${remoteAddress}]: requested recording ${token}`);
-                Recorder.records.get(token)?.pipeToResponse(res);
+                const { uuid } = match;
+                logger.info(`[${remoteAddress}]: requested recording ${uuid}`);
+                Recorder.pipeToResponse(uuid, res);
                 // res not ended as we are streaming
             } catch (error) {
                 logger.error(`[${remoteAddress}] failed to obtain recording: ${error.message}`);

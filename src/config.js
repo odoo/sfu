@@ -1,6 +1,6 @@
 import os from "node:os";
 
-const FALSY_INPUT = new Set(["disable", "false", "none", "no", "0"]);
+const FALSY_INPUT = new Set(["disable", "false", "none", "no", "0", "off"]);
 
 // ------------------------------------------------------------
 // ------------------   ENV VARIABLES   -----------------------
@@ -171,20 +171,11 @@ export const LOG_COLOR = process.env.LOG_COLOR
  * Whether recording is allowed
  * If true, users can request their call to be recorded.
  *
- * e.g: RECORDING=1
+ * e.g: RECORDING=1 or RECORDING=off
  *
  * @type {boolean}
  */
-export const RECORDING = Boolean(process.env.RECORDING ?? true);
-/**
- * The file type of the recording output, this must be a fragmentable type.
- * If not set, defaults to mp4
- *
- * e.g: RECORDING_FILE_TYPE=mp4
- *
- * @type {string}
- */
-export const RECORDING_FILE_TYPE = process.env.RECORDING_FILE_TYPE || "mp4";
+export const RECORDING = !FALSY_INPUT.has(process.env.RECORDING);
 
 // ------------------------------------------------------------
 // --------------------   SETTINGS   --------------------------
@@ -219,6 +210,20 @@ const baseProducerOptions = {
     zeroRtpOnPause: true,
 };
 
+export const recording = Object.freeze({
+    directory: os.tmpdir() + "/recordings",
+    enabled: RECORDING,
+    maxDuration: 1000 * 60 * 60, // 1 hour
+    fileTTL: 1000 * 60 * 60 * 24, // 24 hours
+    fileType: "mp4",
+    videoLimit: 4, // how many videos can be merged into one recording
+});
+
+export const dynamicPorts = Object.freeze({
+    min: 50000,
+    max: 59999,
+});
+
 export const rtc = Object.freeze({
     // https://mediasoup.org/documentation/v3/mediasoup/api/#WorkerSettings
     workerSettings: {
@@ -246,6 +251,11 @@ export const rtc = Object.freeze({
                 },
             },
         ],
+    },
+    plainTransportOptions: {
+        listenIp: { ip: "0.0.0.0", announcedIp: PUBLIC_IP },
+        rtcpMux: true,
+        comedia: false,
     },
     // https://mediasoup.org/documentation/v3/mediasoup/api/#WebRtcTransportOptions
     rtcTransportOptions: {

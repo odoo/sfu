@@ -8,6 +8,7 @@ import {
     SERVER_MESSAGE,
     SERVER_REQUEST,
 } from "#src/shared/enums.js";
+import { getPort, releasePort } from "#src/services/resources.js";
 
 /**
  * @typedef {Object} SessionInfo
@@ -40,6 +41,23 @@ import {
  * @property {import("mediasoup").types.Producer | null} audio
  * @property {import("mediasoup").types.Producer | null} camera
  * @property {import("mediasoup").types.Producer | null} screen
+ */
+
+/**
+ * @typedef {Object} RtpData
+ * @property {import("mediasoup").types.PlainTransport} transport
+ * @property {string} payloadType
+ * @property {number} port
+ * @property {number} clockRate
+ * @property {string} codec
+ * @property {string} channels
+ */
+
+/**
+ * @typedef {Object} RtpDataByType
+ * @property {RtpData | null} audio
+ * @property {RtpData | null} camera
+ * @property {RtpData | null} screen
  */
 
 const logger = new Logger("SESSION");
@@ -87,6 +105,15 @@ export class Session extends EventEmitter {
     _consumers = new Map();
     /** @type {Producers} */
     producers = {
+        audio: null,
+        camera: null,
+        screen: null,
+    };
+    /**
+     * Transports and their information used to expose streams on a dynamic port.
+     * @type {Map<number, RtpDataByType>}
+     */
+    _rtp = {
         audio: null,
         camera: null,
         screen: null,
@@ -464,6 +491,56 @@ export class Session extends EventEmitter {
             }
             consumers[type] = consumer;
         }
+    }
+
+    /**
+     * @param {STREAM_TYPE[keyof STREAM_TYPE]} type
+     * @return {Promise<RtpData | undefined>}
+     */
+    async getRtp(type) {
+        if (this._rtp[type]) {
+            return this._rtp[type];
+        }
+        const producer = this.producers[type];
+        if (!producer) {
+            return;
+        }
+        const transport = await this._channel.router.createWebRtcTransport(
+            config.rtc.plainTransportOptions
+        );
+        const port = getPort();
+        await transport.connect({
+            ip: "127.0.0.1", // just local, we only transport to a local child process
+            port,
+        });
+        // TODO may want to use producer.getStats() to get the codec info
+        // for val of producer.getStats().values() { if val.type === "codec": val.minetype, val.clockRate,... }
+        //const codecData = this._channel.router.rtpCapabilities.codecs.find(
+        //    (codec) => codec.kind === producer.kind
+        //);
+        const codecData = producer.rtpParameters.codecs[0];
+        // TODO if we can hot swap consumers, the transport should be owned by the recorder
+        // TODO if not possible to swap here or even at ffmpeg level, worst case is to compose recording and merge it with ffmpeg again.
+        const consumer = await transport.consume({
+            producerId: producer.id,
+            rtpCapabilities: producer.rtpParameters,
+            paused: true,
+        });
+        this.once("close", () => {
+            consumer.close();
+            transport.close();
+            releasePort(port);
+            this._rtp[type] = null;
+        });
+        this._rtp[type] = {
+            transport,
+            port,
+            payloadType: codecData.preferredPayloadType || codecData.payloadType,
+            clockRate: codecData.clockRate,
+            codec: codecData.mimeType.replace(`${producer.kind}`, ""),
+            channels: producer.kind === "audio" ? codecData.channels : undefined,
+        };
+        return this._rtp[type];
     }
 
     _broadcastInfo() {

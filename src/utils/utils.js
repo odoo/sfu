@@ -165,3 +165,42 @@ export function getAllowedCodecs() {
     }
     return codecs;
 }
+
+/**
+ * hard-coded ffmpeg sdp fragments for layouts with 1...4 videos
+ * TODO make the right resizing and vstack/hstack params
+ */
+const LAYOUT = {
+    1: "TODO layout for 1 video",
+    2: "TODO layout for 2 videos",
+    3: "TODO layout for 3 videos",
+    4: "TODO layout for 4 videos",
+};
+
+/**
+ * TODO
+ * @param {RtpData[]} audioRtps
+ * @param {RtpData[]} videoRtps
+ * @return {string[]}
+ */
+export function formatFfmpegSdp(audioRtps, videoRtps) {
+    // array of strings containing the sdp for ffmpeg, related to the stacking of videos
+    const sdp = ["v=0", "o=- 0 0 IN IP4 127.0.0.1", "s=FFmpeg", "c=IN IP4 127.0.0.1", "t=0 0"];
+    const layout = LAYOUT[videoRtps.length];
+    if (!layout) {
+        throw new Error(`unsupported layout for ${videoRtps.length} videos`);
+    }
+    for (const audioRtp of audioRtps) {
+        sdp.push(`m=audio ${audioRtp.port} RTP/AVP ${audioRtp.payloadType}`);
+        sdp.push(`a=rtpmap:${audioRtp.payloadType} ${audioRtp.codec}/${audioRtp.clockRate}`);
+        sdp.push(`a=sendonly`);
+    }
+    for (const videoRtp of videoRtps) {
+        // TODO do something with layout. Layout may contain a format function that takes below values as params, or the whole videoRtps[].
+        sdp.push(`m=video ${videoRtp.port} RTP/AVP ${videoRtp.payloadType}`);
+        sdp.push(`a=rtpmap:${videoRtp.payloadType} ${videoRtp.codec}/${videoRtp.clockRate}`);
+        sdp.push(`a=sendonly`);
+    }
+    // TODO, layout only a small part of the full SDP.
+    return sdp;
+}

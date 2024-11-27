@@ -6,7 +6,7 @@ import * as fakeParameters from "mediasoup-client/lib/test/fakeParameters";
 
 import * as auth from "#src/services/auth.js";
 import * as http from "#src/services/http.js";
-import * as rtc from "#src/services/rtc.js";
+import * as resources from "#src/services/resources.js";
 import { SfuClient, SFU_CLIENT_STATE } from "#src/client.js";
 import { Channel } from "#src/models/channel.js";
 
@@ -39,7 +39,7 @@ export class LocalNetwork {
     async start(hostname, port) {
         this.hostname = hostname;
         this.port = port;
-        await rtc.start();
+        await resources.start();
         await http.start({ hostname, port });
         await auth.start(HMAC_B64_KEY);
     }
@@ -122,6 +122,6 @@ export class LocalNetwork {
         Channel.closeAll();
         auth.close();
         http.close();
-        rtc.close();
+        resources.close();
     }
 }

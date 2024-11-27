@@ -4,7 +4,7 @@ import * as config from "#src/config.js";
 import { getAllowedCodecs, Logger } from "#src/utils/utils.js";
 import { AuthenticationError, OvercrowdedError } from "#src/utils/errors.js";
 import { Session, SESSION_CLOSE_CODE } from "#src/models/session.js";
-import { getWorker } from "#src/services/rtc.js";
+import { getWorker } from "#src/services/resources.js";
 import { Recorder } from "#src/models/recorder.js";
 
 const logger = new Logger("CHANNEL");
@@ -65,15 +65,16 @@ export class Channel extends EventEmitter {
      * @param {boolean} [options.useWebRtc=true] whether to use WebRTC:
      *  with webRTC: can stream audio/video
      *  without webRTC: can only use websocket
+     *  @param {string} [options.uploadRoute] the route to which the recording will be uploaded
      */
-    static async create(remoteAddress, issuer, { key, useWebRtc = true } = {}) {
+    static async create(remoteAddress, issuer, { key, useWebRtc = true, uploadRoute } = {}) {
         const safeIssuer = `${remoteAddress}::${issuer}`;
         const oldChannel = Channel.recordsByIssuer.get(safeIssuer);
         if (oldChannel) {
             logger.verbose(`reusing channel ${oldChannel.uuid}`);
             return oldChannel;
         }
-        const options = { key };
+        const options = { key, uploadRoute };
         if (useWebRtc) {
             options.worker = await getWorker();
             options.router = await options.worker.createRouter({
@@ -128,8 +129,9 @@ export class Channel extends EventEmitter {
      * @param {string} [options.key]
      * @param {import("mediasoup").types.Worker} [options.worker]
      * @param {import("mediasoup").types.Router} [options.router]
+     * @param {string} [options.uploadRoute] the route to which the recording will be uploaded
      */
-    constructor(remoteAddress, { key, worker, router } = {}) {
+    constructor(remoteAddress, { key, worker, router, uploadRoute } = {}) {
         super();
         const now = new Date();
         this.createDate = now.toISOString();
@@ -139,8 +141,8 @@ export class Channel extends EventEmitter {
         this.name = `${remoteAddress}*${this.uuid.slice(-5)}`;
         this.router = router;
         this._worker = worker;
-        if (config.RECORDING) {
-            this.recorder = new Recorder(this);
+        if (config.recording.enabled) {
+            this.recorder = new Recorder(this, uploadRoute);
         }
         this._onSessionClose = this._onSessionClose.bind(this);
     }

@@ -1,24 +1,47 @@
 import child_process from "node:child_process";
-import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
-
 import { EventEmitter } from "node:events"; // TODO remove if unnecessary
-import { Logger } from "#src/utils/utils.js";
+
+import { Logger, formatFfmpegSdp } from "#src/utils/utils.js";
 import { STREAM_TYPE } from "#src/shared/enums.js";
-import { RECORDING_FILE_TYPE } from "#src/config.js";
+import { LOG_LEVEL, recording } from "#src/config.js";
+import * as config from "#src/config.js";
+import * as https from "node:https";
+import http from "node:http";
 
 const logger = new Logger("RECORDER");
-const temp = os.tmpdir();
-const VIDEO_LIMIT = 4;
 
-/**
- * @typedef {Object} RTPTransports
- * @property {Array<import("mediasoup").types.Transport>} audio
- * @property {Array<import("mediasoup").types.Transport>} camera
- * @property {Array<import("mediasoup").types.Transport>} screen
- */
-
+fs.mkdir(recording.directory, { recursive: true }, (err) => {
+    if (err) {
+        logger.error(err);
+    }
+});
+export function clearDirectory() {
+    const now = Date.now();
+    fs.readdir(recording.directory, (err, files) => {
+        if (err) {
+            logger.error(err);
+            return;
+        }
+        for (const file of files) {
+            const stats = fs.statSync(path.join(recording.directory, file));
+            if (stats.mtimeMs < now - config.recording.fileTTL) {
+                fs.unlink(path.join(recording.directory, file), (err) => {
+                    if (err) {
+                        logger.error(err);
+                    }
+                    logger.info(`Deleted recording ${file}`);
+                });
+            }
+            fs.unlink(path.join(recording.directory, file), (err) => {
+                if (err) {
+                    logger.error(err);
+                }
+            });
+        }
+    });
+}
 /**
  * Wraps the FFMPEG process
  * TODO move in own file
@@ -30,9 +53,8 @@ class FFMPEG extends EventEmitter {
     _filePath;
 
     get _args() {
-        return [
-            "-loglevel",
-            "debug", // TODO warning in prod
+        const args = [
+            // TODO
             "-protocol_whitelist",
             "pipe,udp,rtp",
             "-fflags",
@@ -48,9 +70,13 @@ class FFMPEG extends EventEmitter {
             "-c:a",
             "aac", // audio codec
             "-f",
-            RECORDING_FILE_TYPE,
+            recording.fileType,
             this._filePath,
         ];
+        if (LOG_LEVEL === "debug") {
+            args.unshift("-loglevel", "debug");
+        }
+        return args;
     }
 
     /**
@@ -72,7 +98,7 @@ class FFMPEG extends EventEmitter {
         if (!this._process.stdin.writable) {
             throw new Error("FFMPEG stdin not writable.");
         }
-        this._process.stdin.write(sdp);
+        this._process.stdin.write(sdp); // TODO (maybe pass args earlier)
         this._process.stdin.end();
 
         this._process.stdout.on("data", (chunk) => {
@@ -97,27 +123,41 @@ class FFMPEG extends EventEmitter {
 }
 
 export class Recorder extends EventEmitter {
-    static records = new Map();
-
+    /** @type {Map<string, string>} */
+    static generatedFiles = new Map();
     /** @type {string} */
-    uuid = crypto.randomUUID();
+    uuid;
     /** @type {import("#src/models/channel").Channel} */
     channel;
     /** @type {string} */
     state;
+    /** @type {FFMPEG} */
     ffmpeg;
-    /** @type {RTPTransports} */
-    _rtpTransports;
     /** @type {string} */
     filePath;
+    /** @type {number} */
+    _limitTimeout;
+    /**
+     * @param {string} uuid
+     * @param {http.ServerResponse} res
+     */
+    static pipeToResponse(uuid, res) {
+        // TODO check if this can be executed, otherwise end request, or throw error (http service will throw anyways)
+        const fileStream = fs.createReadStream(Recorder.generatedFiles.get(uuid)); // may need to be explicitly closed?
+        res.writeHead(200, {
+            "Content-Type": `video/${recording.fileType}`,
+            "Content-Disposition": "inline",
+        });
+        fileStream.pipe(res); // Pipe the file stream to the response
+    }
     /**
      * @param {import("#src/models/channel").Channel} channel
+     * @param {string} destination url to send the file to
      */
-    constructor(channel) {
+    constructor(channel, destination) {
         super();
         this.channel = channel;
-        this.filePath = path.join(temp, `${this.uuid}.${RECORDING_FILE_TYPE}`);
-        Recorder.records.set(this.uuid, this);
+        this._destination = destination;
     }
 
     /** @returns {number} */
@@ -129,60 +169,82 @@ export class Recorder extends EventEmitter {
      * @param {Array} ids
      * @returns {string} filePath
      */
-    start(ids) {
-        // maybe internal state and check if already recording (recording = has ffmpeg child process).
-        this.stop();
+    async start(ids) {
+        if (this.ffmpeg) {
+            return this.filePath;
+        }
+        this.uuid = crypto.randomUUID();
+        const audioRtps = [];
+        const videoRtps = [];
         for (const id of ids) {
             const session = this.channel.sessions.get(id);
-            const audioRtp = this._createRtp(
-                session.producers[STREAM_TYPE.AUDIO],
-                STREAM_TYPE.AUDIO
-            );
-            // TODO maybe some logic for priority on session id or stream type
-            audioRtp && this._rtpTransports.audio.push(audioRtp);
+            const audioRtpData = session.getRtp(STREAM_TYPE.AUDIO);
+            audioRtpData && audioRtps.push(audioRtpData);
             for (const type in [STREAM_TYPE.CAMERA, STREAM_TYPE.SCREEN]) {
-                if (this.videoCount < VIDEO_LIMIT) {
-                    const rtp = this._createRtp(session.producers[type], type);
-                    rtp && this._rtpTransports[type].push(rtp);
+                if (videoRtps.length < recording.videoLimit) {
+                    const videoRtpData = session.getRtp(type);
+                    videoRtpData && videoRtps.push(videoRtpData);
                 }
             }
         }
+        this.filePath = path.join(recording.directory, `call_${Date.now()}.${recording.fileType}`);
         this.ffmpeg = new FFMPEG(this.filePath);
-        this.ffmpeg.spawn(); // args should be base on the rtp transports
+        try {
+            await this.ffmpeg.spawn(formatFfmpegSdp(audioRtps, videoRtps)); // args should be base on the rtp transports
+        } catch (error) {
+            logger.error(`Failed to start recording: ${error.message}`);
+            this.ffmpeg?.kill();
+            this.ffmpeg = undefined;
+            return;
+        }
+        this._limitTimeout = setTimeout(() => {
+            this.upload();
+        }, recording.maxDuration);
+        Recorder.generatedFiles.set(this.uuid, this.filePath);
         this.ffmpeg.once("success", () => {
             this.emit("download-ready", this.filePath);
         });
         return this.filePath;
     }
-    pause() {
-        // TODO maybe shouldn't be able to pause
+    update(ids) {
+        // TODO see if ffmpeg input can be re-configured at runtime, otherwise no support or full restart
+        return this.filePath;
     }
     stop() {
-        // TODO
-        // cleanup all rtp transports
-        // stop ffmpeg process
-        Recorder.records.delete(this.uuid);
+        this.ffmpeg?.kill();
+        this.uuid = undefined;
+        this.ffmpeg = undefined;
+        clearTimeout(this._limitTimeout);
     }
-
-    /**
-     * @param {http.ServerResponse} res
-     */
-    pipeToResponse(res) {
-        // TODO check if this can be executed, otherwise end request, or throw error
-        const fileStream = fs.createReadStream(this._filePath); // may need to be explicitly closed?
-        res.writeHead(200, {
-            "Content-Type": `video/${RECORDING_FILE_TYPE}`,
-            "Content-Disposition": "inline",
+    upload() {
+        this.stop();
+        if (!this._destination) {
+            logger.warn(`No upload destination set for ${this.uuid}`);
+            return;
+        }
+        const fileStream = fs.createReadStream(this.filePath);
+        const { hostname, pathname, protocol } = new URL(this._destination);
+        const options = {
+            hostname,
+            path: pathname,
+            method: "POST",
+            headers: {
+                "Content-Type": "application/octet-stream",
+                "Content-Length": fs.statSync(this.filePath).size,
+            },
+        };
+        // TODO this  should be a special route that has a generous upload limit
+        const request = (protocol === "https:" ? https : http).request(options, (res) => {
+            if (res.statusCode === 200) {
+                logger.info(`File uploaded to ${this._destination}`);
+                // TODO delete file
+            } else {
+                logger.error(`Failed to upload file: ${res.statusCode}`);
+            }
         });
-        fileStream.pipe(res); // Pipe the file stream to the response
-    }
-
-    /**
-     * @param {import("mediasoup").types.Producer} producer
-     * @param {STREAM_TYPE[keyof STREAM_TYPE]} type
-     * @return {Promise<void>} probably just create transport with right ports and return that,
-     */
-    async _createRtp(producer, type) {
-        // TODO
+        request.once("error", (error) => {
+            logger.error(`Failed to upload file: ${error.message}`);
+        });
+        fileStream.pipe(request);
     }
 }
