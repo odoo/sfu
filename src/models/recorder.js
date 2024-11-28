@@ -12,6 +12,12 @@ import * as config from "#src/config.js";
 
 const logger = new Logger("RECORDER");
 
+export const RECORDER_STATE = {
+    IDLE: "IDLE",
+    RECORDING: "RECORDING",
+    UPLOADING: "UPLOADING",
+};
+
 fs.mkdir(recording.directory, { recursive: true }, (err) => {
     if (err) {
         logger.error(err);
@@ -50,14 +56,16 @@ export class Recorder extends EventEmitter {
     uuid;
     /** @type {import("#src/models/channel").Channel} */
     channel;
-    /** @type {string} */
-    state;
     /** @type {FFMPEG} */
     ffmpeg;
     /** @type {string} */
     filePath;
+    /** @type {string} */
+    _destination;
     /** @type {number} */
     _limitTimeout;
+    /** @type {RECORDER_STATE[keyof RECORDER_STATE]} */
+    _state = RECORDER_STATE.IDLE;
     /**
      * @param {string} uuid
      * @param {http.ServerResponse} res
@@ -81,9 +89,18 @@ export class Recorder extends EventEmitter {
         this._destination = destination;
     }
 
-    /** @returns {number} */
-    get videoCount() {
-        return this._rtpTransports.camera.length + this._rtpTransports.screen.length;
+    /**
+     * @param {RECORDER_STATE[keyof RECORDER_STATE]} state
+     * @fires Recorder#stateChange
+     */
+    set state(state) {
+        this._state = state;
+        /**
+         * stateChange event.
+         * @event Recorder#stateChange
+         * @type {string} `RECORDER_STATE`
+         */
+        this.emit("stateChange", state);
     }
 
     /**

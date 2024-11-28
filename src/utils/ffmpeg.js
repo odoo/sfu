@@ -62,7 +62,7 @@ export class FFMPEG extends EventEmitter {
     /** @type {string} */
     _filePath;
 
-    get _args() {
+    get _processArgs() {
         const args = [
             // TODO
             "-protocol_whitelist",
@@ -97,7 +97,7 @@ export class FFMPEG extends EventEmitter {
      */
     async spawn(audioRtps, videoRtps) {
         const sdp = formatFfmpegSdp(audioRtps, videoRtps);
-        this._process = child_process.spawn("ffmpeg", this._args, {
+        this._process = child_process.spawn("ffmpeg", this._processArgs, {
             stdio: ["pipe", "pipe", process.stderr],
         });
 
@@ -106,12 +106,6 @@ export class FFMPEG extends EventEmitter {
         }
         this._process.stdin.write(sdp); // TODO (maybe pass args earlier)
         this._process.stdin.end();
-
-        this._process.stdout.on("data", (chunk) => {
-            this.emit("data", chunk); // Emit data chunks as they become available
-            // may need to ues this to pipe to request if file stream does not work
-        });
-
         this._process.on("close", (code) => {
             if (code === 0) {
                 this.emit("success");

@@ -33,12 +33,22 @@ let httpServer;
 export async function start({ httpInterface = config.HTTP_INTERFACE, port = config.PORT } = {}) {
     logger.info("starting...");
     const routeListener = new RouteListener();
+    /**
+     * A no-operation endpoint that returns a simple "ok" response.
+     *
+     * @returns {http.ServerResponse<JSON<{"result": "ok"}>>}.
+     */
     routeListener.get(`/v${API_VERSION}/noop`, {
         callback: (req, res) => {
             res.statusCode = 200;
             return res.end(JSON.stringify({ result: "ok" }));
         },
     });
+    /**
+     * Retrieves statistics for all channels.
+     *
+     * @returns {http.ServerResponse<JSON<ChannelStats[]>>}
+     */
     routeListener.get(`/v${API_VERSION}/stats`, {
         callback: async (req, res) => {
             const proms = [];
@@ -50,6 +60,12 @@ export async function start({ httpInterface = config.HTTP_INTERFACE, port = conf
             return res.end(JSON.stringify(channelStats));
         },
     });
+    /**
+     * @param {URLSearchParams} searchParams (query parameters)
+     * @param {"true" | "false"} searchParams.webRTC whether to use WebRTC or not
+     * @param {string} searchParams.uploadRoute the route to which recordings will be uploaded
+     * @returns {http.ServerResponse<JSON<{uuid: string, url: string}>>}
+     */
     routeListener.get(`/v${API_VERSION}/channel`, {
         callback: async (req, res, { host, protocol, remoteAddress, searchParams }) => {
             try {
@@ -61,11 +77,10 @@ export async function start({ httpInterface = config.HTTP_INTERFACE, port = conf
                     res.statusCode = 403; // forbidden
                     return res.end();
                 }
-                const { webRTC, uploadRoute } = searchParams;
                 const options = {
                     key: claims.key,
-                    useWebRtc: webRTC !== "false",
-                    uploadRoute,
+                    useWebRtc: searchParams.get("webRTC") !== "false",
+                    uploadRoute: searchParams.get("uploadRoute"),
                 };
                 const channel = await Channel.create(remoteAddress, claims.iss, options);
                 res.setHeader("Content-Type", "application/json");
@@ -82,6 +97,9 @@ export async function start({ httpInterface = config.HTTP_INTERFACE, port = conf
             return res.end();
         },
     });
+    /**
+     * Streams a recording with the specified UUID.
+     */
     routeListener.get(`/v${API_VERSION}/recording/<uuid>`, {
         callback: async (req, res, { remoteAddress, match }) => {
             try {
@@ -95,6 +113,9 @@ export async function start({ httpInterface = config.HTTP_INTERFACE, port = conf
             }
         },
     });
+    /**
+     * Disconnects sessions from channels based on the provided JWT.
+     */
     routeListener.post(`/v${API_VERSION}/disconnect`, {
         callback: async (req, res, { remoteAddress }) => {
             try {

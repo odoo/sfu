@@ -30,6 +30,16 @@ const mediaCodecs = getAllowedCodecs();
  * @fires Channel#sessionLeave
  * @fires Channel#close
  */
+
+/**
+ * @typedef {Object} ChannelStats
+ * @property {string} uuid
+ * @property {string} remoteAddress
+ * @property {SessionsStats} sessionsStats
+ * @property {string} createDate
+ * @property {boolean} webRtcEnabled
+ */
+
 export class Channel extends EventEmitter {
     /** @type {Map<string, Channel>} */
     static records = new Map();
@@ -158,7 +168,7 @@ export class Channel extends EventEmitter {
     }
 
     /**
-     * @returns {Promise<{ uuid: string, remoteAddress: string, sessionsStats: SessionsStats, createDate: string }>}
+     * @returns {Promise<ChannelStats>}
      */
     async getStats() {
         return {
