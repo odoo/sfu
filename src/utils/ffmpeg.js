@@ -36,12 +36,7 @@ function formatFfmpegSdp(audioRtps, videoRtps) {
     }
     sdp.push(`-c:a aac -b:a 160k -ac 2 -filter_complex amerge=inputs=${audioRtps.length}`);
     if (videoRtps.length > 0) {
-        sdp.push(
-            "-movflags",
-            "frag_keyframe+empty_moov+default_base_moof", // fragmented for streaming although could use another format if dropping the pipe feature
-            "-c:v",
-            "mp4v"
-        );
+        sdp.push("-c:v", "mp4v");
         for (const videoRtp of videoRtps) {
             sdp.push(`m=video ${videoRtp.port} RTP/AVP ${videoRtp.payloadType}`);
             sdp.push(`a=rtpmap:${videoRtp.payloadType} ${videoRtp.codec}/${videoRtp.clockRate}`);

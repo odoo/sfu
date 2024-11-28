@@ -7,6 +7,8 @@ import { Logger, parseBody, extractRequestInfo } from "#src/utils/utils.js";
 import { SESSION_CLOSE_CODE } from "#src/models/session.js";
 import { Channel } from "#src/models/channel.js";
 import { Recorder } from "#src/models/recorder.js";
+import fs from "node:fs";
+import path from "node:path";
 
 /**
  * @typedef {function} routeCallback
@@ -105,8 +107,17 @@ export async function start({ httpInterface = config.HTTP_INTERFACE, port = conf
             try {
                 const { uuid } = match;
                 logger.info(`[${remoteAddress}]: requested recording ${uuid}`);
-                Recorder.pipeToResponse(uuid, res);
-                // res not ended as we are streaming
+                const filePath = Recorder.generatedFiles.get(uuid);
+                if (!filePath) {
+                    res.statusCode = 404;
+                    return res.end();
+                }
+                res.setHeader("Content-Type", "application/octet-stream");
+                res.setHeader(
+                    "Content-Disposition",
+                    `attachment; filename="${path.basename(filePath)}"`
+                );
+                return fs.createReadStream(filePath).pipe(res);
             } catch (error) {
                 logger.error(`[${remoteAddress}] failed to obtain recording: ${error.message}`);
                 return res.end();

@@ -16,6 +16,7 @@ export const RECORDER_STATE = {
     IDLE: "IDLE",
     RECORDING: "RECORDING",
     UPLOADING: "UPLOADING",
+    UPDATING: "UPDATING",
 };
 
 fs.mkdir(recording.directory, { recursive: true }, (err) => {
@@ -59,26 +60,14 @@ export class Recorder extends EventEmitter {
     /** @type {FFMPEG} */
     ffmpeg;
     /** @type {string} */
-    filePath;
-    /** @type {string} */
     _destination;
     /** @type {number} */
     _limitTimeout;
+    /** @type {string[]} */
+    _tempFilePathAccumulator = [];
     /** @type {RECORDER_STATE[keyof RECORDER_STATE]} */
     _state = RECORDER_STATE.IDLE;
-    /**
-     * @param {string} uuid
-     * @param {http.ServerResponse} res
-     */
-    static pipeToResponse(uuid, res) {
-        // TODO check if this can be executed, otherwise end request, or throw error (http service will throw anyways)
-        const fileStream = fs.createReadStream(Recorder.generatedFiles.get(uuid)); // may need to be explicitly closed?
-        res.writeHead(200, {
-            "Content-Type": `video/${recording.fileType}`,
-            "Content-Disposition": "inline",
-        });
-        fileStream.pipe(res); // Pipe the file stream to the response
-    }
+
     /**
      * @param {import("#src/models/channel").Channel} channel
      * @param {string} destination url to send the file to
@@ -105,13 +94,22 @@ export class Recorder extends EventEmitter {
 
     /**
      * @param {Array} ids TODO may specify more than just ids, maybe we want specific streams. could be some tuple [id, mediaTypes]
-     * @returns {string} filePath
      */
     async start(ids) {
         if (this.ffmpeg) {
-            return this.filePath;
+            logger.debug("Already recording");
+            return;
         }
+        this._limitTimeout = setTimeout(() => {
+            this.upload();
+        }, recording.maxDuration);
         this.uuid = crypto.randomUUID();
+        return this._start_fragment(ids);
+    }
+
+    async _start_fragment(ids) {
+        const oldProcess = this.ffmpeg;
+        this.state = RECORDER_STATE.UPDATING;
         const audioRtps = [];
         const videoRtps = [];
         for (const id of ids) {
@@ -125,26 +123,20 @@ export class Recorder extends EventEmitter {
                 }
             }
         }
-        this.filePath = path.join(recording.directory, `call_${Date.now()}.${recording.fileType}`);
-        this.ffmpeg = new FFMPEG(this.filePath);
+        const tempPath = path.join(recording.directory, `call_${Date.now()}.${recording.fileType}`);
+        this.ffmpeg = new FFMPEG(tempPath);
         try {
             await this.ffmpeg.spawn(audioRtps, videoRtps); // args should be base on the rtp transports
+            this.state = RECORDER_STATE.RECORDING;
         } catch (error) {
             logger.error(`Failed to start recording: ${error.message}`);
-            this.ffmpeg?.kill();
-            this.ffmpeg = undefined;
-            return;
+            this.stop();
         }
-        this._limitTimeout = setTimeout(() => {
-            this.upload();
-        }, recording.maxDuration);
-        Recorder.generatedFiles.set(this.uuid, this.filePath);
-        this.ffmpeg.once("success", () => {
-            this.emit("download-ready", this.filePath);
-        });
-        return this.filePath;
+        oldProcess?.kill();
+        this._tempFilePathAccumulator.push(tempPath);
     }
-    update(ids) {
+
+    async update(ids) {
         /** TODO see if ffmpeg input can be re-configured at runtime, otherwise full restart
          * Possibilities for hot-swap:
          * - ffmpeg stdin is writable, so it may be possible to write new sdp (with new inputs) to it
@@ -157,21 +149,41 @@ export class Recorder extends EventEmitter {
          *   When "upload" is called, first use ffmpeg again to merge all the files in the queue.
          *   then upload that real file. (if queue.length === 1, just upload that file).
          */
-        return this.filePath;
+        await this._start_fragment(ids);
     }
     stop() {
         this.ffmpeg?.kill();
         this.uuid = undefined;
         this.ffmpeg = undefined;
+        this._tempFilePathAccumulator = []; // TODO probably also delete all files here
         clearTimeout(this._limitTimeout);
+        this.state = RECORDER_STATE.IDLE;
     }
-    upload() {
+
+    /**
+     * @fires Recorder#ready
+     */
+    async upload() {
+        const filePaths = this._tempFilePathAccumulator;
         this.stop();
         if (!this._destination) {
             logger.warn(`No upload destination set for ${this.uuid}`);
             return;
         }
-        const fileStream = fs.createReadStream(this.filePath);
+        this.state = RECORDER_STATE.UPLOADING;
+        let filePath;
+        if (filePaths.length === 1) {
+            filePath = filePaths[0];
+        } else {
+            filePath = await this._mergeFiles(filePaths);
+        }
+        Recorder.generatedFiles.set(this.uuid, filePath);
+        /**
+         * @event Recorder#ready
+         * @type {string} `filePath`
+         */
+        this.emit("ready", filePath);
+        const fileStream = fs.createReadStream(filePath);
         const { hostname, pathname, protocol } = new URL(this._destination);
         const options = {
             hostname,
@@ -179,10 +191,10 @@ export class Recorder extends EventEmitter {
             method: "POST",
             headers: {
                 "Content-Type": "application/octet-stream",
-                "Content-Length": fs.statSync(this.filePath).size,
+                "Content-Length": fs.statSync(filePath).size,
             },
         };
-        // TODO this  should be a special route that has a generous upload limit
+        // TODO implement the route and route-passing in odoo/discuss
         const request = (protocol === "https:" ? https : http).request(options, (res) => {
             if (res.statusCode === 200) {
                 logger.info(`File uploaded to ${this._destination}`);
@@ -195,5 +207,14 @@ export class Recorder extends EventEmitter {
             logger.error(`Failed to upload file: ${error.message}`);
         });
         fileStream.pipe(request);
+        this.state = RECORDER_STATE.IDLE;
+    }
+
+    /**
+     * @param {string[]} filePaths
+     */
+    async _mergeFiles(filePaths) {
+        // TODO
+        return filePaths[1];
     }
 }
