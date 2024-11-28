@@ -104,7 +104,7 @@ export class Recorder extends EventEmitter {
     }
 
     /**
-     * @param {Array} ids
+     * @param {Array} ids TODO may specify more than just ids, maybe we want specific streams. could be some tuple [id, mediaTypes]
      * @returns {string} filePath
      */
     async start(ids) {
@@ -145,9 +145,18 @@ export class Recorder extends EventEmitter {
         return this.filePath;
     }
     update(ids) {
-        // TODO see if ffmpeg input can be re-configured at runtime, otherwise no support or full restart
-        // could also see if the consumer of the RtpTransport can be swapped at runtime, in which case, RtpTransport should
-        // be owned by the Recorder (4 RtpTransport per recorder, and consume on demand).
+        /** TODO see if ffmpeg input can be re-configured at runtime, otherwise full restart
+         * Possibilities for hot-swap:
+         * - ffmpeg stdin is writable, so it may be possible to write new sdp (with new inputs) to it
+         * - could see if the consumer of the RtpTransport can be swapped at runtime, in which case, RtpTransport should
+         *   be owned by the Recorder (4 RtpTransport per recorder, and consume on demand).
+         * If hot-swap is not possible:
+         *   Kill the ffmpeg process and register the path in a queue (array).
+         *   Keep killing and starting processes as update is called,
+         *   kill should happen as late as possible (when next process has started) to avoid losses.
+         *   When "upload" is called, first use ffmpeg again to merge all the files in the queue.
+         *   then upload that real file. (if queue.length === 1, just upload that file).
+         */
         return this.filePath;
     }
     stop() {

@@ -80,7 +80,7 @@ export async function start({ httpInterface = config.HTTP_INTERFACE, port = conf
                 const options = {
                     key: claims.key,
                     useWebRtc: searchParams.get("webRTC") !== "false",
-                    uploadRoute: searchParams.get("uploadRoute"),
+                    uploadRoute: searchParams.get("uploadRoute"), // TODO this route should be constrained to avoid being use for DDoS (eg for a malicious Odoo.sh customer)
                 };
                 const channel = await Channel.create(remoteAddress, claims.iss, options);
                 res.setHeader("Content-Type", "application/json");
