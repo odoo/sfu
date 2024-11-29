@@ -10,40 +10,63 @@ const logger = new Logger("FFMPEG");
  * hard-coded ffmpeg sdp fragments for layouts with 1...4 videos
  * TODO make the right resizing and vstack/hstack params
  */
-const LAYOUT = {
-    1: "",
-    2: "a=filter:complex [0:v][1:v]hstack=inputs=2[v]; -map [v]",
-    3: "a=filter:complex [0:v][1:v]hstack=inputs=2[top];[top][2:v]vstack=inputs=2[v]; -map [v]",
-    4: "a=filter:complex [0:v][1:v]hstack=inputs=2[top];[2:v][3:v]hstack=inputs=2[bottom];[top][bottom]vstack=inputs=2[v]; -map [v]",
+
+const drawText = (label, index) => `[${index}:v]drawtext=text='${label}':x=10:y=h-30[v${index}]`;
+
+const SCREEN_LAYOUT = {
+    1: (labels) => `a=filter:complex ${drawText(labels[0], 0)}; -map [v0]`,
+    2: (labels) =>
+        `a=filter:complex ${drawText(labels[0], 0)};${drawText(
+            labels[1],
+            1
+        )};[v0][v1]hstack=inputs=2[v]; -map [v]`,
+    3: (labels) =>
+        `a=filter:complex ${drawText(labels[0], 0)};${drawText(
+            labels[1],
+            1
+        )};[v0][v1]hstack=inputs=2[top];${drawText(
+            labels[2],
+            2
+        )};[top][v2]vstack=inputs=2[v]; -map [v]`,
+    4: (labels) =>
+        `a=filter:complex ${drawText(labels[0], 0)};${drawText(
+            labels[1],
+            1
+        )};[v0][v1]hstack=inputs=2[top];${drawText(labels[2], 2)};${drawText(
+            labels[3],
+            3
+        )};[v2][v3]hstack=inputs=2[bottom];[top][bottom]vstack=inputs=2[v]; -map [v]`,
 };
 
 /**
  * TODO
  * @param {RtpData[]} audioRtps
- * @param {RtpData[]} videoRtps
+ * @param {RtpData[]} cameraRtps
+ * @param {RtpData[]} screenRtps
  * @return {string}
  */
-function formatFfmpegSdp(audioRtps, videoRtps) {
+function formatFfmpegSdp({ audioRtps, screenRtps, cameraRtps }) {
+    logger.info(`TODO: ${screenRtps}`);
     const sdp = ["v=0", "o=- 0 0 IN IP4 127.0.0.1", "s=FFmpeg", "c=IN IP4 127.0.0.1", "t=0 0"];
-    const layout = LAYOUT[videoRtps.length];
-    if (!layout) {
-        throw new Error(`unsupported layout for ${videoRtps.length} videos`);
-    }
     for (const audioRtp of audioRtps) {
         sdp.push(`m=audio ${audioRtp.port} RTP/AVP ${audioRtp.payloadType}`);
         sdp.push(`a=rtpmap:${audioRtp.payloadType} ${audioRtp.codec}/${audioRtp.clockRate}`);
         sdp.push(`a=sendonly`);
     }
     sdp.push(`-c:a aac -b:a 160k -ac 2 -filter_complex amerge=inputs=${audioRtps.length}`);
-    if (videoRtps.length > 0) {
+    if (cameraRtps.length > 0) {
+        const layout = SCREEN_LAYOUT[cameraRtps.length];
+        if (!layout) {
+            throw new Error(`unsupported layout for ${cameraRtps.length} videos`);
+        }
         sdp.push("-c:v", "mp4v");
-        for (const videoRtp of videoRtps) {
+        for (const videoRtp of cameraRtps) {
             sdp.push(`m=video ${videoRtp.port} RTP/AVP ${videoRtp.payloadType}`);
             sdp.push(`a=rtpmap:${videoRtp.payloadType} ${videoRtp.codec}/${videoRtp.clockRate}`);
             sdp.push(`a=sendonly`);
         }
+        sdp.push(`-filter_complex`, layout(cameraRtps.map((rtp) => rtp.label)));
     }
-    // TODO, layout only a small part of the full SDP.
     return sdp.join("\n");
 }
 
@@ -87,11 +110,13 @@ export class FFMPEG extends EventEmitter {
     }
 
     /**
-     * @param {RtpData[]} audioRtps
-     * @param {RtpData[]} videoRtps
+     * @param {Object} rtpInputs
+     * @param {RtpData[]} rtpInputs.audioRtps
+     * @param {RtpData[]} rtpInputs.screenRtps
+     * @param {RtpData[]} rtpInputs.cameraRtps
      */
-    async spawn(audioRtps, videoRtps) {
-        const sdp = formatFfmpegSdp(audioRtps, videoRtps);
+    async start(rtpInputs) {
+        const sdp = formatFfmpegSdp(rtpInputs);
         this._process = child_process.spawn("ffmpeg", this._processArgs, {
             stdio: ["pipe", "pipe", process.stderr],
         });

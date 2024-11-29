@@ -1,7 +1,5 @@
 import path from "node:path";
 import fs from "node:fs";
-import * as https from "node:https";
-import http from "node:http";
 import { EventEmitter } from "node:events"; // TODO remove if unnecessary
 
 import { Logger } from "#src/utils/utils.js";
@@ -9,6 +7,7 @@ import { STREAM_TYPE } from "#src/shared/enums.js";
 import { FFMPEG } from "#src/utils/ffmpeg.js";
 import { recording } from "#src/config.js";
 import * as config from "#src/config.js";
+import { upload as httpUpload } from "#src/services/http.js";
 
 const logger = new Logger("RECORDER");
 
@@ -50,6 +49,10 @@ export function clearDirectory() {
     });
 }
 
+/**
+ * @fires Recorder#stateChange
+ * @fires Recorder#ready
+ */
 export class Recorder extends EventEmitter {
     /** @type {Map<string, string>} */
     static generatedFiles = new Map();
@@ -111,22 +114,31 @@ export class Recorder extends EventEmitter {
         const oldProcess = this.ffmpeg;
         this.state = RECORDER_STATE.UPDATING;
         const audioRtps = [];
-        const videoRtps = [];
+        const cameraRtps = [];
+        const screenRtps = [];
         for (const id of ids) {
             const session = this.channel.sessions.get(id);
-            const audioRtpData = session.getRtp(STREAM_TYPE.AUDIO);
-            audioRtpData && audioRtps.push(audioRtpData);
-            for (const type in [STREAM_TYPE.CAMERA, STREAM_TYPE.SCREEN]) {
-                if (videoRtps.length < recording.videoLimit) {
-                    const videoRtpData = session.getRtp(type);
-                    videoRtpData && videoRtps.push(videoRtpData);
-                }
+            if (!session) {
+                logger.warn(`Session ${id} not found`);
+                continue;
+            }
+            if (audioRtps.length < recording.audioLimit) {
+                const audioRtpData = session.getRtp(STREAM_TYPE.AUDIO);
+                audioRtpData && audioRtps.push(audioRtpData);
+            }
+            if (cameraRtps.length < recording.cameraLimit) {
+                const cameraRtpData = session.getRtp(STREAM_TYPE.CAMERA);
+                cameraRtpData && cameraRtps.push(cameraRtpData);
+            }
+            if (screenRtps.length < recording.screenLimit) {
+                const screenRtpData = session.getRtp(STREAM_TYPE.SCREEN);
+                screenRtpData && screenRtps.push(screenRtpData);
             }
         }
         const tempPath = path.join(recording.directory, `call_${Date.now()}.${recording.fileType}`);
         this.ffmpeg = new FFMPEG(tempPath);
         try {
-            await this.ffmpeg.spawn(audioRtps, videoRtps); // args should be base on the rtp transports
+            await this.ffmpeg.start(audioRtps, screenRtps, cameraRtps); // args should be base on the rtp transports
             this.state = RECORDER_STATE.RECORDING;
         } catch (error) {
             logger.error(`Failed to start recording: ${error.message}`);
@@ -170,43 +182,19 @@ export class Recorder extends EventEmitter {
             logger.warn(`No upload destination set for ${this.uuid}`);
             return;
         }
-        this.state = RECORDER_STATE.UPLOADING;
-        let filePath;
-        if (filePaths.length === 1) {
-            filePath = filePaths[0];
-        } else {
-            filePath = await this._mergeFiles(filePaths);
+        if (filePaths.length === 0) {
+            logger.warn(`No files to upload for ${this.uuid}`);
+            return;
         }
+        this.state = RECORDER_STATE.UPLOADING;
+        const filePath = await this._mergeFiles(filePaths);
         Recorder.generatedFiles.set(this.uuid, filePath);
         /**
          * @event Recorder#ready
-         * @type {string} `filePath`
+         * @type {string} `uuid`
          */
-        this.emit("ready", filePath);
-        const fileStream = fs.createReadStream(filePath);
-        const { hostname, pathname, protocol } = new URL(this._destination);
-        const options = {
-            hostname,
-            path: pathname,
-            method: "POST",
-            headers: {
-                "Content-Type": "application/octet-stream",
-                "Content-Length": fs.statSync(filePath).size,
-            },
-        };
-        // TODO implement the route and route-passing in odoo/discuss
-        const request = (protocol === "https:" ? https : http).request(options, (res) => {
-            if (res.statusCode === 200) {
-                logger.info(`File uploaded to ${this._destination}`);
-                // TODO delete file
-            } else {
-                logger.error(`Failed to upload file: ${res.statusCode}`);
-            }
-        });
-        request.once("error", (error) => {
-            logger.error(`Failed to upload file: ${error.message}`);
-        });
-        fileStream.pipe(request);
+        this.emit("ready", this.uuid);
+        httpUpload(filePath, this._destination);
         this.state = RECORDER_STATE.IDLE;
     }
 
@@ -215,6 +203,9 @@ export class Recorder extends EventEmitter {
      */
     async _mergeFiles(filePaths) {
         // TODO
-        return filePaths[1];
+        if (filePaths.length === 1) {
+            return filePaths[0];
+        }
+        return filePaths[1]; // TODO merge logic with FFMPEG
     }
 }

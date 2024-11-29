@@ -9,6 +9,7 @@ import { Channel } from "#src/models/channel.js";
 import { Recorder } from "#src/models/recorder.js";
 import fs from "node:fs";
 import path from "node:path";
+import * as https from "node:https";
 
 /**
  * @typedef {function} routeCallback
@@ -64,7 +65,7 @@ export async function start({ httpInterface = config.HTTP_INTERFACE, port = conf
     });
     /**
      * @param {URLSearchParams} searchParams (query parameters)
-     * @param {"true" | "false"} searchParams.webRTC whether to use WebRTC or not
+     * @param {undefined | "false"} searchParams.webRTC whether to use WebRTC or not
      * @param {string} searchParams.uploadRoute the route to which recordings will be uploaded
      * @returns {http.ServerResponse<JSON<{uuid: string, url: string}>>}
      */
@@ -172,6 +173,33 @@ export async function start({ httpInterface = config.HTTP_INTERFACE, port = conf
 export function close() {
     ws.close();
     httpServer?.close();
+}
+
+export function upload(filePath, destination) {
+    const fileStream = fs.createReadStream(filePath);
+    const { hostname, pathname, protocol } = new URL(destination);
+    const options = {
+        hostname,
+        path: pathname,
+        method: "POST",
+        headers: {
+            "Content-Type": "application/octet-stream",
+            "Content-Length": fs.statSync(filePath).size,
+        },
+    };
+    // TODO implement the route and route-passing in odoo/discuss
+    const request = (protocol === "https:" ? https : http).request(options, (res) => {
+        if (res.statusCode === 200) {
+            logger.info(`File uploaded to ${destination}`);
+            // TODO delete file
+        } else {
+            logger.error(`Failed to upload file: ${res.statusCode}`);
+        }
+    });
+    request.on("error", (error) => {
+        logger.error(`Failed to upload file: ${error.message}`);
+    });
+    fileStream.pipe(request);
 }
 
 class RouteListener {

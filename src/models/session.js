@@ -51,6 +51,7 @@ import { getPort, releasePort } from "#src/services/resources.js";
  * @property {number} clockRate
  * @property {string} codec
  * @property {string} channels
+ * @property {string} label
  */
 
 /**
@@ -101,6 +102,8 @@ export class Session extends EventEmitter {
     });
     /** @type {string} */
     remote;
+    /** @type {string} */
+    userName;
     /** @type {Map<number, Consumers>} */
     _consumers = new Map();
     /** @type {Producers} */
@@ -156,7 +159,7 @@ export class Session extends EventEmitter {
      * @returns {string}
      */
     get name() {
-        return `${this._channel.name}:${this.id}@${this.remote}`;
+        return `${this._channel.name}:${this.id}@${this.remote} (${this.userName})`;
     }
 
     /**
@@ -539,6 +542,7 @@ export class Session extends EventEmitter {
             clockRate: codecData.clockRate,
             codec: codecData.mimeType.replace(`${producer.kind}`, ""),
             channels: producer.kind === "audio" ? codecData.channels : undefined,
+            label: this.userName,
         };
         return this._rtp[type];
     }
