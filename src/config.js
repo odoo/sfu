@@ -216,6 +216,8 @@ export const recording = Object.freeze({
     maxDuration: 1000 * 60 * 60, // 1 hour
     fileTTL: 1000 * 60 * 60 * 24, // 24 hours
     fileType: "mp4",
+    videoCodec: "libx264",
+    audioCodec: "aac",
     audioLimit: 20,
     cameraLimit: 4, // how many camera can be merged into one recording
     screenLimit: 1,

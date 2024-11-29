@@ -113,8 +113,11 @@ export class Recorder extends EventEmitter {
     async _start_fragment(ids) {
         const oldProcess = this.ffmpeg;
         this.state = RECORDER_STATE.UPDATING;
+        /** @type {RtpData[]} */
         const audioRtps = [];
+        /** @type {RtpData[]} */
         const cameraRtps = [];
+        /** @type {RtpData[]} */
         const screenRtps = [];
         for (const id of ids) {
             const session = this.channel.sessions.get(id);
@@ -123,22 +126,25 @@ export class Recorder extends EventEmitter {
                 continue;
             }
             if (audioRtps.length < recording.audioLimit) {
-                const audioRtpData = session.getRtp(STREAM_TYPE.AUDIO);
+                const audioRtpData = await session.getRtp(STREAM_TYPE.AUDIO);
                 audioRtpData && audioRtps.push(audioRtpData);
             }
             if (cameraRtps.length < recording.cameraLimit) {
-                const cameraRtpData = session.getRtp(STREAM_TYPE.CAMERA);
+                const cameraRtpData = await session.getRtp(STREAM_TYPE.CAMERA);
                 cameraRtpData && cameraRtps.push(cameraRtpData);
             }
             if (screenRtps.length < recording.screenLimit) {
-                const screenRtpData = session.getRtp(STREAM_TYPE.SCREEN);
+                const screenRtpData = await session.getRtp(STREAM_TYPE.SCREEN);
                 screenRtpData && screenRtps.push(screenRtpData);
             }
         }
-        const tempPath = path.join(recording.directory, `call_${Date.now()}.${recording.fileType}`);
+        const tempPath = path.join(
+            recording.directory,
+            `__FRAGMENT__-${this.uuid}-${Date.now()}.${recording.fileType}`
+        );
         this.ffmpeg = new FFMPEG(tempPath);
         try {
-            await this.ffmpeg.start(audioRtps, screenRtps, cameraRtps); // args should be base on the rtp transports
+            await this.ffmpeg.merge({ audioRtps, screenRtps, cameraRtps }); // args should be base on the rtp transports
             this.state = RECORDER_STATE.RECORDING;
         } catch (error) {
             logger.error(`Failed to start recording: ${error.message}`);
@@ -206,6 +212,11 @@ export class Recorder extends EventEmitter {
         if (filePaths.length === 1) {
             return filePaths[0];
         }
-        return filePaths[1]; // TODO merge logic with FFMPEG
+        const ffmpeg = new FFMPEG(
+            path.join(recording.directory, `__MERGED__-${this.uuid}.${recording.fileType}`)
+        );
+        // should await for ffmpeg complete event.
+        await ffmpeg.concat(filePaths);
+        return ""; // TODO merge logic with FFMPEG
     }
 }

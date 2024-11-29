@@ -498,7 +498,7 @@ export class Session extends EventEmitter {
 
     /**
      * @param {STREAM_TYPE[keyof STREAM_TYPE]} type
-     * @return {Promise<RtpData | undefined>}
+     * @return {RtpData}
      */
     async getRtp(type) {
         if (this._rtp[type]) {

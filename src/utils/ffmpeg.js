@@ -48,7 +48,7 @@ const SCREEN_LAYOUT = {
  * @param {RtpData[]} screenRtps
  * @return {string}
  */
-function formatFfmpegSdp({ audioRtps, screenRtps, cameraRtps }) {
+function formatSdp({ audioRtps, screenRtps, cameraRtps }) {
     logger.info(`TODO: ${screenRtps}`);
     const sdp = ["v=0", "o=- 0 0 IN IP4 127.0.0.1", "s=FFmpeg", "c=IN IP4 127.0.0.1", "t=0 0"];
     for (const audioRtp of audioRtps) {
@@ -56,7 +56,9 @@ function formatFfmpegSdp({ audioRtps, screenRtps, cameraRtps }) {
         sdp.push(`a=rtpmap:${audioRtp.payloadType} ${audioRtp.codec}/${audioRtp.clockRate}`);
         sdp.push(`a=sendonly`);
     }
-    sdp.push(`-c:a aac -b:a 128k -ac 2 -filter_complex amerge=inputs=${audioRtps.length}`);
+    sdp.push(
+        `-c:a ${recording.audioCodec} -b:a 128k -ac 2 -filter_complex amerge=inputs=${audioRtps.length}`
+    );
     if (cameraRtps.length > 0) {
         const layout = SCREEN_LAYOUT[cameraRtps.length];
         if (!layout) {
@@ -68,7 +70,7 @@ function formatFfmpegSdp({ audioRtps, screenRtps, cameraRtps }) {
             sdp.push(`a=sendonly`);
         }
         sdp.push(`-filter_complex`, layout(cameraRtps.map((rtp) => rtp.label)));
-        sdp.push("-c:v libx264"); // TODO move outside of the condition, should also account for screenRtps
+        sdp.push(`-c:v ${recording.videoCodec}`); // TODO move outside of the condition, should also account for screenRtps
     }
     return sdp.join("\n");
 }
@@ -122,8 +124,8 @@ export class FFMPEG extends EventEmitter {
      * @param {RtpData[]} rtpInputs.screenRtps
      * @param {RtpData[]} rtpInputs.cameraRtps
      */
-    async start(rtpInputs) {
-        const sdp = formatFfmpegSdp(rtpInputs);
+    async merge(rtpInputs) {
+        const sdp = formatSdp(rtpInputs);
         this._process = child_process.spawn("ffmpeg", this._processArgs, {
             stdio: ["pipe", "pipe", process.stderr],
         });
@@ -142,6 +144,10 @@ export class FFMPEG extends EventEmitter {
         logger.debug(
             `FFMPEG process (pid:${this._process.pid}) spawned, outputting to ${this._filePath}`
         );
+    }
+
+    concat(filePaths) {
+        return filePaths[0];
     }
 
     kill() {
