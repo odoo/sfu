@@ -2,8 +2,14 @@ import mediasoup from "mediasoup";
 
 import * as config from "#src/config.js";
 import { Logger } from "#src/utils/utils.js";
+import { PortLimitReachedError } from "#src/utils/errors.js";
 
-const logger = new Logger("RTC");
+const port_span = config.dynamicPorts.max - config.dynamicPorts.min;
+let port_offset = 0;
+/** @type {Set<number>} */
+const usedPorts = new Set();
+
+const logger = new Logger("RESOURCES");
 
 /** @type {Set<mediasoup.types.Worker>} */
 const workers = new Set();
@@ -13,6 +19,7 @@ export async function start() {
     for (let i = 0; i < config.NUM_WORKERS; ++i) {
         await makeWorker();
     }
+    logger.info(`${port_span} dynamic ports available`);
     logger.info(`initialized ${workers.size} mediasoup workers`);
     logger.info(
         `transport(RTC) layer at ${config.PUBLIC_IP}:${config.RTC_MIN_PORT}-${config.RTC_MAX_PORT}`
@@ -24,6 +31,8 @@ export function close() {
         worker.appData.webRtcServer.close();
         worker.close();
     }
+    port_offset = 0;
+    usedPorts.clear();
     workers.clear();
 }
 
@@ -63,4 +72,34 @@ export async function getWorker() {
     await Promise.all(proms);
     logger.debug(`worker ${leastUsedWorker.pid} with ${lowestUsage} ru_maxrss was selected`);
     return leastUsedWorker;
+}
+
+/**
+ * @returns {number}
+ */
+function _getPort() {
+    port_offset++;
+    return config.dynamicPorts.min + (port_offset % port_span);
+}
+/**
+ * Returns a dynamic port that is not in use.
+ * @returns {number}
+ */
+export function getPort() {
+    let port = _getPort();
+    if (usedPorts.size === port_span) {
+        throw new PortLimitReachedError();
+    }
+    while (usedPorts.has(port)) {
+        port = _getPort();
+    }
+    usedPorts.add(port);
+    return port;
+}
+
+/**
+ * @param {number} port
+ */
+export function releasePort(port) {
+    usedPorts.delete(port);
 }

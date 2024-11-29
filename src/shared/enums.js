@@ -12,6 +12,12 @@ export const WS_CLOSE_CODE = {
     CHANNEL_FULL: 4109,
 };
 
+export const STREAM_TYPE = {
+    AUDIO: "audio",
+    CAMERA: "camera",
+    SCREEN: "screen",
+};
+
 export const SERVER_REQUEST = {
     /** Requests the creation of a consumer that is used to forward a track to the client */
     INIT_CONSUMER: "INIT_CONSUMER",

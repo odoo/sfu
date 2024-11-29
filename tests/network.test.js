@@ -36,6 +36,14 @@ describe("Full network", () => {
         const [thirdStateChange] = await once(user3.session, "stateChange");
         expect(thirdStateChange).toBe(SESSION_STATE.CONNECTED);
     });
+    test("Get features information after connecting", async () => {
+        const channelUUID = await network.getChannelUUID();
+        const user1 = await network.connect(channelUUID, 1);
+        const [firstStateChange] = await once(user1.session, "stateChange");
+        expect(firstStateChange).toBe(SESSION_STATE.CONNECTED);
+        expect(user1.sfuClient.features.recording).toBe(true);
+        expect(user1.sfuClient.features.webRtc).toBe(true);
+    });
     test("The session of the server closes when the client is disconnected", async () => {
         const channelUUID = await network.getChannelUUID();
         const user1 = await network.connect(channelUUID, 1);
