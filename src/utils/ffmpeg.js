@@ -14,28 +14,31 @@ const logger = new Logger("FFMPEG");
 const drawText = (label, index) => `[${index}:v]drawtext=text='${label}':x=10:y=h-30[v${index}]`;
 
 const SCREEN_LAYOUT = {
-    1: (labels) => `a=filter:complex ${drawText(labels[0], 0)}; -map [v0]`,
+    1: (labels) => `a=filter:complex ${drawText(labels[0], 0)},scale=1280:720[v0]; -map [v0]`,
     2: (labels) =>
-        `a=filter:complex ${drawText(labels[0], 0)};${drawText(
+        `a=filter:complex ${drawText(labels[0], 0)},scale=640:720[v0];${drawText(
             labels[1],
             1
-        )};[v0][v1]hstack=inputs=2[v]; -map [v]`,
+        )},scale=640:720[v1];[v0][v1]hstack=inputs=2[v]; -map [v]`,
     3: (labels) =>
-        `a=filter:complex ${drawText(labels[0], 0)};${drawText(
+        `a=filter:complex ${drawText(labels[0], 0)},scale=640:360[v0];${drawText(
             labels[1],
             1
-        )};[v0][v1]hstack=inputs=2[top];${drawText(
+        )},scale=640:360[v1];[v0][v1]hstack=inputs=2[top];${drawText(
             labels[2],
             2
-        )};[top][v2]vstack=inputs=2[v]; -map [v]`,
+        )},scale=1280:360[v2];[top][v2]vstack=inputs=2[v]; -map [v]`,
     4: (labels) =>
-        `a=filter:complex ${drawText(labels[0], 0)};${drawText(
+        `a=filter:complex ${drawText(labels[0], 0)},scale=640:360[v0];${drawText(
             labels[1],
             1
-        )};[v0][v1]hstack=inputs=2[top];${drawText(labels[2], 2)};${drawText(
+        )},scale=640:360[v1];[v0][v1]hstack=inputs=2[top];${drawText(
+            labels[2],
+            2
+        )},scale=640:360[v2];${drawText(
             labels[3],
             3
-        )};[v2][v3]hstack=inputs=2[bottom];[top][bottom]vstack=inputs=2[v]; -map [v]`,
+        )},scale=640:360[v3];[v2][v3]hstack=inputs=2[bottom];[top][bottom]vstack=inputs=2[v]; -map [v]`,
 };
 
 /**
@@ -53,19 +56,19 @@ function formatFfmpegSdp({ audioRtps, screenRtps, cameraRtps }) {
         sdp.push(`a=rtpmap:${audioRtp.payloadType} ${audioRtp.codec}/${audioRtp.clockRate}`);
         sdp.push(`a=sendonly`);
     }
-    sdp.push(`-c:a aac -b:a 160k -ac 2 -filter_complex amerge=inputs=${audioRtps.length}`);
+    sdp.push(`-c:a aac -b:a 128k -ac 2 -filter_complex amerge=inputs=${audioRtps.length}`);
     if (cameraRtps.length > 0) {
         const layout = SCREEN_LAYOUT[cameraRtps.length];
         if (!layout) {
             throw new Error(`unsupported layout for ${cameraRtps.length} videos`);
         }
-        sdp.push("-c:v", "mp4v");
         for (const videoRtp of cameraRtps) {
             sdp.push(`m=video ${videoRtp.port} RTP/AVP ${videoRtp.payloadType}`);
             sdp.push(`a=rtpmap:${videoRtp.payloadType} ${videoRtp.codec}/${videoRtp.clockRate}`);
             sdp.push(`a=sendonly`);
         }
         sdp.push(`-filter_complex`, layout(cameraRtps.map((rtp) => rtp.label)));
+        sdp.push("-c:v libx264"); // TODO move outside of the condition, should also account for screenRtps
     }
     return sdp.join("\n");
 }
@@ -91,6 +94,10 @@ export class FFMPEG extends EventEmitter {
             "sdp",
             "-i",
             "pipe:0",
+            "-vf",
+            "scale=1280:720", // 720p
+            "-r",
+            "30", // 30fps
             "-f",
             recording.fileType,
             this._filePath,
