@@ -125,6 +125,7 @@ export class Recorder extends EventEmitter {
                 logger.warn(`Session ${id} not found`);
                 continue;
             }
+            // TODO could be parallelized
             if (audioRtps.length < recording.audioLimit) {
                 const audioRtpData = await session.getRtp(STREAM_TYPE.AUDIO);
                 audioRtpData && audioRtps.push(audioRtpData);
