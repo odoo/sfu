@@ -125,20 +125,20 @@ export class FFMPEG extends EventEmitter {
      * @param {RtpData[]} rtpInputs.cameraRtps
      */
     async merge(rtpInputs) {
-        const sdp = formatSdp(rtpInputs);
-        this._process = child_process.spawn("ffmpeg", this._processArgs, {
+        this._startProcess(this._processArgs, formatSdp(rtpInputs));
+    }
+
+    _startProcess(args, sdp) {
+        this._process = child_process.spawn("ffmpeg", args, {
             stdio: ["pipe", "pipe", process.stderr],
         });
-
         if (!this._process.stdin.writable) {
             throw new Error("FFMPEG stdin not writable.");
         }
-        this._process.stdin.write(sdp); // TODO (maybe pass args earlier)
+        this._process.stdin.write(sdp);
         this._process.stdin.end();
         this._process.on("close", (code) => {
-            if (code === 0) {
-                this.emit("success");
-            }
+            this.emit("complete", code);
         });
 
         logger.debug(
@@ -147,7 +147,19 @@ export class FFMPEG extends EventEmitter {
     }
 
     concat(filePaths) {
-        return filePaths[0];
+        this._startProcess(
+            this._processArgs, // TODO check if all args make sense or if need custom
+            `-f concat -safe 0 -i ${filePaths.join("\n")} -c copy` // SDP
+        );
+        return new Promise((resolve, reject) => {
+            this.once("complete", (code) => {
+                if (code === 0) {
+                    resolve(this._filePath);
+                } else {
+                    reject(new Error(`FFMPEG exited with code ${code}`));
+                }
+            });
+        });
     }
 
     kill() {
