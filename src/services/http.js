@@ -6,6 +6,10 @@ import * as config from "#src/config.js";
 import { Logger, parseBody, extractRequestInfo } from "#src/utils/utils.js";
 import { SESSION_CLOSE_CODE } from "#src/models/session.js";
 import { Channel } from "#src/models/channel.js";
+import { Recorder } from "#src/models/recorder.js";
+import fs from "node:fs";
+import path from "node:path";
+import * as https from "node:https";
 
 /**
  * @typedef {function} routeCallback
@@ -15,6 +19,7 @@ import { Channel } from "#src/models/channel.js";
  * @param {string} param2.remoteAddress
  * @param {string} param2.protocol
  * @param {string} param2.host
+ * @param {Object} param2.match name/value mapping of route variables
  * @param {URLSearchParams} param2.searchParams
  * @return {http.ServerResponse}
  */
@@ -31,12 +36,22 @@ let httpServer;
 export async function start({ httpInterface = config.HTTP_INTERFACE, port = config.PORT } = {}) {
     logger.info("starting...");
     const routeListener = new RouteListener();
+    /**
+     * A no-operation endpoint that returns a simple "ok" response.
+     *
+     * @returns {http.ServerResponse<JSON<{"result": "ok"}>>}.
+     */
     routeListener.get(`/v${API_VERSION}/noop`, {
         callback: (req, res) => {
             res.statusCode = 200;
             return res.end(JSON.stringify({ result: "ok" }));
         },
     });
+    /**
+     * Retrieves statistics for all channels.
+     *
+     * @returns {http.ServerResponse<JSON<ChannelStats[]>>}
+     */
     routeListener.get(`/v${API_VERSION}/stats`, {
         callback: async (req, res) => {
             const proms = [];
@@ -48,6 +63,12 @@ export async function start({ httpInterface = config.HTTP_INTERFACE, port = conf
             return res.end(JSON.stringify(channelStats));
         },
     });
+    /**
+     * @param {URLSearchParams} searchParams (query parameters)
+     * @param {undefined | "false"} searchParams.webRTC whether to use WebRTC or not
+     * @param {string} searchParams.uploadRoute the route to which recordings will be uploaded
+     * @returns {http.ServerResponse<JSON<{uuid: string, url: string}>>}
+     */
     routeListener.get(`/v${API_VERSION}/channel`, {
         callback: async (req, res, { host, protocol, remoteAddress, searchParams }) => {
             try {
@@ -59,10 +80,12 @@ export async function start({ httpInterface = config.HTTP_INTERFACE, port = conf
                     res.statusCode = 403; // forbidden
                     return res.end();
                 }
-                const channel = await Channel.create(remoteAddress, claims.iss, {
+                const options = {
                     key: claims.key,
                     useWebRtc: searchParams.get("webRTC") !== "false",
-                });
+                    uploadRoute: searchParams.get("uploadRoute"), // TODO this route should be constrained to avoid being use for DDoS (eg for a malicious Odoo.sh customer)
+                };
+                const channel = await Channel.create(remoteAddress, claims.iss, options);
                 res.setHeader("Content-Type", "application/json");
                 res.statusCode = 200;
                 return res.end(
@@ -77,6 +100,34 @@ export async function start({ httpInterface = config.HTTP_INTERFACE, port = conf
             return res.end();
         },
     });
+    /**
+     * Streams a recording with the specified UUID.
+     */
+    routeListener.get(`/v${API_VERSION}/recording/<uuid>`, {
+        callback: async (req, res, { remoteAddress, match }) => {
+            try {
+                const { uuid } = match;
+                logger.info(`[${remoteAddress}]: requested recording ${uuid}`);
+                const filePath = Recorder.generatedFiles.get(uuid);
+                if (!filePath) {
+                    res.statusCode = 404;
+                    return res.end();
+                }
+                res.setHeader("Content-Type", "application/octet-stream");
+                res.setHeader(
+                    "Content-Disposition",
+                    `attachment; filename="${path.basename(filePath)}"`
+                );
+                return fs.createReadStream(filePath).pipe(res);
+            } catch (error) {
+                logger.error(`[${remoteAddress}] failed to obtain recording: ${error.message}`);
+                return res.end();
+            }
+        },
+    });
+    /**
+     * Disconnects sessions from channels based on the provided JWT.
+     */
     routeListener.post(`/v${API_VERSION}/disconnect`, {
         callback: async (req, res, { remoteAddress }) => {
             try {
@@ -122,6 +173,33 @@ export async function start({ httpInterface = config.HTTP_INTERFACE, port = conf
 export function close() {
     ws.close();
     httpServer?.close();
+}
+
+export function upload(filePath, destination) {
+    const fileStream = fs.createReadStream(filePath);
+    const { hostname, pathname, protocol } = new URL(destination);
+    const options = {
+        hostname,
+        path: pathname,
+        method: "POST",
+        headers: {
+            "Content-Type": "application/octet-stream",
+            "Content-Length": fs.statSync(filePath).size,
+        },
+    };
+    // TODO implement the route and route-passing in odoo/discuss
+    const request = (protocol === "https:" ? https : http).request(options, (res) => {
+        if (res.statusCode === 200) {
+            logger.info(`File uploaded to ${destination}`);
+            // TODO delete file
+        } else {
+            logger.error(`Failed to upload file: ${res.statusCode}`);
+        }
+    });
+    request.on("error", (error) => {
+        logger.error(`Failed to upload file: ${error.message}`);
+    });
+    fileStream.pipe(request);
 }
 
 class RouteListener {
@@ -183,7 +261,8 @@ class RouteListener {
                 break;
         }
         for (const [pattern, options] of registeredRoutes) {
-            if (pathname === pattern) {
+            const match = this._extractPattern(pathname, pattern);
+            if (match) {
                 if (options?.cors) {
                     res.setHeader("Access-Control-Allow-Origin", options.cors);
                     res.setHeader("Access-Control-Allow-Methods", options.methods);
@@ -195,6 +274,7 @@ class RouteListener {
                             host,
                             protocol,
                             remoteAddress,
+                            match,
                             searchParams,
                         });
                     } catch (error) {
@@ -211,5 +291,33 @@ class RouteListener {
             }
         }
         return res.end();
+    }
+
+    /**
+     * Matches a pathname against a pattern with named parameters.
+     * @param {string} pathname - The URL path requested, e.g., "/channel/6/person/42/"
+     * @param {string} pattern - The pattern to match, e.g., "/channel/<channelId>/session/<sessionId>"
+     * @returns {object|undefined} - Returns undefined if no match. If matched, returns an object mapping keys to values,
+     * the object is empty if matching a pattern with no variables.
+     * eg: { channelId: "6", sessionId: "42" } | {} | undefined
+     */
+    _extractPattern(pathname, pattern) {
+        pathname = pathname.replace(/\/+$/, "");
+        pattern = pattern.replace(/\/+$/, "");
+        const paramNames = [];
+        const regexPattern = pattern.replace(/<([^>]+)>/g, (_, paramName) => {
+            paramNames.push(paramName);
+            return "([^/]+)";
+        });
+        const regex = new RegExp(`^${regexPattern}$`);
+        const match = pathname.match(regex);
+        if (!match) {
+            return;
+        }
+        const params = {};
+        paramNames.forEach((name, index) => {
+            params[name] = match[index + 1];
+        });
+        return params;
     }
 }

@@ -1,19 +1,19 @@
 import { afterEach, beforeEach, describe, expect } from "@jest/globals";
 
-import * as rtc from "#src/services/rtc.js";
+import * as resources from "#src/services/resources.js";
 import * as config from "#src/config.js";
 
 describe("rtc service", () => {
     beforeEach(async () => {
-        await rtc.start();
+        await resources.start();
     });
     afterEach(() => {
-        rtc.close();
+        resources.close();
     });
     test("worker load should be evenly distributed", async () => {
         const usedWorkers = new Set();
         for (let i = 0; i < config.NUM_WORKERS; ++i) {
-            const worker = await rtc.getWorker();
+            const worker = await resources.getWorker();
             const router = await worker.createRouter({});
             const webRtcServer = await worker.createWebRtcServer(config.rtc.rtcServerOptions);
             const promises = [];

@@ -1,22 +1,30 @@
-import * as rtc from "#src/services/rtc.js";
+import * as resources from "#src/services/resources.js";
 import * as http from "#src/services/http.js";
 import * as auth from "#src/services/auth.js";
 import { Logger } from "#src/utils/utils.js";
 import { Channel } from "#src/models/channel.js";
+import { clearDirectory } from "#src/models/recorder.js";
 
 const logger = new Logger("SERVER", { logLevel: "all" });
+let fileCleanupInterval;
 
 async function run() {
+    clearDirectory();
+    fileCleanupInterval = setInterval(() => {
+        clearDirectory();
+    }, 1000 * 60 * 60 * 24);
     await auth.start();
-    await rtc.start();
+    await resources.start();
     await http.start();
     logger.info(`ready - PID: ${process.pid}`);
 }
 
 function cleanup() {
+    clearInterval(fileCleanupInterval);
+    clearDirectory();
     Channel.closeAll();
     http.close();
-    rtc.close();
+    resources.close();
     logger.info("cleanup complete");
 }
 
