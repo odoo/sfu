@@ -1,4 +1,4 @@
-import * as rtc from "#src/services/rtc.js";
+import * as resources from "#src/services/resources.js";
 import * as http from "#src/services/http.js";
 import * as auth from "#src/services/auth.js";
 import { Logger } from "#src/utils/utils.js";
@@ -8,7 +8,7 @@ const logger = new Logger("SERVER", { logLevel: "all" });
 
 async function run() {
     await auth.start();
-    await rtc.start();
+    await resources.start();
     await http.start();
     logger.info(`ready - PID: ${process.pid}`);
 }
@@ -16,7 +16,7 @@ async function run() {
 function cleanup() {
     Channel.closeAll();
     http.close();
-    rtc.close();
+    resources.close();
     logger.info("cleanup complete");
 }
 

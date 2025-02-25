@@ -15,6 +15,7 @@ import { Channel } from "#src/models/channel.js";
  * @param {string} param2.remoteAddress
  * @param {string} param2.protocol
  * @param {string} param2.host
+ * @param {Object} param2.match name/value mapping of route variables
  * @param {URLSearchParams} param2.searchParams
  * @return {http.ServerResponse}
  */
@@ -31,12 +32,22 @@ let httpServer;
 export async function start({ httpInterface = config.HTTP_INTERFACE, port = config.PORT } = {}) {
     logger.info("starting...");
     const routeListener = new RouteListener();
+    /**
+     * A no-operation endpoint that returns a simple "ok" response.
+     *
+     * @returns {http.ServerResponse<JSON<{"result": "ok"}>>}.
+     */
     routeListener.get(`/v${API_VERSION}/noop`, {
         callback: (req, res) => {
             res.statusCode = 200;
             return res.end(JSON.stringify({ result: "ok" }));
         },
     });
+    /**
+     * Retrieves statistics for all channels.
+     *
+     * @returns {http.ServerResponse<JSON<ChannelStats[]>>}
+     */
     routeListener.get(`/v${API_VERSION}/stats`, {
         callback: async (req, res) => {
             const proms = [];
@@ -48,6 +59,12 @@ export async function start({ httpInterface = config.HTTP_INTERFACE, port = conf
             return res.end(JSON.stringify(channelStats));
         },
     });
+    /**
+     * @param {URLSearchParams} searchParams (query parameters)
+     * @param {undefined | "false"} searchParams.webRTC whether to use WebRTC or not
+     * @param {string} searchParams.uploadRoute the route to which recordings will be uploaded
+     * @returns {http.ServerResponse<JSON<{uuid: string, url: string}>>}
+     */
     routeListener.get(`/v${API_VERSION}/channel`, {
         callback: async (req, res, { host, protocol, remoteAddress, searchParams }) => {
             try {
@@ -59,10 +76,12 @@ export async function start({ httpInterface = config.HTTP_INTERFACE, port = conf
                     res.statusCode = 403; // forbidden
                     return res.end();
                 }
-                const channel = await Channel.create(remoteAddress, claims.iss, {
+                const options = {
                     key: claims.key,
                     useWebRtc: searchParams.get("webRTC") !== "false",
-                });
+                    uploadRoute: searchParams.get("uploadRoute"), // TODO this route should be constrained to avoid being use for DDoS (eg for a malicious Odoo.sh customer)
+                };
+                const channel = await Channel.create(remoteAddress, claims.iss, options);
                 res.setHeader("Content-Type", "application/json");
                 res.statusCode = 200;
                 return res.end(
@@ -77,6 +96,9 @@ export async function start({ httpInterface = config.HTTP_INTERFACE, port = conf
             return res.end();
         },
     });
+    /**
+     * Disconnects sessions from channels based on the provided JWT.
+     */
     routeListener.post(`/v${API_VERSION}/disconnect`, {
         callback: async (req, res, { remoteAddress }) => {
             try {
@@ -183,7 +205,8 @@ class RouteListener {
                 break;
         }
         for (const [pattern, options] of registeredRoutes) {
-            if (pathname === pattern) {
+            const match = this._extractPattern(pathname, pattern);
+            if (match) {
                 if (options?.cors) {
                     res.setHeader("Access-Control-Allow-Origin", options.cors);
                     res.setHeader("Access-Control-Allow-Methods", options.methods);
@@ -195,6 +218,7 @@ class RouteListener {
                             host,
                             protocol,
                             remoteAddress,
+                            match,
                             searchParams,
                         });
                     } catch (error) {
@@ -211,5 +235,33 @@ class RouteListener {
             }
         }
         return res.end();
+    }
+
+    /**
+     * Matches a pathname against a pattern with named parameters.
+     * @param {string} pathname - The URL path requested, e.g., "/channel/6/person/42/"
+     * @param {string} pattern - The pattern to match, e.g., "/channel/<channelId>/session/<sessionId>"
+     * @returns {object|undefined} - Returns undefined if no match. If matched, returns an object mapping keys to values,
+     * the object is empty if matching a pattern with no variables.
+     * eg: { channelId: "6", sessionId: "42" } | {} | undefined
+     */
+    _extractPattern(pathname, pattern) {
+        pathname = pathname.replace(/\/+$/, "");
+        pattern = pattern.replace(/\/+$/, "");
+        const paramNames = [];
+        const regexPattern = pattern.replace(/<([^>]+)>/g, (_, paramName) => {
+            paramNames.push(paramName);
+            return "([^/]+)";
+        });
+        const regex = new RegExp(`^${regexPattern}$`);
+        const match = pathname.match(regex);
+        if (!match) {
+            return;
+        }
+        const params = {};
+        paramNames.forEach((name, index) => {
+            params[name] = match[index + 1];
+        });
+        return params;
     }
 }

@@ -106,7 +106,7 @@ async function connect(webSocket, { channelUUID, jwt }) {
     let channel = Channel.records.get(channelUUID);
     /** @type {{sfu_channel_uuid: string, session_id: number, ice_servers: Object[] }} */
     const authResult = await verify(jwt, channel?.key);
-    const { sfu_channel_uuid, session_id, ice_servers } = authResult;
+    const { sfu_channel_uuid, session_id, ice_servers, user_name } = authResult;
     if (!channelUUID && sfu_channel_uuid) {
         // Cases where the channelUUID is not provided in the credentials for backwards compatibility with version 1.1 and earlier.
         channel = Channel.records.get(sfu_channel_uuid);
@@ -122,9 +122,10 @@ async function connect(webSocket, { channelUUID, jwt }) {
     if (!session_id) {
         throw new AuthenticationError("Malformed JWT payload");
     }
-    webSocket.send(); // client can start using ws after this message.
+    webSocket.send(JSON.stringify({ features: channel.features })); // client can start using ws after this message.
     const bus = new Bus(webSocket, { batchDelay: config.timeouts.busBatch });
     const { session } = Channel.join(channel.uuid, session_id);
+    session.userName = user_name || "anonymous";
     session.once("close", ({ code }) => {
         let wsCloseCode = WS_CLOSE_CODE.CLEAN;
         switch (code) {

@@ -1,6 +1,6 @@
 import os from "node:os";
 
-const FALSY_INPUT = new Set(["disable", "false", "none", "no", "0"]);
+const FALSY_INPUT = new Set(["disable", "false", "none", "no", "0", "off"]);
 
 // ------------------------------------------------------------
 // ------------------   ENV VARIABLES   -----------------------
@@ -167,6 +167,15 @@ export const LOG_TIMESTAMP = !FALSY_INPUT.has(process.env.LOG_TIMESTAMP);
 export const LOG_COLOR = process.env.LOG_COLOR
     ? Boolean(process.env.LOG_COLOR)
     : process.stdout.isTTY;
+/**
+ * Whether recording is allowed
+ * If true, users can request their call to be recorded.
+ *
+ * e.g: RECORDING=1 or RECORDING=off
+ *
+ * @type {boolean}
+ */
+export const RECORDING = !FALSY_INPUT.has(process.env.RECORDING);
 
 // ------------------------------------------------------------
 // --------------------   SETTINGS   --------------------------
@@ -201,6 +210,18 @@ const baseProducerOptions = {
     zeroRtpOnPause: true,
 };
 
+export const recording = Object.freeze({
+    directory: os.tmpdir() + "/recordings",
+    enabled: RECORDING,
+    maxDuration: 1000 * 60 * 60, // 1 hour
+    fileTTL: 1000 * 60 * 60 * 24, // 24 hours
+});
+
+export const dynamicPorts = Object.freeze({
+    min: 50000,
+    max: 59999,
+});
+
 export const rtc = Object.freeze({
     // https://mediasoup.org/documentation/v3/mediasoup/api/#WorkerSettings
     workerSettings: {
@@ -228,6 +249,11 @@ export const rtc = Object.freeze({
                 },
             },
         ],
+    },
+    plainTransportOptions: {
+        listenIp: { ip: "0.0.0.0", announcedIp: PUBLIC_IP },
+        rtcpMux: true,
+        comedia: false,
     },
     // https://mediasoup.org/documentation/v3/mediasoup/api/#WebRtcTransportOptions
     rtcTransportOptions: {

@@ -4,7 +4,7 @@ import * as config from "#src/config.js";
 import { getAllowedCodecs, Logger } from "#src/utils/utils.js";
 import { AuthenticationError, OvercrowdedError } from "#src/utils/errors.js";
 import { Session, SESSION_CLOSE_CODE } from "#src/models/session.js";
-import { getWorker } from "#src/services/rtc.js";
+import { getWorker } from "#src/services/resources.js";
 
 const logger = new Logger("CHANNEL");
 
@@ -19,10 +19,26 @@ const mediaCodecs = getAllowedCodecs();
  */
 
 /**
+ * @typedef {Object} Features
+ * @property {boolean} recording
+ * @property {boolean} webRtc
+ */
+
+/**
  * @fires Channel#sessionJoin
  * @fires Channel#sessionLeave
  * @fires Channel#close
  */
+
+/**
+ * @typedef {Object} ChannelStats
+ * @property {string} uuid
+ * @property {string} remoteAddress
+ * @property {SessionsStats} sessionsStats
+ * @property {string} createDate
+ * @property {boolean} webRtcEnabled
+ */
+
 export class Channel extends EventEmitter {
     /** @type {Map<string, Channel>} */
     static records = new Map();
@@ -43,6 +59,8 @@ export class Channel extends EventEmitter {
     router;
     /** @type {Map<number, Session>} */
     sessions = new Map();
+    /** @type {string} */
+    uploadRoute;
     /** @type {import("mediasoup").types.Worker}*/
     _worker;
     /** @type {NodeJS.Timeout} */
@@ -56,15 +74,16 @@ export class Channel extends EventEmitter {
      * @param {boolean} [options.useWebRtc=true] whether to use WebRTC:
      *  with webRTC: can stream audio/video
      *  without webRTC: can only use websocket
+     *  @param {string} [options.uploadRoute] the route to upload the recordings
      */
-    static async create(remoteAddress, issuer, { key, useWebRtc = true } = {}) {
+    static async create(remoteAddress, issuer, { key, useWebRtc = true, uploadRoute } = {}) {
         const safeIssuer = `${remoteAddress}::${issuer}`;
         const oldChannel = Channel.recordsByIssuer.get(safeIssuer);
         if (oldChannel) {
             logger.verbose(`reusing channel ${oldChannel.uuid}`);
             return oldChannel;
         }
-        const options = { key };
+        const options = { key, uploadRoute };
         if (useWebRtc) {
             options.worker = await getWorker();
             options.router = await options.worker.createRouter({
@@ -119,8 +138,9 @@ export class Channel extends EventEmitter {
      * @param {string} [options.key]
      * @param {import("mediasoup").types.Worker} [options.worker]
      * @param {import("mediasoup").types.Router} [options.router]
+     * @param {string} [options.uploadRoute]
      */
-    constructor(remoteAddress, { key, worker, router } = {}) {
+    constructor(remoteAddress, { key, worker, router, uploadRoute } = {}) {
         super();
         const now = new Date();
         this.createDate = now.toISOString();
@@ -130,11 +150,22 @@ export class Channel extends EventEmitter {
         this.name = `${remoteAddress}*${this.uuid.slice(-5)}`;
         this.router = router;
         this._worker = worker;
+        this.uploadRoute = uploadRoute;
         this._onSessionClose = this._onSessionClose.bind(this);
     }
 
     /**
-     * @returns {Promise<{ uuid: string, remoteAddress: string, sessionsStats: SessionsStats, createDate: string }>}
+     * @type {Features}
+     */
+    get features() {
+        return {
+            recording: Boolean(config.recording.enabled),
+            webRtc: Boolean(this.router),
+        };
+    }
+
+    /**
+     * @returns {Promise<ChannelStats>}
      */
     async getStats() {
         return {

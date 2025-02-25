@@ -83,6 +83,8 @@ export class Session extends EventEmitter {
     });
     /** @type {string} */
     remote;
+    /** @type {string} */
+    userName;
     /** @type {Map<number, Consumers>} */
     _consumers = new Map();
     /** @type {Producers} */
@@ -129,7 +131,7 @@ export class Session extends EventEmitter {
      * @returns {string}
      */
     get name() {
-        return `${this._channel.name}:${this.id}@${this.remote}`;
+        return `${this._channel.name}:${this.id}@${this.remote} (${this.userName})`;
     }
 
     /**
