@@ -23,7 +23,6 @@
     "#tests/*": "./tests/*"
   },
   "dependencies": {
-    "jsonwebtoken": "^9.0.2",
     "mediasoup": "~3.15.6",
     "ws": "^8.18.1"
   },

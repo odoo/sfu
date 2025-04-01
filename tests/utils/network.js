@@ -1,4 +1,3 @@
-import jwt from "jsonwebtoken";
 import { WebSocket } from "ws";
 import { Device } from "mediasoup-client";
 import { FakeHandler } from "mediasoup-client/lib/handlers/FakeHandler";
@@ -14,7 +13,7 @@ const HMAC_B64_KEY = "u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng=";
 const HMAC_KEY = Buffer.from(HMAC_B64_KEY, "base64");
 
 export function makeJwt(data) {
-    return jwt.sign(data, HMAC_KEY, { algorithm: "HS256" });
+    return auth.sign(data, HMAC_KEY, { algorithm: "HS256" });
 }
 
 /**
