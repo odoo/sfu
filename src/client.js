@@ -85,6 +85,10 @@ const ACTIVE_STATES = new Set([
 export class SfuClient extends EventTarget {
     /** @type {Error[]} */
     errors = [];
+    /**
+     * @type {{ recording: boolean, webRtc: boolean }}
+     */
+    features = {};
     /** @type {SFU_CLIENT_STATE[keyof SFU_CLIENT_STATE]} */
     _state = SFU_CLIENT_STATE.DISCONNECTED;
     /** @type {Bus | undefined} */
@@ -418,7 +422,9 @@ export class SfuClient extends EventTarget {
              */
             webSocket.addEventListener(
                 "message",
-                () => {
+                (initDataMessage) => {
+                    const { features } = JSON.parse(initDataMessage.data || initDataMessage);
+                    this.features = features;
                     resolve(new Bus(webSocket));
                 },
                 { once: true }

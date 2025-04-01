@@ -72,7 +72,7 @@ describe("HTTP", () => {
         expect(response.ok).toBe(true);
         const { uuid, url } = await response.json();
         expect(Channel.records.get(uuid)).toBeDefined();
-        expect(url).toBe(`http://${config.PUBLIC_ADDRESS}:${config.PORT}`);
+        expect(url).toBe(`http://${config.PUBLIC_IP}:${config.PORT}`);
     });
     test("/noop", async () => {
         const response = await fetch(`http://${HTTP_INTERFACE}:${PORT}/v${API_VERSION}/noop`, {
