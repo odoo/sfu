@@ -53,7 +53,7 @@ export async function start({ httpInterface = config.HTTP_INTERFACE, port = conf
             try {
                 const jsonWebToken = req.headers.authorization?.split(" ")[1];
                 /** @type {{ iss: string, key: string || undefined }} */
-                const claims = await auth.verify(jsonWebToken);
+                const claims = auth.verify(jsonWebToken);
                 if (!claims.iss) {
                     logger.warn(`${remoteAddress}: missing issuer claim when creating channel`);
                     res.statusCode = 403; // forbidden
@@ -82,7 +82,7 @@ export async function start({ httpInterface = config.HTTP_INTERFACE, port = conf
             try {
                 const jsonWebToken = await parseBody(req);
                 /** @type {{ sessionIdsByChannel: Object<string, number[]> }} */
-                const claims = await auth.verify(jsonWebToken);
+                const claims = auth.verify(jsonWebToken);
                 for (const [channelUuid, sessionIds] of Object.entries(
                     claims.sessionIdsByChannel
                 )) {

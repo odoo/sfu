@@ -48,11 +48,11 @@ export async function start(options) {
             logger.warn(`${remoteAddress} WS timed out, closing it`);
             unauthenticatedWebSockets.delete(currentPendingId);
         }, config.timeouts.authentication);
-        webSocket.once("message", async (message) => {
+        webSocket.once("message", (message) => {
             try {
                 /** @type {Credentials | String} can be a string (the jwt) for backwards compatibility with version 1.1 and earlier */
                 const credentials = JSON.parse(message);
-                const session = await connect(webSocket, {
+                const session = connect(webSocket, {
                     channelUUID: credentials?.channelUUID,
                     jwt: credentials.jwt || credentials,
                 });
@@ -102,10 +102,9 @@ export function close() {
  * @param {import("ws").WebSocket} webSocket
  * @param {Credentials}
  */
-async function connect(webSocket, { channelUUID, jwt }) {
+function connect(webSocket, { channelUUID, jwt }) {
     let channel = Channel.records.get(channelUUID);
-    /** @type {{sfu_channel_uuid: string, session_id: number, ice_servers: Object[] }} */
-    const authResult = await verify(jwt, channel?.key);
+    const authResult = verify(jwt, channel?.key);
     const { sfu_channel_uuid, session_id, ice_servers } = authResult;
     if (!channelUUID && sfu_channel_uuid) {
         // Cases where the channelUUID is not provided in the credentials for backwards compatibility with version 1.1 and earlier.
