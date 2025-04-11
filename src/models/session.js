@@ -17,6 +17,7 @@ import {
  * @property {boolean} isSelfMuted
  * @property {boolean} isDeaf
  * @property {boolean} isRaisingHand
+ * @property {number} sequence
  */
 
 /**
@@ -80,6 +81,7 @@ export class Session extends EventEmitter {
         isDeaf: undefined,
         isCameraOn: undefined,
         isScreenSharingOn: undefined,
+        sequence: undefined,
     });
     /** @type {string} */
     remote;
@@ -564,7 +566,9 @@ export class Session extends EventEmitter {
             case CLIENT_MESSAGE.INFO_CHANGE:
                 {
                     for (const [key, value] of Object.entries(payload.info)) {
-                        if (key in this.info) {
+                        if (key === "sequence") {
+                            this.info.sequence = Number(value) || undefined;
+                        } else if (key in this.info) {
                             this.info[key] = Boolean(value);
                         }
                     }
