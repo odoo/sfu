@@ -34,6 +34,14 @@ import { AuthenticationError } from "#src/utils/errors.js";
  * @property {string} [jti] - JWT ID
  */
 
+/**
+ * @typedef {Object} JWTData
+ * @property {JWTHeader} header - The JWT header
+ * @property {JWTClaims} claims - The JWT claims
+ * @property {Buffer} signature - The JWT signature
+ * @property {string} signedData - The signed data (header + claims)
+ */
+
 let jwtKey;
 const logger = new Logger("AUTH");
 const ALGORITHM = {
@@ -84,7 +92,7 @@ function base64Decode(str) {
  * Signs and creates a JsonWebToken
  *
  * @param {JWTClaims} claims - The claims to include in the token
- * @param {WithImplicitCoercion<string>} [key] - Optional key, defaults to the configured jwtKey
+ * @param {WithImplicitCoercion<string> | Buffer} [key] - Optional key, defaults to the configured jwtKey
  * @param {Object} [options]
  * @param {string} [options.algorithm] - The algorithm to use, defaults to HS256
  * @returns {string} - The signed JsonWebToken
@@ -144,31 +152,53 @@ function safeEqual(a, b) {
  * @throws {AuthenticationError}
  */
 export function verify(jsonWebToken, key = jwtKey) {
-    const keyBuffer = Buffer.isBuffer(key) ? key : Buffer.from(key, "base64");
-    let parsedJWT;
-    try {
-        parsedJWT = parseJwt(jsonWebToken);
-    } catch {
-        throw new AuthenticationError("Invalid JWT format");
+    const jwt = new JsonWebToken(jsonWebToken);
+    return jwt.verify(key);
+}
+
+export class JsonWebToken {
+    /**
+     * @type {JWTData}
+     */
+    unsafe;
+    /**
+     * @param {string} jsonWebToken
+     */
+    constructor(jsonWebToken) {
+        let payload;
+        try {
+            payload = parseJwt(jsonWebToken);
+        } catch {
+            throw new AuthenticationError("Malformed JWT");
+        }
+        this.unsafe = payload;
     }
-    const { header, claims, signature, signedData } = parsedJWT;
-    const expectedSignature = ALGORITHM_FUNCTIONS[header.alg]?.(signedData, keyBuffer);
-    if (!expectedSignature) {
-        throw new AuthenticationError(`Unsupported algorithm: ${header.alg}`);
+
+    /**
+     * @param {WithImplicitCoercion<string>} [key] buffer/b64 str
+     * @return {JWTClaims}
+     */
+    verify(key = jwtKey) {
+        const { header, claims, signature, signedData } = this.unsafe;
+        const keyBuffer = Buffer.isBuffer(key) ? key : Buffer.from(key, "base64");
+        const expectedSignature = ALGORITHM_FUNCTIONS[header.alg]?.(signedData, keyBuffer);
+        if (!expectedSignature) {
+            throw new AuthenticationError(`Unsupported algorithm: ${header.alg}`);
+        }
+        if (!safeEqual(signature, expectedSignature)) {
+            throw new AuthenticationError("Invalid signature");
+        }
+        // `exp`, `iat` and `nbf` are in seconds (`NumericDate` per RFC7519)
+        const now = Math.floor(Date.now() / 1000);
+        if (claims.exp && claims.exp < now) {
+            throw new AuthenticationError("Token expired");
+        }
+        if (claims.nbf && claims.nbf > now) {
+            throw new AuthenticationError("Token not valid yet");
+        }
+        if (claims.iat && claims.iat > now + 60) {
+            throw new AuthenticationError("Token issued in the future");
+        }
+        return claims;
     }
-    if (!safeEqual(signature, expectedSignature)) {
-        throw new AuthenticationError("Invalid signature");
-    }
-    // `exp`, `iat` and `nbf` are in seconds (`NumericDate` per RFC7519)
-    const now = Math.floor(Date.now() / 1000);
-    if (claims.exp && claims.exp < now) {
-        throw new AuthenticationError("Token expired");
-    }
-    if (claims.nbf && claims.nbf > now) {
-        throw new AuthenticationError("Token not valid yet");
-    }
-    if (claims.iat && claims.iat > now + 60) {
-        throw new AuthenticationError("Token issued in the future");
-    }
-    return claims;
 }

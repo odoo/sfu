@@ -39,4 +39,17 @@ describe("Security", () => {
         const [event] = await once(websocket, "close");
         expect(event).toBe(WS_CLOSE_CODE.TIMEOUT);
     });
+    test("cannot use the default jwt key to access a keyed channel", async () => {
+        const channelUUID = await network.getChannelUUID({ key: "channel-specific-key" });
+        const channel = Channel.records.get(channelUUID);
+        await expect(network.connect(channelUUID, 3)).rejects.toThrow();
+        expect(channel.sessions.size).toBe(0);
+    });
+    test("can join a keyed channel with the appropriate key", async () => {
+        const key = "channel-specific-key";
+        const channelUUID = await network.getChannelUUID({ key });
+        const channel = Channel.records.get(channelUUID);
+        await network.connect(channelUUID, 4, { key });
+        expect(channel.sessions.size).toBe(1);
+    });
 });

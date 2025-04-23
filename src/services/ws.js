@@ -7,11 +7,11 @@ import { Logger, extractRequestInfo } from "#src/utils/utils.js";
 import { AuthenticationError, OvercrowdedError } from "#src/utils/errors.js";
 import { SESSION_CLOSE_CODE } from "#src/models/session.js";
 import { Channel } from "#src/models/channel.js";
-import { verify } from "#src/services/auth.js";
+import { JsonWebToken } from "#src/services/auth.js";
 
 /**
  * @typedef Credentials
- * @property {string} channelUUID
+ * @property {string} channelUUID deprecated, this is obtained from the jwt
  * @property {string} jwt
  */
 
@@ -53,7 +53,6 @@ export async function start(options) {
                 /** @type {Credentials | String} can be a string (the jwt) for backwards compatibility with version 1.1 and earlier */
                 const credentials = JSON.parse(message);
                 const session = connect(webSocket, {
-                    channelUUID: credentials?.channelUUID,
                     jwt: credentials.jwt || credentials,
                 });
                 session.remote = remoteAddress;
@@ -102,22 +101,14 @@ export function close() {
  * @param {import("ws").WebSocket} webSocket
  * @param {Credentials}
  */
-function connect(webSocket, { channelUUID, jwt }) {
-    let channel = Channel.records.get(channelUUID);
-    const authResult = verify(jwt, channel?.key);
-    const { sfu_channel_uuid, session_id, ice_servers } = authResult;
-    if (!channelUUID && sfu_channel_uuid) {
-        // Cases where the channelUUID is not provided in the credentials for backwards compatibility with version 1.1 and earlier.
-        channel = Channel.records.get(sfu_channel_uuid);
-        if (channel.key) {
-            throw new AuthenticationError(
-                "A channel with a key can only be accessed by providing a channelUUID in the credentials"
-            );
-        }
-    }
+function connect(webSocket, { jwt }) {
+    const token = new JsonWebToken(jwt);
+    const channel = Channel.records.get(token.unsafe.claims.sfu_channel_uuid);
     if (!channel) {
         throw new AuthenticationError(`Channel does not exist`);
     }
+    const authResult = token.verify(channel.key);
+    const { session_id, ice_servers } = authResult;
     if (!session_id) {
         throw new AuthenticationError("Malformed JWT payload");
     }
