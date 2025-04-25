@@ -181,6 +181,10 @@ class RouteListener {
             case "POST":
                 registeredRoutes = this.POSTs.entries();
                 break;
+            default:
+                logger.warn(`[${remoteAddress}] ${req.method} is not allowed on ${req.url}`);
+                res.statusCode = 405; // Method not allowed
+                return res.end();
         }
         for (const [pattern, options] of registeredRoutes) {
             if (pathname === pattern) {
