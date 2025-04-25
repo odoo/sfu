@@ -12,8 +12,8 @@ import { Channel } from "#src/models/channel.js";
 const HMAC_B64_KEY = "u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng=";
 const HMAC_KEY = Buffer.from(HMAC_B64_KEY, "base64");
 
-export function makeJwt(data) {
-    return auth.sign(data, HMAC_KEY, { algorithm: "HS256" });
+export function makeJwt(data, { key = HMAC_KEY } = {}) {
+    return auth.sign(data, key, { algorithm: "HS256" });
 }
 
 /**
@@ -44,13 +44,15 @@ export class LocalNetwork {
     }
 
     /**
-     * @param {boolean} [useWebRtc]
+     * @param {Object} [param0]
+     * @param {boolean} [useWebRtc=true]
+     * @param {string} [key] the channel-specific key
      * @returns {Promise<string>}
      */
-    async getChannelUUID(useWebRtc = true) {
+    async getChannelUUID({ useWebRtc = true, key = HMAC_B64_KEY } = {}) {
         const jwt = this.makeJwt({
             iss: `http://${this.hostname}:${this.port}/`,
-            key: HMAC_B64_KEY,
+            key,
         });
         const response = await fetch(
             `http://${this.hostname}:${this.port}/v${http.API_VERSION}/channel?webRTC=${useWebRtc}`,
@@ -70,10 +72,12 @@ export class LocalNetwork {
      *
      * @param {string} channelUUID
      * @param {number} sessionId
+     * @param {Object} [options]
+     * @param {string} [options.key] the key to use to authenticate the session (this should be the key of the channel)
      * @returns { Promise<{ session: import("#src/models/session.js").Session, sfuClient: import("#src/client.js").SfuClient }>}
      * @throws {Error} if the client is closed before being authenticated
      */
-    async connect(channelUUID, sessionId) {
+    async connect(channelUUID, sessionId, { key = HMAC_KEY } = {}) {
         const sfuClient = new SfuClient();
         this._sfuClients.push(sfuClient);
         sfuClient._createDevice = () => {
@@ -100,10 +104,13 @@ export class LocalNetwork {
         });
         sfuClient.connect(
             `ws://${this.hostname}:${this.port}`,
-            this.makeJwt({
-                sfu_channel_uuid: channelUUID,
-                session_id: sessionId,
-            }),
+            this.makeJwt(
+                {
+                    sfu_channel_uuid: channelUUID,
+                    session_id: sessionId,
+                },
+                { key }
+            ),
             { channelUUID }
         );
         const channel = Channel.records.get(channelUUID);
