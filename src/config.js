@@ -206,7 +206,7 @@ export const rtc = Object.freeze({
     workerSettings: {
         logLevel: WORKER_LOG_LEVEL,
     },
-    // https://mediasoup.org/documentation/v3/mediasoup/api/#WebRtcServer-dictionaries
+    // https://mediasoup.org/documentation/v3/mediasoup/api/#WebRtcServerOptions
     rtcServerOptions: {
         listenInfos: [
             {
