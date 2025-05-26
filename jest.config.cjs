@@ -4,4 +4,7 @@ module.exports = {
     coverageReporters: ["text", "json-summary"],
     openHandlesTimeout: 10000,
     maxWorkers: 4,
+    preset: "ts-jest",
+    testEnvironment: "node",
+    extensionsToTreatAsEsm: [".ts"],
 };

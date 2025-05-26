@@ -1,0 +1,37 @@
+{
+  "include": [
+    "src/**/*.ts",
+    "src/*.ts",
+    "tests/**/*"
+  ],
+  "compilerOptions": {
+    // Custom
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "#src/*": ["./src/*"],
+      "#tests/*": ["./tests/*"]
+    },
+    "outDir": "dist",
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": false,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "moduleResolution": "node",
+    "types": [
+      "jest",
+      "node"
+    ],
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationDir": "dist/types",
+    "preserveConstEnums": false,
+  }
+}

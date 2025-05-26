@@ -1,21 +1,22 @@
 import { once } from "node:events";
 
-import { describe, beforeEach, afterEach, expect, jest } from "@jest/globals";
+import { afterEach, beforeEach, describe, expect, jest } from "@jest/globals";
 import { FakeMediaStreamTrack } from "fake-mediastreamtrack";
 
-import { SESSION_CLOSE_CODE, SESSION_STATE } from "#src/models/session.js";
-import { Channel } from "#src/models/channel.js";
-import { SFU_CLIENT_STATE } from "#src/client.js";
-import { timeouts } from "#src/config.js";
+import { SESSION_CLOSE_CODE, SESSION_STATE } from "#src/models/session";
+import { STREAM_TYPE } from "#src/shared/enums.ts";
+import { Channel } from "#src/models/channel";
+import { SFU_CLIENT_STATE } from "#src/client";
+import { timeouts } from "#src/config";
 
-import { LocalNetwork } from "#tests/utils/network.js";
+import { LocalNetwork } from "#tests/utils/network";
+import { delay } from "#tests/utils/utils.ts";
 
 const HTTP_INTERFACE = "0.0.0.0";
 const PORT = 61254;
 
 describe("Full network", () => {
-    /** @type {LocalNetwork} */
-    let network;
+    let network: LocalNetwork;
     beforeEach(async () => {
         network = new LocalNetwork();
         await network.start(HTTP_INTERFACE, PORT);
@@ -52,13 +53,14 @@ describe("Full network", () => {
         const [event] = await once(user1.sfuClient, "update");
         expect(event.detail).toEqual({
             name: "disconnect",
-            payload: { sessionId: 2 },
+            payload: { sessionId: 2 }
         });
     });
     test("Sessions broadcast info to each other", async () => {
         const channelUUID = await network.getChannelUUID();
         const user1 = await network.connect(channelUUID, 1);
         const user2 = await network.connect(channelUUID, 2);
+        //@ts-expect-error accessing private method for testing purposes
         user2.session._broadcastInfo();
         const [event] = await once(user1.sfuClient, "update");
         expect(event.detail.name).toBe("info_change");
@@ -69,8 +71,8 @@ describe("Full network", () => {
                 isSelfMuted: undefined,
                 isDeaf: undefined,
                 isCameraOn: undefined,
-                isScreenSharingOn: undefined,
-            },
+                isScreenSharingOn: undefined
+            }
         });
     });
     test("Server session info can be updated by the client", async () => {
@@ -83,7 +85,7 @@ describe("Full network", () => {
             isSelfMuted: undefined,
             isDeaf: undefined,
             isCameraOn: undefined,
-            isScreenSharingOn: undefined,
+            isScreenSharingOn: undefined
         });
         const info = {
             isRaisingHand: true,
@@ -91,7 +93,7 @@ describe("Full network", () => {
             isSelfMuted: true,
             isDeaf: false,
             isCameraOn: true,
-            isScreenSharingOn: false,
+            isScreenSharingOn: false
         };
         sender.sfuClient.updateInfo(info);
         const [event] = await once(user2.sfuClient, "update");
@@ -113,14 +115,14 @@ describe("Full network", () => {
         const user3Info = {
             isRaisingHand: true,
             isTalking: false,
-            isSelfMuted: true,
+            isSelfMuted: true
         };
         user3.sfuClient.updateInfo(user3Info, { needRefresh: true });
         const [event] = await once(user3.sfuClient, "update");
         expect(event.detail.payload).toEqual({
             [user1.session.id]: {},
             [user2.session.id]: {},
-            [user3.session.id]: user3Info,
+            [user3.session.id]: user3Info
         });
     });
     test("Connecting multiple times with the same session id closes the previous ones", async () => {
@@ -130,11 +132,11 @@ describe("Full network", () => {
         const user1 = await network.connect(channelUUID, sameId);
         const user2 = await network.connect(channelUUID, sameId);
         const user3 = await network.connect(channelUUID, sameId);
-        const lastSession = channel.sessions.get(sameId);
+        const lastSession = channel!.sessions.get(sameId);
         expect(user1.session).not.toBe(lastSession);
         expect(user2.session).not.toBe(lastSession);
         expect(user3.session).toBe(lastSession);
-        expect(channel.sessions.size).toBe(1);
+        expect(channel!.sessions.size).toBe(1);
     });
     test("A client can forward a track to other clients", async () => {
         const channelUUID = await network.getChannelUUID();
@@ -145,7 +147,7 @@ describe("Full network", () => {
         const sender = await network.connect(channelUUID, 3);
         await once(sender.session, "stateChange");
         const track = new FakeMediaStreamTrack({ kind: "audio" });
-        await sender.sfuClient.updateUpload("audio", track);
+        await sender.sfuClient.updateUpload(STREAM_TYPE.AUDIO, track);
         const prom1 = once(user1.sfuClient, "update");
         const prom2 = once(user2.sfuClient, "update");
         const [[event1], [event2]] = await Promise.all([prom1, prom2]);
@@ -164,8 +166,9 @@ describe("Full network", () => {
         await once(sender.session, "stateChange");
         const track = new FakeMediaStreamTrack({ kind: "audio" });
         // closing the transport so the `updateUpload` should fail.
+        // @ts-expect-error accessing private property for testing purposes
         sender.sfuClient._ctsTransport.close();
-        await sender.sfuClient.updateUpload("audio", track);
+        await sender.sfuClient.updateUpload(STREAM_TYPE.AUDIO, track);
         expect(sender.sfuClient.errors.length).toBe(1);
         expect(sender.sfuClient.state).toBe(SFU_CLIENT_STATE.CONNECTED);
     });
@@ -177,10 +180,11 @@ describe("Full network", () => {
         await once(sender.session, "stateChange");
         const track = new FakeMediaStreamTrack({ kind: "audio" });
         // closing the transport so the consumption should fail.
+        // @ts-expect-error accessing private property for testing purposes
         user.session._stcTransport.close();
-        await sender.sfuClient.updateUpload("audio", track);
+        await sender.sfuClient.updateUpload(STREAM_TYPE.AUDIO, track);
         // not ideal but we have to wait a tick for the websocket message to go through
-        await new Promise(setTimeout);
+        await delay();
         expect(user.session.errors.length).toBe(1);
         expect(user.session.state).toBe(SESSION_STATE.CONNECTED);
     });
@@ -191,7 +195,7 @@ describe("Full network", () => {
         const sender = await network.connect(channelUUID, 3);
         await once(sender.session, "stateChange");
         const track = new FakeMediaStreamTrack({ kind: "audio" });
-        await sender.sfuClient.updateUpload("audio", track);
+        await sender.sfuClient.updateUpload(STREAM_TYPE.AUDIO, track);
         await once(user1.sfuClient, "update");
         const stats = await sender.sfuClient.getStats();
         // since it is a fake webRTC connection, there is no stats
@@ -206,11 +210,11 @@ describe("Full network", () => {
         const sender = await network.connect(channelUUID, 123);
         await once(sender.session, "stateChange");
         const track = new FakeMediaStreamTrack({ kind: "audio" });
-        await sender.sfuClient.updateUpload("audio", track);
+        await sender.sfuClient.updateUpload(STREAM_TYPE.AUDIO, track);
         await once(user1.sfuClient, "update");
         user1.sfuClient.updateDownload(sender.session.id, { audio: false });
         // waiting for the websocket message to go through
-        await new Promise(setTimeout);
+        await delay();
         user1.sfuClient.updateDownload(sender.session.id, { audio: true });
         await new Promise((resolve) => {
             // this 100ms is not ideal, but it prevents a race condition where the worker is closed right
@@ -228,15 +232,15 @@ describe("Full network", () => {
         const sender = await network.connect(channelUUID, 123);
         await once(sender.session, "stateChange");
         const track = new FakeMediaStreamTrack({ kind: "video" });
-        await sender.sfuClient.updateUpload("camera", track);
+        await sender.sfuClient.updateUpload(STREAM_TYPE.CAMERA, track);
         await once(user1.sfuClient, "update");
-        await sender.sfuClient.updateUpload("camera", null);
+        await sender.sfuClient.updateUpload(STREAM_TYPE.CAMERA, null);
         const [event] = await once(user1.sfuClient, "update");
         expect(event.detail.name).toBe("info_change");
         expect(event.detail.payload).toEqual({
             [sender.session.id]: {
-                isCameraOn: false,
-            },
+                isCameraOn: false
+            }
         });
     });
     test("Sessions are closed after connection timeout", async () => {

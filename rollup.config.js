@@ -1,5 +1,6 @@
 import resolve from "@rollup/plugin-node-resolve";
 import commonjs from "@rollup/plugin-commonjs";
+import typescript from "@rollup/plugin-typescript";
 import license from "rollup-plugin-license";
 import git from "git-rev-sync";
 
@@ -12,7 +13,7 @@ export const __info__ = {
 `;
 
 export default {
-    input: "./src/client.js",
+    input: "./src/client.ts",
     output: [
         {
             banner: "/* @odoo-module */",
@@ -22,11 +23,17 @@ export default {
         },
     ],
     plugins: [
-        commonjs(),
+        typescript({
+            tsconfig: "./tsconfig_bundle.json",
+            declaration: false,
+            declarationMap: false,
+            sourceMap: false,
+        }),
         resolve({
             browser: true,
             preferBuiltins: false,
         }),
+        commonjs(),
         license({
             thirdParty: {
                 output: "./bundle/odoo_sfu.licenses.txt",

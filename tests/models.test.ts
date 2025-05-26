@@ -1,9 +1,9 @@
 import { describe, beforeEach, afterEach, expect, jest } from "@jest/globals";
 
-import * as rtc from "#src/services/rtc.js";
-import { Channel } from "#src/models/channel.js";
-import { timeouts, CHANNEL_SIZE } from "#src/config.js";
-import { OvercrowdedError } from "#src/utils/errors.js";
+import * as rtc from "#src/services/rtc";
+import { Channel } from "#src/models/channel";
+import { timeouts, CHANNEL_SIZE } from "#src/config";
+import { OvercrowdedError } from "#src/utils/errors";
 
 describe("Models", () => {
     beforeEach(async () => {
@@ -24,7 +24,7 @@ describe("Models", () => {
         Channel.join(channel.uuid, 3);
         const session = channel.sessions.get(3);
         expect(channel.sessions.size).toBe(1);
-        session.close();
+        session!.close();
         expect(channel.sessions.size).toBe(0);
         expect(Channel.records.size).toBe(1);
     });

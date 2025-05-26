@@ -1,20 +1,20 @@
-import { describe, beforeEach, afterEach, expect, jest } from "@jest/globals";
+import { afterEach, beforeEach, describe, expect, jest } from "@jest/globals";
 
-import { SESSION_STATE } from "#src/models/session.js";
-import { Channel } from "#src/models/channel.js";
-import * as config from "#src/config.js";
-import { API_VERSION } from "#src/services/http.js";
+import { SESSION_STATE } from "#src/models/session";
+import { Channel } from "#src/models/channel";
+import * as config from "#src/config";
+import { API_VERSION } from "#src/services/http";
 
-import { LocalNetwork, makeJwt } from "#tests/utils/network.js";
+import { LocalNetwork, makeJwt } from "#tests/utils/network";
 import { once } from "node:events";
 import { FakeMediaStreamTrack } from "fake-mediastreamtrack";
+import { STREAM_TYPE } from "#src/shared/enums.ts";
 
 const HTTP_INTERFACE = "0.0.0.0";
 const PORT = 6971;
 
 describe("HTTP", () => {
-    /** @type {LocalNetwork} */
-    let network;
+    let network: LocalNetwork;
     beforeEach(async () => {
         network = new LocalNetwork();
         await network.start(HTTP_INTERFACE, PORT);
@@ -29,33 +29,33 @@ describe("HTTP", () => {
         const streamer = await network.connect(channelUUID, 5);
         await once(streamer.session, "stateChange");
         await streamer.sfuClient.updateUpload(
-            "camera",
+            STREAM_TYPE.CAMERA,
             new FakeMediaStreamTrack({ kind: "video" })
         );
 
         const response = await fetch(`http://${HTTP_INTERFACE}:${PORT}/v${API_VERSION}/stats`, {
-            method: "GET",
+            method: "GET"
         });
         expect(response.ok).toBe(true);
         const parsedResponse = await response.json();
         expect(parsedResponse).toEqual([
             {
                 uuid: channelUUID,
-                remoteAddress: channel.remoteAddress,
+                remoteAddress: channel!.remoteAddress,
                 sessionsStats: {
                     incomingBitRate: {
                         audio: 0,
                         camera: 0, // no bitrate as it is a fake track
                         screen: 0,
-                        total: 0,
+                        total: 0
                     },
                     count: 1,
                     cameraCount: 1,
-                    screenCount: 0,
+                    screenCount: 0
                 },
-                createDate: channel.createDate,
-                webRtcEnabled: true,
-            },
+                createDate: channel!.createDate,
+                webRtcEnabled: true
+            }
         ]);
     });
     test("/channel", async () => {
@@ -65,18 +65,18 @@ describe("HTTP", () => {
                 Authorization:
                     "jwt " +
                     makeJwt({
-                        iss: `http://${HTTP_INTERFACE}:${PORT}/`,
-                    }),
-            },
+                        iss: `http://${HTTP_INTERFACE}:${PORT}/`
+                    })
+            }
         });
         expect(response.ok).toBe(true);
         const { uuid, url } = await response.json();
         expect(Channel.records.get(uuid)).toBeDefined();
-        expect(url).toBe(`http://${config.PUBLIC_ADDRESS}:${config.PORT}`);
+        expect(url).toBe(`http://${config.PUBLIC_IP}:${config.PORT}`);
     });
     test("/noop", async () => {
         const response = await fetch(`http://${HTTP_INTERFACE}:${PORT}/v${API_VERSION}/noop`, {
-            method: "GET",
+            method: "GET"
         });
         expect(response.ok).toBe(true);
         const { result } = await response.json();
@@ -89,9 +89,9 @@ describe("HTTP", () => {
                 Authorization:
                     "jwt " +
                     makeJwt({
-                        iss: `UUID-CHANNEL_ID`,
-                    }),
-            },
+                        iss: `UUID-CHANNEL_ID`
+                    })
+            }
         };
         const response = await fetch(
             `http://${HTTP_INTERFACE}:${PORT}/v${API_VERSION}/channel`,
@@ -110,9 +110,9 @@ describe("HTTP", () => {
                 Authorization:
                     "jwt " +
                     makeJwt({
-                        iss: `DIFFERENT_UUID-CHANNEL_ID`,
-                    }),
-            },
+                        iss: `DIFFERENT_UUID-CHANNEL_ID`
+                    })
+            }
         });
         const response3Json = await response3.json();
         expect(responseJson.uuid).not.toBe(response3Json.uuid);
@@ -124,13 +124,13 @@ describe("HTTP", () => {
         await fetch(`http://${HTTP_INTERFACE}:${PORT}/v${API_VERSION}/disconnect`, {
             method: "POST",
             headers: {
-                "Content-Type": "application/json",
+                "Content-Type": "application/json"
             },
             body: makeJwt({
                 sessionIdsByChannel: {
-                    [channelUUID]: [sessionId],
-                },
-            }),
+                    [channelUUID]: [sessionId]
+                }
+            })
         });
         expect(user1.session.state).toBe(SESSION_STATE.CLOSED);
     });
@@ -141,13 +141,13 @@ describe("HTTP", () => {
         await fetch(`http://${HTTP_INTERFACE}:${PORT}/v${API_VERSION}/disconnect`, {
             method: "POST",
             headers: {
-                "Content-Type": "application/json",
+                "Content-Type": "application/json"
             },
             body: makeJwt({
                 sessionIdsByChannel: {
-                    wrong: [sessionId],
-                },
-            }),
+                    wrong: [sessionId]
+                }
+            })
         });
         expect(user1.session.state).not.toBe(SESSION_STATE.CLOSED);
     });
@@ -155,12 +155,12 @@ describe("HTTP", () => {
         const response1 = await fetch(
             `http://${HTTP_INTERFACE}:${PORT}/v${API_VERSION}/src/server.js`,
             {
-                method: "GET",
+                method: "GET"
             }
         );
         expect(response1.status).toBe(404);
         const response2 = await fetch(`http://${HTTP_INTERFACE}:${PORT}/`, {
-            method: "GET",
+            method: "GET"
         });
         expect(response2.status).toBe(404);
     });

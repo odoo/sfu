@@ -1,10 +1,10 @@
 import { beforeAll, afterAll, describe, jest, afterEach, expect } from "@jest/globals";
 
-import { Logger } from "#src/utils/utils.js";
+import { Logger } from "#src/utils/utils";
 
 describe("Logger", () => {
-    let mockLog;
-    let messages = [];
+    let mockLog: jest.SpiedFunction<typeof console.log>;
+    let messages: string[] = [];
     beforeAll(() => {
         mockLog = jest.spyOn(global.console, "log").mockImplementation((message) => {
             messages.push(message);
@@ -25,20 +25,20 @@ describe("Logger", () => {
         const logger = new Logger("test1", {
             logLevel: "debug",
             timestamp: true,
-            useColors: false,
+            useColors: false
         });
         logger.warn("test");
         expect(messages.pop()).toBe("2023-09-15T08:29:00.000Z odoo-sfu :WARN: [test1] - test");
         const logger2 = new Logger("test2", {
             logLevel: "debug",
             timestamp: false,
-            useColors: false,
+            useColors: false
         });
         logger2.debug("test");
         expect(messages.pop()).toBe("odoo-sfu :DEBUG: [test2] - test");
     });
     test("logger respects log level", () => {
-        const logEach = (logger) => {
+        const logEach = (logger: Logger) => {
             logger.verbose("test");
             logger.debug("test");
             logger.info("test");
