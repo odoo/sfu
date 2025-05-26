@@ -1,19 +1,19 @@
 {
   "name": "odoo-sfu",
   "description": "Odoo's SFU server",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "author": "Odoo",
   "license": "LGPL-3.0",
   "type": "module",
   "scripts": {
     "build": "rollup -c",
-    "start": "node ./src/server.js",
-    "test": "LOG_LEVEL=none node --experimental-vm-modules ./node_modules/.bin/jest -i",
-    "test:dev": "LOG_LEVEL=warn node --experimental-vm-modules ./node_modules/.bin/jest --detectOpenHandles --verbose --collectCoverage",
-    "test:watch": "LOG_LEVEL=verbose node --experimental-vm-modules ./node_modules/.bin/jest --watch -i"
+    "start": "node --experimental-transform-types ./src/server.ts",
+    "test": "LOG_LEVEL=none node ./node_modules/.bin/jest -i",
+    "test:dev": "LOG_LEVEL=warn node ./node_modules/.bin/jest --detectOpenHandles --verbose --collectCoverage",
+    "test:watch": "LOG_LEVEL=verbose node ./node_modules/.bin/jest --watch -i"
   },
   "engines": {
-    "node": ">=20.9.0"
+    "node": ">=22.16.0"
   },
   "files": [
     "src/**/*"
@@ -30,10 +30,16 @@
     "@jest/globals": "^29.6.2",
     "@rollup/plugin-commonjs": "^25.0.7",
     "@rollup/plugin-node-resolve": "^13.0.4",
+    "@rollup/plugin-typescript": "^10.0.1",
+    "@types/jest": "^29.5.0",
     "@types/node": "^20.5.0",
-    "eslint": "~8.46.0",
+    "@types/ws": "^8.18.1",
+    "@typescript-eslint/eslint-plugin": "8.32.1",
+    "@typescript-eslint/parser": "8.32.1",
+    "eslint": "8.57.1",
     "eslint-plugin-import": "^2.25.3",
-    "eslint-plugin-jest": "^27.2.3",
+    "eslint-plugin-jest": "28.11.0",
+    "eslint-plugin-node": "^11.1.0",
     "eslint-plugin-prettier": "~4.2.0",
     "fake-mediastreamtrack": "^1.2.0",
     "git-rev-sync": "^3.0.2",
@@ -41,6 +47,8 @@
     "mediasoup-client": "~3.9.2",
     "prettier": "~2.8.8",
     "rollup": "^2.79.1",
-    "rollup-plugin-license": "3.2.0"
+    "rollup-plugin-license": "3.2.0",
+    "ts-jest": "^29.3.4",
+    "typescript": "~5.4.3"
   }
 }

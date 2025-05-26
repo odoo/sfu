@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect } from "@jest/globals";
 
-import * as rtc from "#src/services/rtc.js";
-import * as config from "#src/config.js";
+import * as rtc from "#src/services/rtc";
+import * as config from "#src/config";
 
 describe("rtc service", () => {
     beforeEach(async () => {
@@ -22,7 +22,7 @@ describe("rtc service", () => {
                 promises.push(
                     router.createWebRtcTransport({
                         ...config.rtc.rtcTransportOptions,
-                        webRtcServer,
+                        webRtcServer
                     })
                 );
             }

@@ -1,18 +1,26 @@
 // Based on Odoo's .eslintrc.js
 {
-  "extends": ["eslint:recommended", "plugin:prettier/recommended", "plugin:node/recommended"],
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
+    "plugin:node/recommended",
+    "plugin:prettier/recommended"
+  ],
   "parserOptions": {
     "ecmaVersion": 2022,
-    "sourceType": "module"
+    "sourceType": "module",
+    "project": "./tsconfig.json"
   },
   "env": {
     "node": true,
     "browser": false,
     "es2022": true
   },
+  "parser": "@typescript-eslint/parser",
+  "plugins": ["@typescript-eslint"],
   "overrides": [
     {
-      "files": ["tests/utils/*.js", "tests/*.js"],
+      "files": ["tests/utils/*.ts", "tests/*.ts"],
       "plugins": ["jest", "import"],
       "env": {
         "jest": true,
@@ -21,14 +29,14 @@
       "extends": ["plugin:jest/recommended"]
     },
     {
-      "files": ["src/client.js"],
+      "files": ["src/client.ts"],
       "env": {
         "browser": true,
         "node": false
       }
     },
     {
-      "files": ["src/shared/*.js"],
+      "files": ["src/shared/*.ts"],
       "env": {
         "browser": true,
         "node": true
@@ -42,10 +50,12 @@
       "semi": true,
       "singleQuote": false,
       "printWidth": 100,
-      "endOfLine": "auto"
+      "endOfLine": "auto",
+      "trailingComma": "none"
     }],
     "node/no-unsupported-features/es-syntax": "off",
     "node/no-missing-import": "off",
+    "comma-dangle": "off",
     "no-console": "error",
     "no-undef": "error",
     "no-restricted-globals": ["error", "event", "self"],
@@ -58,12 +68,15 @@
     "no-unsafe-negation": ["error"],
     "no-duplicate-imports": ["error"],
     "valid-typeof": ["error"],
-    "no-unused-vars": ["error", { "vars": "all", "args": "none", "ignoreRestSiblings": false, "caughtErrors": "all" }],
+    "@typescript-eslint/no-unused-vars": ["error", { "vars": "all", "args": "none", "ignoreRestSiblings": false, "caughtErrors": "all" }],
     "curly": ["error", "all"],
     "no-restricted-syntax": ["error", "PrivateIdentifier"],
     "prefer-const": ["error", {
       "destructuring": "all",
       "ignoreReadBeforeAssign": true
     }]
+  },
+  "globals": {
+    "NodeJS": "readonly"
   }
 }

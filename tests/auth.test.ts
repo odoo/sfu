@@ -1,6 +1,6 @@
 import { describe, beforeEach, afterEach, expect } from "@jest/globals";
-import * as auth from "#src/services/auth.js";
-import { AuthenticationError } from "#src/utils/errors.js";
+import * as auth from "#src/services/auth";
+import { AuthenticationError } from "#src/utils/errors";
 
 describe("Auth Service", () => {
     const testKey = "TEST2VjcmV0S2V5VGhhdElzMzJCeXRlc0xvbmdBdExldA==";
@@ -29,15 +29,15 @@ describe("Auth Service", () => {
                         -----END PRIVATE KEY-----
                         `,
             header: { alg: "ES512", typ: "JWT" },
-            payload: { data: "third party" },
+            payload: { data: "third party" }
         },
         HS256: {
             token: `eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRhIjoidGhpcmQgcGFydHkifQ.GadSPivgAXYx
                     ftSwH9LKEdg5hv05x1Lihln_6x01TxY`,
             key: testKey,
             header: { alg: "HS256", typ: "JWT" },
-            payload: { data: "third party" },
-        },
+            payload: { data: "third party" }
+        }
     };
     beforeEach(() => {
         auth.start(testKey);
@@ -50,7 +50,7 @@ describe("Auth Service", () => {
             iss: "test-issuer",
             sub: "1234567890",
             channelUUID: "channel-123",
-            iat: Math.floor(Date.now() / 1000),
+            iat: Math.floor(Date.now() / 1000)
         };
         const token = auth.sign(payload);
         const result = auth.verify(token);
@@ -87,7 +87,7 @@ describe("Auth Service", () => {
     test("should reject an expired token", () => {
         const payload = {
             sub: "1234567890",
-            exp: Math.floor(Date.now() / 1000) - 3600,
+            exp: Math.floor(Date.now() / 1000) - 3600
         };
         const token = auth.sign(payload);
         expect(() => auth.verify(token)).toThrow(AuthenticationError);
@@ -95,7 +95,7 @@ describe("Auth Service", () => {
     test("should reject a token that is not valid yet", () => {
         const payload = {
             sub: "1234567890",
-            nbf: Math.floor(Date.now() / 1000) + 3600,
+            nbf: Math.floor(Date.now() / 1000) + 3600
         };
         const token = auth.sign(payload);
         expect(() => auth.verify(token)).toThrow(AuthenticationError);
@@ -103,7 +103,7 @@ describe("Auth Service", () => {
     test("should reject a token issued in the future (beyond clock skew)", () => {
         const payload = {
             sub: "1234567890",
-            iat: Math.floor(Date.now() / 1000) + 120,
+            iat: Math.floor(Date.now() / 1000) + 120
         };
         const token = auth.sign(payload);
         expect(() => auth.verify(token)).toThrow(AuthenticationError);
@@ -111,7 +111,7 @@ describe("Auth Service", () => {
     test("should accept a token with future iat within clock skew", () => {
         const payload = {
             sub: "1234567890",
-            iat: Math.floor(Date.now() / 1000) + 30,
+            iat: Math.floor(Date.now() / 1000) + 30
         };
         const token = auth.sign(payload);
         const result = auth.verify(token);
@@ -119,7 +119,7 @@ describe("Auth Service", () => {
     });
     test("should reject a malformed token", () => {
         const malformedTokens = [
-            Math.infinity,
+            Infinity,
             0,
             1,
             { alg: "HS256", typ: "JWT" },
@@ -134,10 +134,10 @@ describe("Auth Service", () => {
             "..signature",
             "invalid-base64.payload.signature",
             "header.invalid-base64.signature",
-            "header.payload.invalid-base64",
+            "header.payload.invalid-base64"
         ];
         for (const token of malformedTokens) {
-            expect(() => auth.verify(token)).toThrow(AuthenticationError);
+            expect(() => auth.verify(token as string)).toThrow(AuthenticationError);
         }
     });
     test("should handle tokens with different padding correctly", () => {
@@ -146,18 +146,20 @@ describe("Auth Service", () => {
             { ab: "12" },
             { abc: "123" },
             { abcd: "1234" },
-            { abcd: "12345" },
+            { abcd: "12345" }
         ];
         for (const payload of payloads) {
-            const token = auth.sign(payload);
+            const token = auth.sign(payload as auth.JWTClaims);
             const result = auth.verify(token);
             expect(result).toEqual(payload);
         }
     });
     test("signing should fail with an unsupported algorithm", () => {
-        expect(() => auth.sign({ payload: "abc" }, testKey, { algorithm: "HS512" })).toThrow(
-            "Unsupported algorithm: HS512"
-        );
+        expect(() =>
+            auth.sign({ payload: "abc" } as auth.JWTClaims, testKey, {
+                algorithm: "HS512" as auth.ALGORITHM
+            })
+        ).toThrow("Unsupported algorithm: HS512");
     });
     test("verifying should fail with an unsupported algorithm", () => {
         expect(() => auth.verify(CONTROL_TOKEN.ES512.token, CONTROL_TOKEN.ES512.publicKey)).toThrow(
