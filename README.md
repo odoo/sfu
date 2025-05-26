@@ -10,7 +10,7 @@ The server is not stand-alone, it does not serve any HTML or any interface code 
 the SFU and a [client bundle/library](#client-api-bundle) to connect to it.
 
 ## Prerequisites
-- [Node.js 20.9.0 (LTS)](https://nodejs.org/)
+- [Node.js 22.16.0 (LTS)](https://nodejs.org/en/download)
 
 ## Before deployment
 
