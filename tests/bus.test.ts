@@ -2,10 +2,11 @@ import { EventEmitter } from "node:events";
 
 import { expect, describe, jest } from "@jest/globals";
 
-import { Bus } from "#src/shared/bus.js";
+import { Bus } from "#src/shared/bus";
+import type { JSONSerializable } from "#src/shared/types";
 
 class MockTargetWebSocket extends EventTarget {
-    send(message) {
+    send(message: JSONSerializable) {
         this.dispatchEvent(new MessageEvent("propagate_message", { data: message }));
     }
     close() {
@@ -14,7 +15,7 @@ class MockTargetWebSocket extends EventTarget {
     }
 }
 class MockWebSocket extends EventEmitter {
-    send(message) {
+    send(message: JSONSerializable) {
         this.emit("propagate_message", message);
     }
     close() {
@@ -23,15 +24,13 @@ class MockWebSocket extends EventEmitter {
     }
 }
 
-/**
- * @param {MockWebSocket} mockWebSocket
- * @param {MockTargetWebSocket} mockTargetWebSocket
- */
-function pipeSockets(mockWebSocket, mockTargetWebSocket) {
-    mockTargetWebSocket.addEventListener("propagate_message", ({ data: payload }) => {
+function pipeSockets(mockWebSocket: MockWebSocket, mockTargetWebSocket: MockTargetWebSocket) {
+    mockTargetWebSocket.addEventListener("propagate_message", (event) => {
+        const payload = (event as MessageEvent).data;
         mockWebSocket.emit("message", payload);
     });
-    mockTargetWebSocket.addEventListener("propagate_close", ({ code }) => {
+    mockTargetWebSocket.addEventListener("propagate_close", (event) => {
+        const code = (event as CustomEvent).detail?.code;
         mockWebSocket.emit("close", { code });
     });
     mockWebSocket.on("propagate_message", (payload) => {
@@ -57,8 +56,8 @@ describe("Bus API", () => {
     test("message()", () => {
         let receivedMessage;
         const { aliceSocket, bobSocket } = mockSocketPair();
-        const aliceBus = new Bus(aliceSocket);
-        const bobBus = new Bus(bobSocket);
+        const aliceBus = new Bus(aliceSocket as unknown as WebSocket);
+        const bobBus = new Bus(bobSocket as unknown as WebSocket);
         aliceBus.onMessage = (message) => {
             receivedMessage = message;
         };
@@ -67,9 +66,10 @@ describe("Bus API", () => {
     });
     test("request()", async () => {
         const { aliceSocket, bobSocket } = mockSocketPair();
-        const aliceBus = new Bus(aliceSocket);
-        const bobBus = new Bus(bobSocket);
-        bobBus.onRequest = (message) => {
+        const aliceBus = new Bus(aliceSocket as unknown as WebSocket);
+        const bobBus = new Bus(bobSocket as unknown as WebSocket);
+        //@ts-expect-error we do not need to return for the test
+        bobBus.onRequest = (message: JSONSerializable) => {
             if (message === "ping") {
                 return "pong";
             }
@@ -79,7 +79,7 @@ describe("Bus API", () => {
     });
     test("promises are rejected when the bus is closed", async () => {
         const { aliceSocket } = mockSocketPair();
-        const aliceBus = new Bus(aliceSocket);
+        const aliceBus = new Bus(aliceSocket as unknown as WebSocket);
         let rejected = false;
         const promise = aliceBus.request("ping");
         aliceBus.close();
@@ -94,7 +94,7 @@ describe("Bus API", () => {
         jest.spyOn(global, "setTimeout");
         jest.useFakeTimers();
         const { aliceSocket } = mockSocketPair();
-        const aliceBus = new Bus(aliceSocket);
+        const aliceBus = new Bus(aliceSocket as unknown as WebSocket);
         const timeout = 500;
         const promise = aliceBus.request("hello", { timeout });
         jest.advanceTimersByTime(timeout);
@@ -106,11 +106,13 @@ describe("Bus API", () => {
         jest.useFakeTimers();
         const { aliceSocket, bobSocket } = mockSocketPair();
         const testBatchDelay = 10000;
-        const aliceBus = new Bus(aliceSocket, { batchDelay: testBatchDelay });
-        const bobBus = new Bus(bobSocket);
-        const receivedMessages = [];
+        const aliceBus = new Bus(aliceSocket as unknown as WebSocket, {
+            batchDelay: testBatchDelay
+        });
+        const bobBus = new Bus(bobSocket as unknown as WebSocket);
+        const receivedMessages: string[] = [];
         bobBus.onMessage = (message) => {
-            receivedMessages.push(message);
+            receivedMessages.push(message as string);
         };
         const firstBatch = ["0", "1", "2", "3", "4"];
         for (const message of firstBatch) {

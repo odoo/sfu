@@ -3,18 +3,17 @@ import { once } from "node:events";
 import { WebSocket } from "ws";
 import { describe, beforeEach, afterEach, expect, jest } from "@jest/globals";
 
-import { Channel } from "#src/models/channel.js";
-import { WS_CLOSE_CODE } from "#src/shared/enums.js";
-import { timeouts } from "#src/config.js";
+import { Channel } from "#src/models/channel";
+import { WS_CLOSE_CODE } from "#src/shared/enums";
+import { timeouts } from "#src/config";
 
-import { LocalNetwork } from "#tests/utils/network.js";
+import { LocalNetwork } from "#tests/utils/network";
 
 const HTTP_INTERFACE = "0.0.0.0";
 const PORT = 62348;
 
 describe("Security", () => {
-    /** @type {LocalNetwork} */
-    let network;
+    let network: LocalNetwork;
     beforeEach(async () => {
         network = new LocalNetwork();
         await network.start(HTTP_INTERFACE, PORT);
@@ -29,7 +28,7 @@ describe("Security", () => {
         const channel = Channel.records.get(channelUUID);
         network.makeJwt = () => "wrong-JWT";
         await expect(network.connect(channelUUID, 54)).rejects.toThrow();
-        expect(channel.sessions.size).toBe(0);
+        expect(channel!.sessions.size).toBe(0);
     });
     test("Websocket does timeout if the authentication process is not started", async () => {
         jest.spyOn(global, "setTimeout");
