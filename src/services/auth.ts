@@ -4,6 +4,7 @@ import * as config from "#src/config.ts";
 import { Logger } from "#src/utils/utils.ts";
 import { AuthenticationError } from "#src/utils/errors.ts";
 import type { SessionId } from "#src/models/session.ts";
+import type { StringLike } from "#src/shared/types.ts";
 
 /**
  * JsonWebToken (JOSE) header
@@ -124,7 +125,7 @@ function base64Decode(str: string): Buffer {
  */
 export function sign(
     claims: JWTClaims,
-    key: Buffer | string = jwtKey!,
+    key: StringLike = jwtKey!,
     options: SignOptions = {}
 ): string {
     const { algorithm = ALGORITHM.HS256 } = options;
@@ -180,7 +181,7 @@ function safeEqual(a: Buffer, b: Buffer): boolean {
 /**
  * @throws {AuthenticationError} If verification fails
  */
-export function verify(jsonWebToken: string, key: Buffer | string = jwtKey!): JWTClaims {
+export function verify(jsonWebToken: string, key: StringLike = jwtKey!): JWTClaims {
     if (!key) {
         throw new AuthenticationError("JWT verification key is not set");
     }

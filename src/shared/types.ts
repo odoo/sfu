@@ -8,6 +8,8 @@ export type JSONSerializable =
 
 export type StreamType = "audio" | "camera" | "screen";
 
+export type StringLike = Buffer | string;
+
 import type { DownloadStates } from "#src/client.ts";
 import type { SessionId, SessionInfo, TransportConfig } from "#src/models/session.ts";
 

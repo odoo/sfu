@@ -268,7 +268,7 @@ describe("Full network", () => {
         expect(closeEvent.code).toBe(SESSION_CLOSE_CODE.P_TIMEOUT);
     });
     test("A client can broadcast arbitrary messages to other clients on a channel that does not have webRTC", async () => {
-        const channelUUID = await network.getChannelUUID(false);
+        const channelUUID = await network.getChannelUUID({ useWebRtc: false });
         const user1 = await network.connect(channelUUID, 1);
         const user2 = await network.connect(channelUUID, 2);
         const sender = await network.connect(channelUUID, 3);

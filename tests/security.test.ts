@@ -38,4 +38,21 @@ describe("Security", () => {
         const [event] = await once(websocket, "close");
         expect(event).toBe(WS_CLOSE_CODE.TIMEOUT);
     });
+    test("cannot access a channel with the wrong key", async () => {
+        const channelUUID = await network.getChannelUUID({ key: "channel-specific-key" });
+        const channel = Channel.records.get(channelUUID);
+        // testing the default/global key
+        await expect(network.connect(channelUUID, 3)).rejects.toThrow();
+        expect(channel!.sessions.size).toBe(0);
+        // any arbitrary wrong key
+        await expect(network.connect(channelUUID, 3, { key: "wrong-key" })).rejects.toThrow();
+        expect(channel!.sessions.size).toBe(0);
+    });
+    test("can join a channel with its specific key", async () => {
+        const key = "channel-specific-key";
+        const channelUUID = await network.getChannelUUID({ key });
+        const channel = Channel.records.get(channelUUID);
+        await network.connect(channelUUID, 4, { key });
+        expect(channel!.sessions.size).toBe(1);
+    });
 });
