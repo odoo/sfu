@@ -10,6 +10,7 @@ import { SfuClient, SfuClientState } from "#src/client";
 import { Channel } from "#src/models/channel";
 import type { Session } from "#src/models/session";
 import type { JWTClaims } from "#src/services/auth";
+import { StringLike } from "#src/shared/types.ts";
 
 /**
  * HMAC key for JWT signing in tests
@@ -21,10 +22,11 @@ const HMAC_KEY = Buffer.from(HMAC_B64_KEY, "base64");
  * Creates a JWT token for testing
  *
  * @param data - Claims to include in the JWT
+ * @param [key] - Key to sign the JWT with
  * @returns Signed JWT string
  */
-export function makeJwt(data: JWTClaims): string {
-    return auth.sign(data, HMAC_KEY, { algorithm: auth.ALGORITHM.HS256 });
+export function makeJwt(data: JWTClaims, key: StringLike = HMAC_KEY): string {
+    return auth.sign(data, key, { algorithm: auth.ALGORITHM.HS256 });
 }
 
 /**
@@ -51,7 +53,7 @@ export class LocalNetwork {
     public port?: number;
 
     /** JWT creation function (can be overridden for testing) */
-    public makeJwt: (data: JWTClaims) => string = makeJwt;
+    public makeJwt: (data: JWTClaims, key?: StringLike) => string = makeJwt;
 
     /** Active SFU client instances */
     private readonly _sfuClients: SfuClient[] = [];
@@ -74,17 +76,19 @@ export class LocalNetwork {
 
     /**
      * Creates a new channel and returns its UUID
-     *
-     * @param useWebRtc - Whether to enable WebRTC for the channel
+     * @param [param0] - options
+     * @param [param0.useWebRtc=true] - Whether to enable WebRTC for the channel
+     * @param [param0.key=HMAC_B64_KEY] - Channel key
      * @returns Promise resolving to channel UUID
      */
-    async getChannelUUID(useWebRtc: boolean = true): Promise<string> {
+    async getChannelUUID({ useWebRtc = true, key = HMAC_B64_KEY } = {}): Promise<string> {
         if (!this.hostname || !this.port) {
             throw new Error("Network not started - call start() first");
         }
 
         const jwt = this.makeJwt({
-            iss: `http://${this.hostname}:${this.port}/`
+            iss: `http://${this.hostname}:${this.port}/`,
+            key
         });
 
         const response = await fetch(
@@ -110,10 +114,16 @@ export class LocalNetwork {
      *
      * @param channelUUID - Channel UUID to connect to
      * @param sessionId - Session identifier
+     * @param [param2]
+     * @param [param2.key=HMAC_B64_KEY] - Channel key
      * @returns Promise resolving to connection result
      * @throws {Error} If client is closed before authentication
      */
-    async connect(channelUUID: string, sessionId: number): Promise<ConnectionResult> {
+    async connect(
+        channelUUID: string,
+        sessionId: number,
+        { key = HMAC_KEY }: { key?: StringLike } = {}
+    ): Promise<ConnectionResult> {
         if (!this.hostname || !this.port) {
             throw new Error("Network not started - call start() first");
         }
@@ -122,16 +132,16 @@ export class LocalNetwork {
         const sfuClient = new SfuClient();
         this._sfuClients.push(sfuClient);
 
-        // Override device creation for testing environment
-        (sfuClient as any)._createDevice = (): Device => {
+        // @ts-expect-error private property
+        sfuClient._createDevice = (): Device => {
             // Mock device creation since we're in a server environment without real WebRTC
             return new Device({
                 handlerFactory: FakeHandler.createFactory(fakeParameters)
             });
         };
 
-        // Override WebSocket creation for Node.js environment
-        (sfuClient as any)._createWebSocket = (url: string): WebSocket => {
+        // @ts-expect-error private property
+        sfuClient._createWebSocket = (url: string): WebSocket => {
             // Replace browser WebSocket with Node.js ws package
             return new WebSocket(url);
         };
@@ -164,10 +174,13 @@ export class LocalNetwork {
         // Start connection
         sfuClient.connect(
             `ws://${this.hostname}:${this.port}`,
-            this.makeJwt({
-                sfu_channel_uuid: channelUUID,
-                session_id: sessionId
-            }),
+            this.makeJwt(
+                {
+                    sfu_channel_uuid: channelUUID,
+                    session_id: sessionId
+                },
+                key
+            ),
             { channelUUID }
         );
 
