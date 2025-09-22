@@ -12,6 +12,7 @@ import {
     type SessionId,
     type SessionInfo
 } from "#src/models/session.ts";
+import { Recorder } from "#src/models/recorder.ts";
 import { getWorker, type RtcWorker } from "#src/services/rtc.ts";
 
 const logger = new Logger("CHANNEL");
@@ -53,6 +54,7 @@ interface ChannelCreateOptions {
     key?: string;
     /** Whether to enable WebRTC functionality */
     useWebRtc?: boolean;
+    useRecording?: boolean;
 }
 interface JoinResult {
     /** The channel instance */
@@ -87,6 +89,8 @@ export class Channel extends EventEmitter {
     public readonly sessions = new Map<SessionId, Session>();
     /** mediasoup Worker handling this channel */
     private readonly _worker?: RtcWorker;
+    /** Manages the recording of this channel, undefined if the feature is disabled */
+    private recorder?: Recorder;
     /** Timeout for auto-closing empty channels */
     private _closeTimeout?: NodeJS.Timeout;
 
@@ -102,7 +106,7 @@ export class Channel extends EventEmitter {
         issuer: string,
         options: ChannelCreateOptions = {}
     ): Promise<Channel> {
-        const { key, useWebRtc = true } = options;
+        const { key, useWebRtc = true, useRecording = true } = options;
         const safeIssuer = `${remoteAddress}::${issuer}`;
         const oldChannel = Channel.recordsByIssuer.get(safeIssuer);
         if (oldChannel) {
@@ -112,7 +116,7 @@ export class Channel extends EventEmitter {
         const channelOptions: ChannelCreateOptions & {
             worker?: Worker;
             router?: Router;
-        } = { key };
+        } = { key, useRecording: useWebRtc && useRecording };
         if (useWebRtc) {
             channelOptions.worker = await getWorker();
             channelOptions.router = await channelOptions.worker.createRouter({
@@ -183,6 +187,8 @@ export class Channel extends EventEmitter {
         const now = new Date();
         this.createDate = now.toISOString();
         this.remoteAddress = remoteAddress;
+        this.recorder = config.recording.enabled && options.useRecording ? new Recorder(this) : undefined;
+        this.recorder?.todo();
         this.key = key ? Buffer.from(key, "base64") : undefined;
         this.uuid = crypto.randomUUID();
         this.name = `${remoteAddress}*${this.uuid.slice(-5)}`;

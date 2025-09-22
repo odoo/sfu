@@ -98,7 +98,8 @@ function setupRoutes(routeListener: RouteListener): void {
                 }
                 const channel = await Channel.create(remoteAddress, claims.iss, {
                     key: claims.key,
-                    useWebRtc: searchParams.get("webRTC") !== "false"
+                    useWebRtc: searchParams.get("webRTC") !== "false",
+                    useRecording: searchParams.get("recording") !== "false"
                 });
                 res.setHeader("Content-Type", "application/json");
                 res.statusCode = 200;

@@ -56,6 +56,9 @@ export enum SESSION_CLOSE_CODE {
     KICKED = "kicked",
     ERROR = "error"
 }
+export interface SessionPermissions {
+    recording?: boolean;
+}
 export interface TransportConfig {
     /** Transport identifier */
     id: string;
@@ -134,6 +137,9 @@ export class Session extends EventEmitter {
         audio: null,
         camera: null,
         screen: null
+    };
+    public permissions: SessionPermissions = {
+        recording: false
     };
     /** Parent channel containing this session */
     private readonly _channel: Channel;
