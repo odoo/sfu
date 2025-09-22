@@ -65,6 +65,11 @@ export const HTTP_INTERFACE: string = process.env.HTTP_INTERFACE || "0.0.0.0";
 export const PORT: number = Number(process.env.PORT) || 8070;
 
 /**
+ * Whether the recording feature is enabled, true by default.
+ */
+export const RECORDING: boolean = !FALSY_INPUT.has(process.env.LOG_TIMESTAMP!);
+
+/**
  * The number of workers to spawn (up to core limits) to manage RTC servers.
  * 0 < NUM_WORKERS <= os.availableParallelism()
  */
@@ -196,6 +201,25 @@ export const timeouts: TimeoutConfig = Object.freeze({
     // how long to wait to gather messages before sending through the bus
     busBatch: process.env.JEST_WORKER_ID ? 10 : 300
 });
+
+export const recording = Object.freeze({
+    directory: os.tmpdir() + "/recordings",
+    enabled: RECORDING,
+    maxDuration: 1000 * 60 * 60, // 1 hour, could be a env-var.
+    fileTTL: 1000 * 60 * 60 * 24, // 24 hours
+    fileType: "mp4",
+    videoCodec: "libx264",
+    audioCodec: "aac",
+    audioLimit: 20,
+    cameraLimit: 4, // how many camera can be merged into one recording
+    screenLimit: 1,
+});
+
+export const dynamicPorts = Object.freeze({
+    min: 50000,
+    max: 59999,
+});
+
 
 // how many errors can occur before the session is closed, recovery attempts will be made until this limit is reached
 export const maxSessionErrors: number = 6;
