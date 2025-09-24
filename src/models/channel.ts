@@ -84,12 +84,12 @@ export class Channel extends EventEmitter {
     public readonly key?: Buffer;
     /** mediasoup Router for media routing */
     public readonly router?: Router;
+    /** Manages the recording of this channel, undefined if the feature is disabled */
+    public readonly recorder?: Recorder;
     /** Active sessions in this channel */
     public readonly sessions = new Map<SessionId, Session>();
     /** mediasoup Worker handling this channel */
     private readonly _worker?: RtcWorker;
-    /** Manages the recording of this channel, undefined if the feature is disabled */
-    private recorder?: Recorder;
     /** Timeout for auto-closing empty channels */
     private _closeTimeout?: NodeJS.Timeout;
 

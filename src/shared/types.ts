@@ -10,6 +10,11 @@ export type StreamType = "audio" | "camera" | "screen";
 
 export type StringLike = Buffer | string;
 
+export type AvailableFeatures = {
+    "rtc": boolean,
+    "recording": boolean,
+}
+
 import type { DownloadStates } from "#src/client.ts";
 import type { SessionId, SessionInfo, TransportConfig } from "#src/models/session.ts";
 

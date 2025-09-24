@@ -18,7 +18,7 @@ import {
     SERVER_REQUEST,
     WS_CLOSE_CODE
 } from "#src/shared/enums.ts";
-import type { JSONSerializable, StreamType, BusMessage } from "#src/shared/types";
+import type { JSONSerializable, StreamType, BusMessage, AvailableFeatures } from "#src/shared/types";
 import type { TransportConfig, SessionId, SessionInfo } from "#src/models/session";
 
 interface Consumers {
@@ -141,6 +141,10 @@ const ACTIVE_STATES = new Set<SfuClientState>([
 export class SfuClient extends EventTarget {
     /** Connection errors encountered */
     public errors: Error[] = [];
+    public availableFeatures: AvailableFeatures = {
+        "rtc": false,
+        "recording": false,
+    };
     /** Current client state */
     private _state: SfuClientState = SfuClientState.DISCONNECTED;
     /** Communication bus */
@@ -445,7 +449,8 @@ export class SfuClient extends EventTarget {
              */
             webSocket.addEventListener(
                 "message",
-                () => {
+                (message) => {
+                    this.availableFeatures = JSON.parse(message.data) as AvailableFeatures;
                     resolve(new Bus(webSocket));
                 },
                 { once: true }

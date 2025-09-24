@@ -43,7 +43,7 @@ interface PrivateJWTClaims {
     sfu_channel_uuid?: string;
     session_id?: SessionId;
     ice_servers?: object[];
-    permissions: SessionPermissions,
+    permissions?: SessionPermissions,
     sessionIdsByChannel?: Record<string, SessionId[]>;
     /** If provided when requesting a channel, this key will be used instead of the global key to verify JWTs related to this channel */
     key?: string;
