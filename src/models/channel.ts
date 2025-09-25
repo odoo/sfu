@@ -10,7 +10,6 @@ import {
     Session,
     SESSION_CLOSE_CODE,
     type SessionId,
-    type SessionInfo
 } from "#src/models/session.ts";
 import { getWorker, type RtcWorker } from "#src/services/rtc.ts";
 
@@ -201,14 +200,6 @@ export class Channel extends EventEmitter {
             sessionsStats: await this.getSessionsStats(),
             webRtcEnabled: Boolean(this._worker)
         };
-    }
-
-    get sessionsInfo(): Record<SessionId, SessionInfo> {
-        const sessionsInfo: Record<SessionId, SessionInfo> = {};
-        for (const session of this.sessions.values()) {
-            sessionsInfo[session.id] = session.info;
-        }
-        return sessionsInfo;
     }
 
     get webRtcServer(): WebRtcServer | undefined {

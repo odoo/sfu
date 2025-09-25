@@ -573,11 +573,19 @@ export class Session extends EventEmitter {
                         this.info[key as keyof SessionInfo] = Boolean(value);
                     }
                 }
-                if (needRefresh) {
+                const sessions = this._channel.sessions;
+                if (needRefresh && sessions.size > 1) {
+                    const payload: Record<SessionId, SessionInfo> = {};
+                    for (const session of this._channel.sessions.values()) {
+                        if (session.id === this.id) {
+                            continue;
+                        }
+                        payload[session.id] = session.info;
+                    }
                     this.bus!.send(
                         {
                             name: SERVER_MESSAGE.INFO_CHANGE,
-                            payload: this._channel.sessionsInfo
+                            payload,
                         },
                         { batch: true }
                     );
