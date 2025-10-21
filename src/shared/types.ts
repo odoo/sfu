@@ -54,6 +54,8 @@ export type BusMessage =
           name: typeof CLIENT_REQUEST.INIT_PRODUCER;
           payload: { type: StreamType; kind: MediaKind; rtpParameters: RtpParameters };
       }
+    | { name: typeof CLIENT_REQUEST.START_RECORDING; payload?: never }
+    | { name: typeof CLIENT_REQUEST.STOP_RECORDING; payload?: never }
     | {
           name: typeof SERVER_MESSAGE.BROADCAST;
           payload: { senderId: SessionId; message: JSONSerializable };

@@ -33,7 +33,11 @@ export enum CLIENT_REQUEST {
     /** Requests the server to connect the server-to-client transport */
     CONNECT_STC_TRANSPORT = "CONNECT_STC_TRANSPORT",
     /** Requests the creation of a consumer that is used to upload a track to the server */
-    INIT_PRODUCER = "INIT_PRODUCER"
+    INIT_PRODUCER = "INIT_PRODUCER",
+    /** Requests to start recording of the call */
+    START_RECORDING = "START_RECORDING",
+    /** Requests to stop recording of the call */
+    STOP_RECORDING = "STOP_RECORDING"
 }
 
 export enum CLIENT_MESSAGE {
