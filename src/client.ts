@@ -260,6 +260,23 @@ export class SfuClient extends EventTarget {
         await Promise.all(proms);
         return stats;
     }
+    async startRecording() {
+        return this._bus?.request(
+            {
+                name: CLIENT_REQUEST.START_RECORDING,
+            },
+            { batch: true }
+        );
+    }
+
+    async stopRecording() {
+        return this._bus?.request(
+            {
+                name: CLIENT_REQUEST.STOP_RECORDING,
+            },
+            { batch: true }
+        );
+    }
 
     /**
      * Updates the server with the info of the session (isTalking, isCameraOn,...) so that it can broadcast it to the

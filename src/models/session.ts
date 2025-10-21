@@ -110,6 +110,7 @@ const logger = new Logger("SESSION");
  *
  * @fires Session#stateChange - Emitted when session state changes
  * @fires Session#close - Emitted when session is closed
+ * @fires Session#producer - Emitted when a new producer is created
  */
 export class Session extends EventEmitter {
     /** Communication bus for WebSocket messaging */
@@ -138,9 +139,9 @@ export class Session extends EventEmitter {
         camera: null,
         screen: null
     };
-    public permissions: SessionPermissions = {
+    public readonly permissions: SessionPermissions = Object.seal({
         recording: false
-    };
+    });
     /** Parent channel containing this session */
     private readonly _channel: Channel;
     /** Recovery timeouts for failed consumers */
@@ -184,7 +185,24 @@ export class Session extends EventEmitter {
 
     set state(state: SESSION_STATE) {
         this._state = state;
+        /**
+         * @event Session#stateChange
+         * @type {{ state: SESSION_STATE }}
+         */
         this.emit("stateChange", state);
+    }
+
+    updatePermissions(permissions: SessionPermissions | undefined): void {
+        if (!permissions) {
+            return;
+        }
+        for (const key of Object.keys(this.permissions) as (keyof SessionPermissions)[]) {
+            const newVal = permissions[key];
+            if (newVal === undefined) {
+                continue;
+            }
+            this.permissions[key] = Boolean(permissions[key]);
+        }
     }
 
     async getProducerBitRates(): Promise<ProducerBitRates> {
@@ -651,7 +669,24 @@ export class Session extends EventEmitter {
                 logger.debug(`[${this.name}] producing ${type}: ${codec?.mimeType}`);
                 this._updateRemoteConsumers();
                 this._broadcastInfo();
+                /**
+                 * @event Session#producer
+                 * @type {{ type: StreamType, producer: Producer }}
+                 */
+                this.emit("producer", { type, producer });
                 return { id: producer.id };
+            }
+            case CLIENT_REQUEST.START_RECORDING: {
+                if (this.permissions.recording && this._channel.recorder) {
+                    return this._channel.recorder.start();
+                }
+                return;
+            }
+            case CLIENT_REQUEST.STOP_RECORDING: {
+                if (this.permissions.recording && this._channel.recorder) {
+                    return this._channel.recorder.stop();
+                }
+                return;
             }
             default:
                 logger.warn(`[${this.name}] Unknown request type: ${name}`);

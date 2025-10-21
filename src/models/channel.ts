@@ -187,7 +187,6 @@ export class Channel extends EventEmitter {
         this.createDate = now.toISOString();
         this.remoteAddress = remoteAddress;
         this.recorder = config.recording.enabled && options.useRecording ? new Recorder(this) : undefined;
-        this.recorder?.todo();
         this.key = key ? Buffer.from(key, "base64") : undefined;
         this.uuid = crypto.randomUUID();
         this.name = `${remoteAddress}*${this.uuid.slice(-5)}`;

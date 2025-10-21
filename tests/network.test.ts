@@ -289,4 +289,16 @@ describe("Full network", () => {
         expect(event1.detail.payload.message).toBe(message);
         expect(event2.detail.payload.message).toBe(message);
     });
+    test("POC RECORDING", async () => {
+        const channelUUID = await network.getChannelUUID();
+        const user1 = await network.connect(channelUUID, 1);
+        await once(user1.session, "stateChange");
+        const sender = await network.connect(channelUUID, 3);
+        await once(sender.session, "stateChange");
+        sender.session.updatePermissions({ recording: true });
+        const startResult = await sender.sfuClient.startRecording() as { state: string };
+        expect(startResult.state).toBe("started");
+        const stopResult = await sender.sfuClient.stopRecording()  as { state: string };
+        expect(stopResult.state).toBe("stopped");
+    });
 });

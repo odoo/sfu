@@ -67,7 +67,7 @@ export const PORT: number = Number(process.env.PORT) || 8070;
 /**
  * Whether the recording feature is enabled, true by default.
  */
-export const RECORDING: boolean = !FALSY_INPUT.has(process.env.LOG_TIMESTAMP!);
+export const RECORDING: boolean = !FALSY_INPUT.has(process.env.RECORDING!);
 
 /**
  * The number of workers to spawn (up to core limits) to manage RTC servers.
