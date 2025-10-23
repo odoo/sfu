@@ -53,7 +53,7 @@ interface ChannelCreateOptions {
     key?: string;
     /** Whether to enable WebRTC functionality */
     useWebRtc?: boolean;
-    useRecording?: boolean;
+    recordingAddress?: string | null;
 }
 interface JoinResult {
     /** The channel instance */
@@ -105,7 +105,7 @@ export class Channel extends EventEmitter {
         issuer: string,
         options: ChannelCreateOptions = {}
     ): Promise<Channel> {
-        const { key, useWebRtc = true, useRecording = true } = options;
+        const { key, useWebRtc = true, recordingAddress } = options;
         const safeIssuer = `${remoteAddress}::${issuer}`;
         const oldChannel = Channel.recordsByIssuer.get(safeIssuer);
         if (oldChannel) {
@@ -115,7 +115,7 @@ export class Channel extends EventEmitter {
         const channelOptions: ChannelCreateOptions & {
             worker?: Worker;
             router?: Router;
-        } = { key, useRecording: useWebRtc && useRecording };
+        } = { key, recordingAddress: useWebRtc ? recordingAddress : null };
         if (useWebRtc) {
             channelOptions.worker = await getWorker();
             channelOptions.router = await channelOptions.worker.createRouter({
@@ -186,7 +186,7 @@ export class Channel extends EventEmitter {
         const now = new Date();
         this.createDate = now.toISOString();
         this.remoteAddress = remoteAddress;
-        this.recorder = config.recording.enabled && options.useRecording ? new Recorder(this) : undefined;
+        this.recorder = config.recording.enabled && options.recordingAddress ? new Recorder(this, options.recordingAddress) : undefined;
         this.key = key ? Buffer.from(key, "base64") : undefined;
         this.uuid = crypto.randomUUID();
         this.name = `${remoteAddress}*${this.uuid.slice(-5)}`;
@@ -291,6 +291,7 @@ export class Channel extends EventEmitter {
      * @fires Channel#close
      */
     close(): void {
+        this.recorder?.stop();
         for (const session of this.sessions.values()) {
             session.off("close", this._onSessionClose);
             session.close({ code: SESSION_CLOSE_CODE.CHANNEL_CLOSED });

@@ -8,10 +8,13 @@ export class Recorder extends EventEmitter {
     channel: Channel;
     state: "started" | "stopped" = "stopped";
     ffmpeg = null;
+    /** Path to which the final recording will be uploaded to */
+    recordingAddress: string;
 
-    constructor(channel: Channel) {
+    constructor(channel: Channel, recordingAddress: string) {
         super();
         this.channel = channel;
+        this.recordingAddress = recordingAddress;
     }
 
     async start() {
