@@ -5,7 +5,7 @@ import * as fakeParameters from "mediasoup-client/lib/test/fakeParameters";
 
 import * as auth from "#src/services/auth";
 import * as http from "#src/services/http";
-import * as rtc from "#src/services/rtc";
+import * as resources from "#src/services/resources";
 import { SfuClient, SfuClientState } from "#src/client";
 import { Channel } from "#src/models/channel";
 import type { Session } from "#src/models/session";
@@ -69,7 +69,7 @@ export class LocalNetwork {
         this.port = port;
 
         // Start all services in correct order
-        await rtc.start();
+        await resources.start();
         await http.start({ httpInterface: hostname, port });
         await auth.start(HMAC_B64_KEY);
     }
@@ -217,7 +217,7 @@ export class LocalNetwork {
         // Stop all services
         auth.close();
         http.close();
-        rtc.close();
+        resources.close();
 
         // Clear network info
         this.hostname = undefined;

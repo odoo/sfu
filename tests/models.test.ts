@@ -1,17 +1,17 @@
 import { describe, beforeEach, afterEach, expect, jest } from "@jest/globals";
 
-import * as rtc from "#src/services/rtc";
+import * as resources from "#src/services/resources";
 import { Channel } from "#src/models/channel";
 import { timeouts, CHANNEL_SIZE } from "#src/config";
 import { OvercrowdedError } from "#src/utils/errors";
 
 describe("Models", () => {
     beforeEach(async () => {
-        await rtc.start();
+        await resources.start();
     });
     afterEach(() => {
         Channel.closeAll();
-        rtc.close();
+        resources.close();
     });
     test("Create channel and session", async () => {
         const channel = await Channel.create("testRemote", "testIssuer");
