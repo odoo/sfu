@@ -79,6 +79,29 @@ function setupRoutes(routeListener: RouteListener): void {
             return res.end(JSON.stringify(channelStats));
         }
     });
+    /**
+     * GET /v1/channel
+     *
+     * Creates (or reuses) a media channel for the authenticated client.
+     *
+     * ### Headers
+     * - `Authorization: Bearer <JWT>` — required.
+     *   The JWT must include the `iss` (issuer) claim identifying the caller.
+     *
+     * ### Query Parameters
+     * - `webRTC` — optional, defaults to `"true"`.
+     *   When set to `"false"`, disables WebRTC setup and creates a non-media channel.
+     * - `recordingAddress` — optional.
+     *   If provided, enables recording and specifies the destination address
+     *   for recorded media streams. This address should most likely include a secret token,
+     *   so that it can be used publicly. For example http://example.com/recording/123?token=asdasdasdasd
+     *
+     * ### Responses
+     * - `200 OK` — returns `{ uuid: string, url: string }`
+     * - `401 Unauthorized` — missing or invalid Authorization header
+     * - `403 Forbidden` — missing `iss` claim
+     * - `500 Internal Server Error` — failed to create the channel
+     */
     routeListener.get(`/v${API_VERSION}/channel`, {
         callback: async (req, res, { host, protocol, remoteAddress, searchParams }) => {
             try {
@@ -99,7 +122,7 @@ function setupRoutes(routeListener: RouteListener): void {
                 const channel = await Channel.create(remoteAddress, claims.iss, {
                     key: claims.key,
                     useWebRtc: searchParams.get("webRTC") !== "false",
-                    useRecording: searchParams.get("recording") !== "false"
+                    recordingAddress: searchParams.get("recordingAddress")
                 });
                 res.setHeader("Content-Type", "application/json");
                 res.statusCode = 200;
