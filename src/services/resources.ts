@@ -10,7 +10,7 @@ export interface RtcWorker extends mediasoup.types.Worker {
     };
 }
 
-const logger = new Logger("RTC");
+const logger = new Logger("RESOURCES");
 const workers = new Set<RtcWorker>();
 
 export async function start(): Promise<void> {
@@ -75,4 +75,21 @@ export async function getWorker(): Promise<mediasoup.types.Worker> {
     }
     logger.debug(`worker ${leastUsedWorker!.pid} with ${lowestUsage} ru_maxrss was selected`);
     return leastUsedWorker;
+}
+
+export function getFolder() {
+    // create a temp folder at a path, returns the path and a function to seal the folder
+    return {
+        path: "",
+        sealFolder: () => {
+            // move the content into a permanent folder location so it can easily be retrieved for processing later
+            // or directly forward for transcription
+        },
+    }
+}
+
+export function getPort() {
+}
+
+export function releasePort(port: number) {
 }

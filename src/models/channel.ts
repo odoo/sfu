@@ -12,7 +12,7 @@ import {
     type SessionId,
 } from "#src/models/session.ts";
 import { Recorder } from "#src/models/recorder.ts";
-import { getWorker, type RtcWorker } from "#src/services/rtc.ts";
+import { getWorker, type RtcWorker } from "#src/services/resources.ts";
 
 const logger = new Logger("CHANNEL");
 
