@@ -65,9 +65,9 @@ export const HTTP_INTERFACE: string = process.env.HTTP_INTERFACE || "0.0.0.0";
 export const PORT: number = Number(process.env.PORT) || 8070;
 
 /**
- * Whether the recording feature is enabled, true by default.
+ * Whether the recording feature is enabled, false by default.
  */
-export const RECORDING: boolean = !FALSY_INPUT.has(process.env.RECORDING!);
+export const RECORDING: boolean = Boolean(process.env.RECORDING);
 
 /**
  * The number of workers to spawn (up to core limits) to manage RTC servers.
@@ -215,6 +215,7 @@ export const recording = Object.freeze({
     screenLimit: 1,
 });
 
+// TODO: This should probably be env variable, and at least documented so that deployment can open these ports.
 export const dynamicPorts = Object.freeze({
     min: 50000,
     max: 59999,
