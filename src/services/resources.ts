@@ -3,6 +3,10 @@ import type { WebRtcServerOptions } from "mediasoup/node/lib/types";
 
 import * as config from "#src/config.ts";
 import { Logger } from "#src/utils/utils.ts";
+import { PortLimitReachedError } from "#src/utils/errors.ts";
+import os from "node:os";
+
+const availablePorts: Set<number> = new Set();
 
 export interface RtcWorker extends mediasoup.types.Worker {
     appData: {
@@ -12,6 +16,7 @@ export interface RtcWorker extends mediasoup.types.Worker {
 
 const logger = new Logger("RESOURCES");
 const workers = new Set<RtcWorker>();
+const tempDir = os.tmpdir() + "/ongoing_recordings";
 
 export async function start(): Promise<void> {
     logger.info("starting...");
@@ -22,6 +27,10 @@ export async function start(): Promise<void> {
     logger.info(
         `transport(RTC) layer at ${config.PUBLIC_IP}:${config.RTC_MIN_PORT}-${config.RTC_MAX_PORT}`
     );
+    for (let i = config.dynamicPorts.min; i <= config.dynamicPorts.max; i++) {
+        availablePorts.add(i);
+    }
+    logger.info(`${availablePorts.size} dynamic ports available [${config.dynamicPorts.min}-${config.dynamicPorts.max}]`);
 }
 
 export function close(): void {
@@ -78,18 +87,26 @@ export async function getWorker(): Promise<mediasoup.types.Worker> {
 }
 
 export function getFolder() {
-    // create a temp folder at a path, returns the path and a function to seal the folder
+    const tempName = `${Date.now()}`;
+    const path = `${tempDir}/${tempName}`;
+    // TODO we may want to track these temp folders to remove them periodically (although os.tempDir() has already such a mechanism)
     return {
-        path: "",
-        sealFolder: () => {
-            // move the content into a permanent folder location so it can easily be retrieved for processing later
-            // or directly forward for transcription
+        path,
+        sealFolder: (name: string = tempName) => {
+            // TODO move whatever is in path to
+            console.log(`${config.recording.directory}/${name}`);
         },
     }
 }
 
-export function getPort() {
+export function getPort(): number {
+    const port = availablePorts.values().next().value;
+    if (!port) {
+        throw new PortLimitReachedError();
+    }
+    return port;
 }
 
 export function releasePort(port: number) {
+    availablePorts.add(port);
 }
