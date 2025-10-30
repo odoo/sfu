@@ -25,9 +25,11 @@ export class Recorder extends EventEmitter {
 
     async start() {
         if (this.state === RECORDER_STATE.STOPPED) {
-            const { path, sealFolder }  = getFolder();
-            this.destPath = path;
-            this.once("stopped", sealFolder);
+            const folder  = getFolder();
+            this.destPath = folder.path;
+            this.once("stopped", ({ name }) => {
+                folder.seal(name);
+            });
             this.state = RECORDER_STATE.STARTED;
              logger.trace("TO IMPLEMENT");
              // TODO ffmpeg instance creation for recording to destPath with proper name, start, build timestamps object
@@ -39,7 +41,7 @@ export class Recorder extends EventEmitter {
     async stop() {
         if (this.state === RECORDER_STATE.STARTED) {
             logger.trace("TO IMPLEMENT");
-            this.emit("stopped");
+            this.emit("stopped", { name: "test" });
             // TODO ffmpeg instance stop, cleanup,
             // only resolve promise and switch state when completely ready to start a new recording.
             this.state = RECORDER_STATE.STOPPED;

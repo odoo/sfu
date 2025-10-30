@@ -7,12 +7,15 @@ import { PortLimitReachedError } from "#src/utils/errors.ts";
 import os from "node:os";
 
 const availablePorts: Set<number> = new Set();
+let unique = 1;
 
 export interface RtcWorker extends mediasoup.types.Worker {
     appData: {
         webRtcServer?: mediasoup.types.WebRtcServer;
     };
 }
+
+// TODO maybe write some docstring, file used to manage resources such as folders, workers, ports
 
 const logger = new Logger("RESOURCES");
 const workers = new Set<RtcWorker>();
@@ -86,27 +89,39 @@ export async function getWorker(): Promise<mediasoup.types.Worker> {
     return leastUsedWorker;
 }
 
-export function getFolder() {
-    const tempName = `${Date.now()}`;
-    const path = `${tempDir}/${tempName}`;
-    // TODO we may want to track these temp folders to remove them periodically (although os.tempDir() has already such a mechanism)
-    return {
-        path,
-        sealFolder: (name: string = tempName) => {
-            // TODO move whatever is in path to
-            console.log(`${config.recording.directory}/${name}`);
-        },
+class Folder {
+    path: string;
+
+    constructor(path: string) {
+        this.path = path;
+    }
+
+    seal(name: string) {
+        console.trace(`TO IMPLEMENT, MOVING TO ${config.recording.directory}/${name}`);
     }
 }
 
-export function getPort(): number {
-    const port = availablePorts.values().next().value;
-    if (!port) {
+export function getFolder(): Folder {
+    return new Folder(`${tempDir}/${Date.now()}-${unique++}`);
+}
+
+class DynamicPort {
+    number: number;
+
+    constructor(number: number) {
+        availablePorts.delete(number);
+        this.number = number;
+    }
+
+    release() {
+        availablePorts.add(this.number);
+    }
+}
+
+export function getPort(): DynamicPort {
+    const number = availablePorts.values().next().value;
+    if (!number) {
         throw new PortLimitReachedError();
     }
-    return port;
-}
-
-export function releasePort(port: number) {
-    availablePorts.add(port);
+    return new DynamicPort(number);
 }
