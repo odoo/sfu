@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import type { Channel } from "./channel";
 import { getFolder } from "#src/services/resources.ts";
+import type { Folder } from "#src/services/resources.ts";
 import { Logger } from "#src/utils/utils.ts";
 
 export enum RECORDER_STATE {
@@ -12,8 +13,8 @@ const logger = new Logger("RECORDER");
 export class Recorder extends EventEmitter {
     channel: Channel;
     state: RECORDER_STATE = RECORDER_STATE.STOPPED;
+    folder: Folder | undefined;
     ffmpeg = null;
-    destPath: string | undefined;
     /** Path to which the final recording will be uploaded to */
     recordingAddress: string;
 
@@ -25,14 +26,10 @@ export class Recorder extends EventEmitter {
 
     async start() {
         if (this.state === RECORDER_STATE.STOPPED) {
-            const folder  = getFolder();
-            this.destPath = folder.path;
-            this.once("stopped", ({ name }) => {
-                folder.seal(name);
-            });
+            this.folder  = getFolder();
             this.state = RECORDER_STATE.STARTED;
              logger.trace("TO IMPLEMENT");
-             // TODO ffmpeg instance creation for recording to destPath with proper name, start, build timestamps object
+             // TODO ffmpeg instance creation for recording to folder.path with proper name, start, build timestamps object
         }
         this._record();
         return { state: this.state };
@@ -41,7 +38,8 @@ export class Recorder extends EventEmitter {
     async stop() {
         if (this.state === RECORDER_STATE.STARTED) {
             logger.trace("TO IMPLEMENT");
-            this.emit("stopped", { name: "test" });
+            await this.folder!.seal("test-name");
+            this.folder = undefined;
             // TODO ffmpeg instance stop, cleanup,
             // only resolve promise and switch state when completely ready to start a new recording.
             this.state = RECORDER_STATE.STOPPED;

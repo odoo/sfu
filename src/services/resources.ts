@@ -5,6 +5,8 @@ import * as config from "#src/config.ts";
 import { Logger } from "#src/utils/utils.ts";
 import { PortLimitReachedError } from "#src/utils/errors.ts";
 import os from "node:os";
+import fs from "node:fs/promises";
+import path from "node:path";
 
 const availablePorts: Set<number> = new Set();
 let unique = 1;
@@ -89,15 +91,18 @@ export async function getWorker(): Promise<mediasoup.types.Worker> {
     return leastUsedWorker;
 }
 
-class Folder {
+export class Folder {
     path: string;
 
     constructor(path: string) {
         this.path = path;
     }
 
-    seal(name: string) {
-        console.trace(`TO IMPLEMENT, MOVING TO ${config.recording.directory}/${name}`);
+    async seal(name: string) {
+        const destinationPath = path.join(config.recording.directory, name);
+        await fs.rename(this.path, destinationPath);
+        this.path = destinationPath;
+        logger.verbose(`Moved folder from ${this.path} to ${destinationPath}`);
     }
 }
 

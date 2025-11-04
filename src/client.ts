@@ -261,6 +261,9 @@ export class SfuClient extends EventTarget {
         return stats;
     }
     async startRecording() {
+        if (this.state !== SfuClientState.CONNECTED) {
+            throw new Error("InvalidState");
+        }
         return this._bus?.request(
             {
                 name: CLIENT_REQUEST.START_RECORDING,
@@ -270,6 +273,9 @@ export class SfuClient extends EventTarget {
     }
 
     async stopRecording() {
+        if (this.state !== SfuClientState.CONNECTED) {
+            throw new Error("InvalidState");
+        }
         return this._bus?.request(
             {
                 name: CLIENT_REQUEST.STOP_RECORDING,
