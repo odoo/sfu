@@ -1,14 +1,14 @@
 import { EventEmitter } from "node:events";
 
 import type {
-    IceParameters,
-    IceCandidate,
-    DtlsParameters,
-    SctpParameters,
     Consumer,
+    DtlsParameters,
+    IceCandidate,
+    IceParameters,
     Producer,
-    WebRtcTransport,
-    RtpCapabilities
+    RtpCapabilities,
+    SctpParameters,
+    WebRtcTransport
 } from "mediasoup/node/lib/types";
 
 import * as config from "#src/config.ts";
@@ -20,9 +20,10 @@ import {
     SERVER_REQUEST,
     STREAM_TYPE
 } from "#src/shared/enums.ts";
-import type {JSONSerializable, StreamType, BusMessage, AvailableFeatures } from "#src/shared/types";
+import type { BusMessage, JSONSerializable, StartupData, StreamType } from "#src/shared/types";
 import type { Bus } from "#src/shared/bus.ts";
 import type { Channel } from "#src/models/channel.ts";
+import { RECORDER_STATE } from "#src/models/recorder.ts";
 
 export type SessionId = number | string;
 export type SessionInfo = {
@@ -168,11 +169,16 @@ export class Session extends EventEmitter {
         this.setMaxListeners(config.CHANNEL_SIZE * 2);
     }
 
-    get availableFeatures(): AvailableFeatures {
+    get startupData(): StartupData {
         return {
-            "rtc": Boolean(this._channel.router),
-            "recording": Boolean(this._channel.router && this._channel.recorder && this.permissions.recording)
-        }
+            availableFeatures: {
+                rtc: Boolean(this._channel.router),
+                recording: Boolean(
+                    this._channel.router && this._channel.recorder && this.permissions.recording
+                )
+            },
+            isRecording: this._channel.recorder?.state === RECORDER_STATE.STARTED
+        };
     }
 
     get name(): string {

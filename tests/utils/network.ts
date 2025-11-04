@@ -35,6 +35,7 @@ interface ConnectionResult {
     session: Session;
     /** Client-side SFU client instance */
     sfuClient: SfuClient;
+    isConnected: Promise<boolean>;
 }
 
 /**
@@ -69,7 +70,7 @@ export class LocalNetwork {
         // Start all services in correct order
         await resources.start();
         await http.start({ httpInterface: hostname, port });
-        await auth.start(HMAC_B64_KEY);
+        auth.start(HMAC_B64_KEY);
     }
 
     /**
@@ -88,9 +89,9 @@ export class LocalNetwork {
             iss: `http://${this.hostname}:${this.port}/`,
             key
         });
-
+        const TEST_RECORDING_ADDRESS = "http://localhost:8080"; // TODO maybe to change and use that later
         const response = await fetch(
-            `http://${this.hostname}:${this.port}/v${http.API_VERSION}/channel?webRTC=${useWebRtc}`,
+            `http://${this.hostname}:${this.port}/v${http.API_VERSION}/channel?webRTC=${useWebRtc}&recordingAddress=${TEST_RECORDING_ADDRESS}`,
             {
                 method: "GET",
                 headers: {
@@ -165,8 +166,18 @@ export class LocalNetwork {
                         break;
                 }
             };
-
             sfuClient.addEventListener("stateChange", handleStateChange as EventListener);
+        });
+
+        const isConnected = new Promise<boolean>((resolve, reject) => {
+            const connectedHandler = (event: CustomEvent) => {
+                const { state } = event.detail;
+                if (state === SfuClientState.CONNECTED) {
+                    sfuClient.removeEventListener("stateChange", connectedHandler as EventListener);
+                    resolve(true);
+                }
+            };
+            sfuClient.addEventListener("stateChange", connectedHandler as EventListener);
         });
 
         // Start connection
@@ -175,7 +186,10 @@ export class LocalNetwork {
             this.makeJwt(
                 {
                     sfu_channel_uuid: channelUUID,
-                    session_id: sessionId
+                    session_id: sessionId,
+                    permissions: {
+                        recording: true
+                    }
                 },
                 key
             ),
@@ -196,7 +210,7 @@ export class LocalNetwork {
             throw new Error(`Session ${sessionId} not found in channel ${channelUUID}`);
         }
 
-        return { session, sfuClient };
+        return { session, sfuClient, isConnected };
     }
 
     /**

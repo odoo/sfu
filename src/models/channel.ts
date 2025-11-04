@@ -13,6 +13,7 @@ import {
 } from "#src/models/session.ts";
 import { Recorder } from "#src/models/recorder.ts";
 import { getWorker, type RtcWorker } from "#src/services/resources.ts";
+import { SERVER_MESSAGE } from "#src/shared/enums.ts";
 
 const logger = new Logger("CHANNEL");
 
@@ -186,7 +187,11 @@ export class Channel extends EventEmitter {
         const now = new Date();
         this.createDate = now.toISOString();
         this.remoteAddress = remoteAddress;
-        this.recorder = config.recording.enabled && options.recordingAddress ? new Recorder(this, options.recordingAddress) : undefined;
+        this.recorder =
+            config.recording.enabled && options.recordingAddress
+                ? new Recorder(this, options.recordingAddress)
+                : undefined;
+        this.recorder?.on("stateChange", () => this._broadcastState());
         this.key = key ? Buffer.from(key, "base64") : undefined;
         this.uuid = crypto.randomUUID();
         this.name = `${remoteAddress}*${this.uuid.slice(-5)}`;
@@ -304,6 +309,28 @@ export class Channel extends EventEmitter {
          * @type {string} channelId - UUID of the closed channel
          */
         this.emit("close", this.uuid);
+    }
+
+    /**
+     * Broadcast the state of this channel to all its participants
+     */
+    private _broadcastState() {
+        for (const session of this.sessions.values()) {
+            // TODO maybe the following should be on session and some can be made in common with the startupData getter.
+            if (!session.bus) {
+                logger.warn(`tried to broadcast state to session ${session.id}, but had no Bus`);
+                continue;
+            }
+            session.bus.send(
+                {
+                    name: SERVER_MESSAGE.CHANNEL_INFO_CHANGE,
+                    payload: {
+                        isRecording: Boolean(this.recorder?.isRecording)
+                    }
+                },
+                { batch: true }
+            );
+        }
     }
 
     /**

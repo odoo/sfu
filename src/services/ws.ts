@@ -131,7 +131,7 @@ function connect(webSocket: WebSocket, credentials: Credentials): Session {
     const bus = new Bus(webSocket, { batchDelay: config.timeouts.busBatch });
     const { session } = Channel.join(channel.uuid, session_id);
     session.updatePermissions(permissions);
-    webSocket.send(JSON.stringify(session.availableFeatures)); // client can start using ws after this message.
+    webSocket.send(JSON.stringify(session.startupData)); // client can start using ws after this message.
     session.once("close", ({ code }: { code: string }) => {
         let wsCloseCode = WS_CLOSE_CODE.CLEAN;
         switch (code) {

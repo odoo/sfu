@@ -146,11 +146,9 @@ describe("Full network", () => {
     test("A client can forward a track to other clients", async () => {
         const channelUUID = await network.getChannelUUID();
         const user1 = await network.connect(channelUUID, 1);
-        await once(user1.session, "stateChange");
         const user2 = await network.connect(channelUUID, 2);
-        await once(user2.session, "stateChange");
         const sender = await network.connect(channelUUID, 3);
-        await once(sender.session, "stateChange");
+        await Promise.all([user1.isConnected, user2.isConnected, sender.isConnected]);
         const track = new FakeMediaStreamTrack({ kind: "audio" });
         await sender.sfuClient.updateUpload(STREAM_TYPE.AUDIO, track);
         const prom1 = once(user1.sfuClient, "update");
@@ -166,9 +164,8 @@ describe("Full network", () => {
     test("Recovery attempts are made if the production fails, a failure does not close the connection", async () => {
         const channelUUID = await network.getChannelUUID();
         const user = await network.connect(channelUUID, 1);
-        await once(user.session, "stateChange");
         const sender = await network.connect(channelUUID, 3);
-        await once(sender.session, "stateChange");
+        await Promise.all([user.isConnected, sender.isConnected]);
         const track = new FakeMediaStreamTrack({ kind: "audio" });
         // closing the transport so the `updateUpload` should fail.
         // @ts-expect-error accessing private property for testing purposes
@@ -180,9 +177,8 @@ describe("Full network", () => {
     test("Recovery attempts are made if the consumption fails, a failure does not close the connection", async () => {
         const channelUUID = await network.getChannelUUID();
         const user = await network.connect(channelUUID, 1);
-        await once(user.session, "stateChange");
         const sender = await network.connect(channelUUID, 3);
-        await once(sender.session, "stateChange");
+        await Promise.all([user.isConnected, sender.isConnected]);
         const track = new FakeMediaStreamTrack({ kind: "audio" });
         // closing the transport so the consumption should fail.
         // @ts-expect-error accessing private property for testing purposes
@@ -196,9 +192,8 @@ describe("Full network", () => {
     test("The client can obtain download and upload statistics", async () => {
         const channelUUID = await network.getChannelUUID();
         const user1 = await network.connect(channelUUID, 1);
-        await once(user1.session, "stateChange");
         const sender = await network.connect(channelUUID, 3);
-        await once(sender.session, "stateChange");
+        await Promise.all([user1.isConnected, sender.isConnected]);
         const track = new FakeMediaStreamTrack({ kind: "audio" });
         await sender.sfuClient.updateUpload(STREAM_TYPE.AUDIO, track);
         await once(user1.sfuClient, "update");
@@ -211,9 +206,8 @@ describe("Full network", () => {
     test("The client can update the state of their downloads", async () => {
         const channelUUID = await network.getChannelUUID();
         const user1 = await network.connect(channelUUID, 1234);
-        await once(user1.session, "stateChange");
         const sender = await network.connect(channelUUID, 123);
-        await once(sender.session, "stateChange");
+        await Promise.all([user1.isConnected, sender.isConnected]);
         const track = new FakeMediaStreamTrack({ kind: "audio" });
         await sender.sfuClient.updateUpload(STREAM_TYPE.AUDIO, track);
         await once(user1.sfuClient, "update");
@@ -233,9 +227,8 @@ describe("Full network", () => {
     test("The client can update the state of their upload", async () => {
         const channelUUID = await network.getChannelUUID();
         const user1 = await network.connect(channelUUID, 1234);
-        await once(user1.session, "stateChange");
         const sender = await network.connect(channelUUID, 123);
-        await once(sender.session, "stateChange");
+        await Promise.all([user1.isConnected, sender.isConnected]);
         const track = new FakeMediaStreamTrack({ kind: "video" });
         await sender.sfuClient.updateUpload(STREAM_TYPE.CAMERA, track);
         await once(user1.sfuClient, "update");
@@ -292,13 +285,12 @@ describe("Full network", () => {
     test("POC RECORDING", async () => {
         const channelUUID = await network.getChannelUUID();
         const user1 = await network.connect(channelUUID, 1);
-        await once(user1.session, "stateChange");
         const sender = await network.connect(channelUUID, 3);
-        await once(sender.session, "stateChange");
-        sender.session.updatePermissions({ recording: true });
-        const startResult = await sender.sfuClient.startRecording() as { state: string };
+        await Promise.all([user1.isConnected, sender.isConnected]);
+        expect(sender.sfuClient.availableFeatures.recording).toBe(true);
+        const startResult = (await sender.sfuClient.startRecording()) as { state: string };
         expect(startResult.state).toBe("started");
-        const stopResult = await sender.sfuClient.stopRecording()  as { state: string };
+        const stopResult = (await sender.sfuClient.stopRecording()) as { state: string };
         expect(stopResult.state).toBe("stopped");
     });
 });

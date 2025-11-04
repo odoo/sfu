@@ -24,7 +24,9 @@ export enum SERVER_MESSAGE {
     /** Signals the clients that one of the session in their channel has left */
     SESSION_LEAVE = "SESSION_LEAVE",
     /** Signals the clients that the info (talking, mute,...) of one of the session in their channel has changed */
-    INFO_CHANGE = "S_INFO_CHANGE"
+    INFO_CHANGE = "S_INFO_CHANGE",
+    /** Signals the clients that the info of the channel (isRecording,...) has changed */
+    CHANNEL_INFO_CHANGE = "C_INFO_CHANGE"
 }
 
 export enum CLIENT_REQUEST {

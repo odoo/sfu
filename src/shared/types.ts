@@ -10,10 +10,14 @@ export type StreamType = "audio" | "camera" | "screen";
 
 export type StringLike = Buffer | string;
 
+export type StartupData = {
+    availableFeatures: AvailableFeatures;
+    isRecording: boolean;
+};
 export type AvailableFeatures = {
-    "rtc": boolean,
-    "recording": boolean,
-}
+    rtc: boolean;
+    recording: boolean;
+};
 
 import type { DownloadStates } from "#src/client.ts";
 import type { SessionId, SessionInfo, TransportConfig } from "#src/models/session.ts";
@@ -62,6 +66,7 @@ export type BusMessage =
       }
     | { name: typeof SERVER_MESSAGE.SESSION_LEAVE; payload: { sessionId: SessionId } }
     | { name: typeof SERVER_MESSAGE.INFO_CHANGE; payload: Record<SessionId, SessionInfo> }
+    | { name: typeof SERVER_MESSAGE.CHANNEL_INFO_CHANGE; payload: { isRecording: boolean } }
     | {
           name: typeof SERVER_REQUEST.INIT_CONSUMER;
           payload: {

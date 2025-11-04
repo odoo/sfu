@@ -11,6 +11,7 @@ import type { ProducerOptions } from "mediasoup-client/lib/Producer";
 const FALSY_INPUT = new Set(["disable", "false", "none", "no", "0"]);
 type LogLevel = "none" | "error" | "warn" | "info" | "debug" | "verbose";
 type WorkerLogLevel = "none" | "error" | "warn" | "debug";
+const testingMode = Boolean(process.env.JEST_WORKER_ID);
 
 // ------------------------------------------------------------
 // ------------------   ENV VARIABLES   -----------------------
@@ -22,7 +23,7 @@ type WorkerLogLevel = "none" | "error" | "warn" | "debug";
  * e.g: AUTH_KEY=u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng=
  */
 export const AUTH_KEY: string = process.env.AUTH_KEY!;
-if (!AUTH_KEY && !process.env.JEST_WORKER_ID) {
+if (!AUTH_KEY && !testingMode) {
     throw new Error(
         "AUTH_KEY env variable is required, it is not possible to authenticate requests without it"
     );
@@ -34,7 +35,7 @@ if (!AUTH_KEY && !process.env.JEST_WORKER_ID) {
  * e.g: PUBLIC_IP=190.165.1.70
  */
 export const PUBLIC_IP: string = process.env.PUBLIC_IP!;
-if (!PUBLIC_IP && !process.env.JEST_WORKER_ID) {
+if (!PUBLIC_IP && !testingMode) {
     throw new Error(
         "PUBLIC_IP env variable is required, clients cannot establish webRTC connections without it"
     );
@@ -67,7 +68,7 @@ export const PORT: number = Number(process.env.PORT) || 8070;
 /**
  * Whether the recording feature is enabled, false by default.
  */
-export const RECORDING: boolean = Boolean(process.env.RECORDING);
+export const RECORDING: boolean = Boolean(process.env.RECORDING) || testingMode;
 
 /**
  * The number of workers to spawn (up to core limits) to manage RTC servers.
@@ -199,7 +200,7 @@ export const timeouts: TimeoutConfig = Object.freeze({
     // how long before a channel is closed after the last session leaves
     channel: 60 * 60_000,
     // how long to wait to gather messages before sending through the bus
-    busBatch: process.env.JEST_WORKER_ID ? 10 : 300
+    busBatch: testingMode ? 10 : 300
 });
 
 export const recording = Object.freeze({
@@ -212,15 +213,14 @@ export const recording = Object.freeze({
     audioCodec: "aac",
     audioLimit: 20,
     cameraLimit: 4, // how many camera can be merged into one recording
-    screenLimit: 1,
+    screenLimit: 1
 });
 
 // TODO: This should probably be env variable, and at least documented so that deployment can open these ports.
 export const dynamicPorts = Object.freeze({
     min: 50000,
-    max: 59999,
+    max: 59999
 });
-
 
 // how many errors can occur before the session is closed, recovery attempts will be made until this limit is reached
 export const maxSessionErrors: number = 6;

@@ -18,7 +18,13 @@ import {
     SERVER_REQUEST,
     WS_CLOSE_CODE
 } from "#src/shared/enums.ts";
-import type { JSONSerializable, StreamType, BusMessage, AvailableFeatures } from "#src/shared/types";
+import type {
+    JSONSerializable,
+    StreamType,
+    BusMessage,
+    AvailableFeatures,
+    StartupData
+} from "#src/shared/types";
 import type { TransportConfig, SessionId, SessionInfo } from "#src/models/session";
 
 interface Consumers {
@@ -55,11 +61,13 @@ export enum CLIENT_UPDATE {
     /** A session has left the channel */
     DISCONNECT = "disconnect",
     /** Session info has changed */
-    INFO_CHANGE = "info_change"
+    INFO_CHANGE = "info_change",
+    CHANNEL_INFO_CHANGE = "channel_info_change"
 }
 type ClientUpdatePayload =
     | { senderId: SessionId; message: JSONSerializable }
     | { sessionId: SessionId }
+    | { isRecording: boolean }
     | Record<SessionId, SessionInfo>
     | {
           type: StreamType;
@@ -142,9 +150,10 @@ export class SfuClient extends EventTarget {
     /** Connection errors encountered */
     public errors: Error[] = [];
     public availableFeatures: AvailableFeatures = {
-        "rtc": false,
-        "recording": false,
+        rtc: false,
+        recording: false
     };
+    public isRecording: boolean = false;
     /** Current client state */
     private _state: SfuClientState = SfuClientState.DISCONNECTED;
     /** Communication bus */
@@ -266,7 +275,7 @@ export class SfuClient extends EventTarget {
         }
         return this._bus?.request(
             {
-                name: CLIENT_REQUEST.START_RECORDING,
+                name: CLIENT_REQUEST.START_RECORDING
             },
             { batch: true }
         );
@@ -278,7 +287,7 @@ export class SfuClient extends EventTarget {
         }
         return this._bus?.request(
             {
-                name: CLIENT_REQUEST.STOP_RECORDING,
+                name: CLIENT_REQUEST.STOP_RECORDING
             },
             { batch: true }
         );
@@ -473,7 +482,13 @@ export class SfuClient extends EventTarget {
             webSocket.addEventListener(
                 "message",
                 (message) => {
-                    this.availableFeatures = JSON.parse(message.data) as AvailableFeatures;
+                    if (message.data) {
+                        const { availableFeatures, isRecording } = JSON.parse(
+                            message.data
+                        ) as StartupData;
+                        this.availableFeatures = availableFeatures;
+                        this.isRecording = isRecording;
+                    }
                     resolve(new Bus(webSocket));
                 },
                 { once: true }
@@ -603,6 +618,10 @@ export class SfuClient extends EventTarget {
             }
             case SERVER_MESSAGE.INFO_CHANGE:
                 this._updateClient(CLIENT_UPDATE.INFO_CHANGE, payload);
+                break;
+            case SERVER_MESSAGE.CHANNEL_INFO_CHANGE:
+                this.isRecording = payload.isRecording;
+                this._updateClient(CLIENT_UPDATE.CHANNEL_INFO_CHANGE, payload);
                 break;
         }
     }
