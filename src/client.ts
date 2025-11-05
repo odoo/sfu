@@ -269,28 +269,28 @@ export class SfuClient extends EventTarget {
         await Promise.all(proms);
         return stats;
     }
-    async startRecording() {
+    async startRecording(): Promise<boolean> {
         if (this.state !== SfuClientState.CONNECTED) {
-            return;
+            throw new Error("Cannot start recording when not connected");
         }
         return this._bus?.request(
             {
                 name: CLIENT_REQUEST.START_RECORDING
             },
             { batch: true }
-        );
+        ) as Promise<boolean>;
     }
 
-    async stopRecording() {
+    async stopRecording(): Promise<boolean> {
         if (this.state !== SfuClientState.CONNECTED) {
-            return;
+            throw new Error("Cannot stop recording when not connected");
         }
         return this._bus?.request(
             {
                 name: CLIENT_REQUEST.STOP_RECORDING
             },
             { batch: true }
-        );
+        ) as Promise<boolean>;
     }
 
     /**
