@@ -25,6 +25,7 @@ import type {
     AvailableFeatures,
     StartupData
 } from "#src/shared/types";
+import type { RequestMessage } from "#src/shared/bus-types";
 import type { TransportConfig, SessionId, SessionInfo } from "#src/models/session";
 
 interface Consumers {
@@ -273,24 +274,24 @@ export class SfuClient extends EventTarget {
         if (this.state !== SfuClientState.CONNECTED) {
             throw new Error("Cannot start recording when not connected");
         }
-        return this._bus?.request(
+        return this._bus!.request(
             {
                 name: CLIENT_REQUEST.START_RECORDING
             },
             { batch: true }
-        ) as Promise<boolean>;
+        );
     }
 
     async stopRecording(): Promise<boolean> {
         if (this.state !== SfuClientState.CONNECTED) {
             throw new Error("Cannot stop recording when not connected");
         }
-        return this._bus?.request(
+        return this._bus!.request(
             {
                 name: CLIENT_REQUEST.STOP_RECORDING
             },
             { batch: true }
-        ) as Promise<boolean>;
+        );
     }
 
     /**
@@ -531,10 +532,10 @@ export class SfuClient extends EventTarget {
         });
         transport.on("produce", async ({ kind, rtpParameters, appData }, callback, errback) => {
             try {
-                const result = (await this._bus!.request({
+                const result = await this._bus!.request({
                     name: CLIENT_REQUEST.INIT_PRODUCER,
                     payload: { type: appData.type as StreamType, kind, rtpParameters }
-                })) as { id: string };
+                });
                 callback({ id: result.id });
             } catch (error) {
                 errback(error as Error);
@@ -626,7 +627,10 @@ export class SfuClient extends EventTarget {
         }
     }
 
-    private async _handleRequest({ name, payload }: BusMessage): Promise<JSONSerializable | void> {
+    private async _handleRequest({
+        name,
+        payload
+    }: RequestMessage): Promise<JSONSerializable | void> {
         switch (name) {
             case SERVER_REQUEST.INIT_CONSUMER: {
                 const { id, kind, producerId, rtpParameters, sessionId, type, active } = payload;
