@@ -288,9 +288,9 @@ describe("Full network", () => {
         const sender = await network.connect(channelUUID, 3);
         await Promise.all([user1.isConnected, sender.isConnected]);
         expect(sender.sfuClient.availableFeatures.recording).toBe(true);
-        const startResult = (await sender.sfuClient.startRecording()) as { state: string };
-        expect(startResult.state).toBe("started");
-        const stopResult = (await sender.sfuClient.stopRecording()) as { state: string };
-        expect(stopResult.state).toBe("stopped");
+        const startResult = (await sender.sfuClient.startRecording()) as boolean;
+        expect(startResult).toBe(true);
+        const stopResult = (await sender.sfuClient.stopRecording()) as boolean;
+        expect(stopResult).toBe(false);
     });
 });

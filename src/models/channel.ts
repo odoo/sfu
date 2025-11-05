@@ -129,6 +129,8 @@ export class Channel extends EventEmitter {
         logger.info(
             `created channel ${channel.uuid} (${key ? "unique" : "global"} key) for ${safeIssuer}`
         );
+        logger.verbose(`rtc feature: ${Boolean(channel.router)}`);
+        logger.verbose(`recording feature: ${Boolean(channel.recorder)}`);
         const onWorkerDeath = () => {
             logger.warn(`worker died, closing channel ${channel.uuid}`);
             channel.close();

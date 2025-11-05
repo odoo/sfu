@@ -30,7 +30,7 @@ import type {
     RtpParameters
     // eslint-disable-next-line node/no-unpublished-import
 } from "mediasoup-client/lib/types";
-import type { CLIENT_MESSAGE, CLIENT_REQUEST, SERVER_MESSAGE, SERVER_REQUEST } from "./enums.ts";
+import type { CLIENT_MESSAGE, CLIENT_REQUEST, SERVER_MESSAGE, SERVER_REQUEST } from "./enums";
 
 export type BusMessage =
     | { name: typeof CLIENT_MESSAGE.BROADCAST; payload: JSONSerializable }

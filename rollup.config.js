@@ -35,9 +35,6 @@ export default {
     plugins: [
         typescript({
             tsconfig: "./tsconfig_bundle.json",
-            declaration: false,
-            declarationMap: false,
-            sourceMap: false,
         }),
         resolve({
             browser: true,
