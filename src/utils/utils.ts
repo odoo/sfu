@@ -52,7 +52,7 @@ export interface ParseBodyOptions {
 function getCallChain(depth: number = 8): string {
     const stack = new Error().stack?.split("\n").slice(2, depth + 2) ?? [];
     return stack
-        .map(line => {
+        .map((line) => {
             const match = line.trim().match(/^at\s+(.*?)\s+\(/);
             return match ? match[1] : null;
         })

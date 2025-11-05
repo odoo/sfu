@@ -4,6 +4,7 @@ import { expect, describe, jest } from "@jest/globals";
 
 import { Bus } from "#src/shared/bus";
 import type { JSONSerializable, BusMessage } from "#src/shared/types";
+import { RequestMessage } from "#src/shared/bus-types.ts";
 
 class MockTargetWebSocket extends EventTarget {
     send(message: JSONSerializable) {
@@ -74,14 +75,14 @@ describe("Bus API", () => {
                 return "pong";
             }
         };
-        const response = await aliceBus.request("ping" as unknown as BusMessage);
+        const response = await aliceBus.request("ping" as unknown as RequestMessage);
         expect(response).toBe("pong");
     });
     test("promises are rejected when the bus is closed", async () => {
         const { aliceSocket } = mockSocketPair();
         const aliceBus = new Bus(aliceSocket as unknown as WebSocket);
         let rejected = false;
-        const promise = aliceBus.request("ping" as unknown as BusMessage);
+        const promise = aliceBus.request("ping" as unknown as RequestMessage);
         aliceBus.close();
         try {
             await promise;
@@ -96,7 +97,7 @@ describe("Bus API", () => {
         const { aliceSocket } = mockSocketPair();
         const aliceBus = new Bus(aliceSocket as unknown as WebSocket);
         const timeout = 500;
-        const promise = aliceBus.request("hello" as unknown as BusMessage, { timeout });
+        const promise = aliceBus.request("hello" as unknown as RequestMessage, { timeout });
         jest.advanceTimersByTime(timeout);
         await expect(promise).rejects.toThrow();
         jest.useRealTimers();
