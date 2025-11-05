@@ -32,7 +32,7 @@ export class Recorder extends EventEmitter {
             // TODO ffmpeg instance creation for recording to folder.path with proper name, start, build timestamps object
         }
         this._record();
-        return { state: this.state };
+        return this.isRecording;
     }
 
     async stop() {
@@ -48,7 +48,7 @@ export class Recorder extends EventEmitter {
             // only resolve promise and switch state when completely ready to start a new recording.
             this.state = RECORDER_STATE.STOPPED;
         }
-        return { state: this.state };
+        return this.isRecording;
     }
 
     get isRecording(): boolean {

@@ -37,6 +37,7 @@ interface ConnectionResult {
     session: Session;
     /** Client-side SFU client instance */
     sfuClient: SfuClient;
+    /** Promise resolving to true when client is connected */
     isConnected: Promise<boolean>;
 }
 

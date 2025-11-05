@@ -10,13 +10,11 @@
     "lib": ["ES2022", "DOM"],
     "module": "ESNext",
     "allowImportingTsExtensions": true,
-    "noEmit": true,
     "baseUrl": ".",
     "paths": {
       "#src/*": ["./src/*"],
       "#tests/*": ["./tests/*"]
     },
-    "outDir": "dist",
     "strict": true,
     "forceConsistentCasingInFileNames": true,
     "noUnusedLocals": true,
@@ -30,8 +28,6 @@
     ],
     "esModuleInterop": true,
     "resolveJsonModule": true,
-    "declaration": true,
-    "declarationDir": "dist/types",
     "preserveConstEnums": false,
   }
 }

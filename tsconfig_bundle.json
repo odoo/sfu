@@ -5,8 +5,8 @@
     "module": "es6",
     "declaration": false,
     "sourceMap": false,
-    "noEmit": false,
-    "allowImportingTsExtensions": false
+    "allowImportingTsExtensions": true,
+    "noEmit": true
   },
   "include": ["src/client.ts", "src/shared/**/*"],
   "exclude": ["tests/**/*", "src/server.ts", "src/services/**/*", "src/models/**/*"]

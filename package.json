@@ -30,12 +30,12 @@
     "@jest/globals": "^29.6.2",
     "@rollup/plugin-commonjs": "^25.0.7",
     "@rollup/plugin-node-resolve": "^13.0.4",
-    "@rollup/plugin-typescript": "^10.0.1",
+    "@rollup/plugin-typescript": "^12.1.2",
     "@types/jest": "^29.5.0",
-    "@types/node": "^20.5.0",
+    "@types/node": "^22.13.14",
     "@types/ws": "^8.18.1",
-    "@typescript-eslint/eslint-plugin": "8.32.1",
-    "@typescript-eslint/parser": "8.32.1",
+    "@typescript-eslint/eslint-plugin": "^8.46.3",
+    "@typescript-eslint/parser": "^8.46.3",
     "eslint": "8.57.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-import": "^2.25.3",
@@ -50,6 +50,6 @@
     "rollup": "^2.79.1",
     "rollup-plugin-license": "3.2.0",
     "ts-jest": "^29.3.4",
-    "typescript": "~5.4.3"
+    "typescript": "~5.9.3"
   }
 }

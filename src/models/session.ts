@@ -208,6 +208,7 @@ export class Session extends EventEmitter {
                 continue;
             }
             this.permissions[key] = Boolean(permissions[key]);
+            logger.verbose(`Permissions updated: ${key} = ${this.permissions[key]}`);
         }
     }
 
