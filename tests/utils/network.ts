@@ -6,6 +6,7 @@ import * as fakeParameters from "mediasoup-client/lib/test/fakeParameters";
 import * as auth from "#src/services/auth";
 import * as http from "#src/services/http";
 import * as resources from "#src/services/resources";
+import { Deferred } from "#src/utils/utils";
 import { SfuClient, SfuClientState } from "#src/client";
 import { Channel } from "#src/models/channel";
 import type { Session } from "#src/models/session";
@@ -38,7 +39,7 @@ interface ConnectionResult {
     /** Client-side SFU client instance */
     sfuClient: SfuClient;
     /** Promise resolving to true when client is connected */
-    isConnected: Promise<boolean>;
+    isConnected: Deferred<boolean>;
 }
 
 /**
@@ -149,39 +150,37 @@ export class LocalNetwork {
         };
 
         // Set up authentication promise
-        const isClientAuthenticated = new Promise<boolean>((resolve, reject) => {
-            const handleStateChange = (event: CustomEvent) => {
-                const { state } = event.detail;
-                switch (state) {
-                    case SfuClientState.AUTHENTICATED:
-                        sfuClient.removeEventListener(
-                            "stateChange",
-                            handleStateChange as EventListener
-                        );
-                        resolve(true);
-                        break;
-                    case SfuClientState.CLOSED:
-                        sfuClient.removeEventListener(
-                            "stateChange",
-                            handleStateChange as EventListener
-                        );
-                        reject(new Error("client closed"));
-                        break;
-                }
-            };
-            sfuClient.addEventListener("stateChange", handleStateChange as EventListener);
-        });
+        const isClientAuthenticated = new Deferred<boolean>();
+        const handleStateChange = (event: CustomEvent) => {
+            const { state } = event.detail;
+            switch (state) {
+                case SfuClientState.AUTHENTICATED:
+                    sfuClient.removeEventListener(
+                        "stateChange",
+                        handleStateChange as EventListener
+                    );
+                    isClientAuthenticated.resolve(true);
+                    break;
+                case SfuClientState.CLOSED:
+                    sfuClient.removeEventListener(
+                        "stateChange",
+                        handleStateChange as EventListener
+                    );
+                    isClientAuthenticated.reject(new Error("client closed"));
+                    break;
+            }
+        };
+        sfuClient.addEventListener("stateChange", handleStateChange as EventListener);
 
-        const isConnected = new Promise<boolean>((resolve, reject) => {
-            const connectedHandler = (event: CustomEvent) => {
-                const { state } = event.detail;
-                if (state === SfuClientState.CONNECTED) {
-                    sfuClient.removeEventListener("stateChange", connectedHandler as EventListener);
-                    resolve(true);
-                }
-            };
-            sfuClient.addEventListener("stateChange", connectedHandler as EventListener);
-        });
+        const isConnected = new Deferred<boolean>();
+        const connectedHandler = (event: CustomEvent) => {
+            const { state } = event.detail;
+            if (state === SfuClientState.CONNECTED) {
+                sfuClient.removeEventListener("stateChange", connectedHandler as EventListener);
+                isConnected.resolve(true);
+            }
+        };
+        sfuClient.addEventListener("stateChange", connectedHandler as EventListener);
 
         // Start connection
         sfuClient.connect(
