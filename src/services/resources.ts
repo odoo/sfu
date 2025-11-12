@@ -35,7 +35,9 @@ export async function start(): Promise<void> {
     for (let i = config.dynamicPorts.min; i <= config.dynamicPorts.max; i++) {
         availablePorts.add(i);
     }
-    logger.info(`${availablePorts.size} dynamic ports available [${config.dynamicPorts.min}-${config.dynamicPorts.max}]`);
+    logger.info(
+        `${availablePorts.size} dynamic ports available [${config.dynamicPorts.min}-${config.dynamicPorts.max}]`
+    );
 }
 
 export function close(): void {
@@ -103,6 +105,9 @@ export class Folder {
         await fs.rename(this.path, destinationPath);
         this.path = destinationPath;
         logger.verbose(`Moved folder from ${this.path} to ${destinationPath}`);
+    }
+    async delete() {
+        logger.trace(`TO IMPLEMENT`);
     }
 }
 
