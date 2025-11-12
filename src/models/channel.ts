@@ -327,7 +327,8 @@ export class Channel extends EventEmitter {
                 {
                     name: SERVER_MESSAGE.CHANNEL_INFO_CHANGE,
                     payload: {
-                        isRecording: Boolean(this.recorder?.isRecording)
+                        isRecording: Boolean(this.recorder?.isRecording),
+                        isTranscribing: false // TODO
                     }
                 },
                 { batch: true }

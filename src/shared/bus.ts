@@ -1,7 +1,12 @@
 import type { WebSocket as NodeWebSocket } from "ws";
 
-import type { JSONSerializable, BusMessage } from "./types";
-import type { RequestMessage, RequestName, ResponseFrom } from "./bus-types";
+import type {
+    JSONSerializable,
+    BusMessage,
+    RequestMessage,
+    RequestName,
+    ResponseFrom
+} from "./types";
 
 export interface Payload {
     /** The actual message content */

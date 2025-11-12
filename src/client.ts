@@ -19,13 +19,13 @@ import {
     WS_CLOSE_CODE
 } from "#src/shared/enums.ts";
 import type {
+    AvailableFeatures,
     JSONSerializable,
     StreamType,
     BusMessage,
-    AvailableFeatures,
+    RequestMessage,
     StartupData
 } from "#src/shared/types";
-import type { RequestMessage } from "#src/shared/bus-types";
 import type { TransportConfig, SessionId, SessionInfo } from "#src/models/session";
 
 interface Consumers {
