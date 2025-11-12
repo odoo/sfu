@@ -20,8 +20,13 @@ import {
     SERVER_REQUEST,
     STREAM_TYPE
 } from "#src/shared/enums.ts";
-import type { BusMessage, JSONSerializable, StartupData, StreamType } from "#src/shared/types";
-import type { RequestMessage } from "#src/shared/bus-types";
+import type {
+    BusMessage,
+    JSONSerializable,
+    RequestMessage,
+    StartupData,
+    StreamType
+} from "#src/shared/types";
 import type { Bus } from "#src/shared/bus.ts";
 import type { Channel } from "#src/models/channel.ts";
 import { RECORDER_STATE } from "#src/models/recorder.ts";

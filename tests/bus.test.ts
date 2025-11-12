@@ -3,8 +3,7 @@ import { EventEmitter } from "node:events";
 import { expect, describe, jest } from "@jest/globals";
 
 import { Bus } from "#src/shared/bus";
-import type { JSONSerializable, BusMessage } from "#src/shared/types";
-import { RequestMessage } from "#src/shared/bus-types.ts";
+import type { JSONSerializable, BusMessage, RequestMessage } from "#src/shared/types";
 
 class MockTargetWebSocket extends EventTarget {
     send(message: JSONSerializable) {
