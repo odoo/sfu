@@ -13,6 +13,7 @@ export type StringLike = Buffer | string;
 export type StartupData = {
     availableFeatures: AvailableFeatures;
     isRecording: boolean;
+    isTranscribing: boolean;
 };
 export type AvailableFeatures = {
     rtc: boolean;
