@@ -25,6 +25,13 @@ export type Metadata = {
 
 const logger = new Logger("RECORDER");
 
+/**
+ * TODO some docstring
+ * The recorder generates a "raw" file bundle, of recordings of individual audio and video streams,
+ * accompanied with a metadata file describing the recording (timestamps, ids,...).
+ *
+ * These raw recordings can then be used for further processing (transcription, compilation,...).
+ */
 export class Recorder extends EventEmitter {
     /**
      * Plain recording means that we mark the recording to be saved as a audio/video file
@@ -53,7 +60,7 @@ export class Recorder extends EventEmitter {
         super();
         this.channel = channel;
         this.metaData.uploadAddress = recordingAddress;
-        this.channel.on("sessionJoin", (id) => {
+        this.channel.on("sessionJoin", (id: SessionId) => {
             if (!this.isActive) {
                 return;
             }
@@ -66,7 +73,7 @@ export class Recorder extends EventEmitter {
                 new RecordingTask(session, { audio: true, camera: true, screen: true })
             );
         });
-        this.channel.on("sessionLeave", (id) => {
+        this.channel.on("sessionLeave", (id: SessionId) => {
             const task = this.tasks.get(id);
             if (task) {
                 task.stop();
