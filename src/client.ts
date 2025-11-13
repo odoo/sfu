@@ -155,6 +155,7 @@ export class SfuClient extends EventTarget {
         recording: false
     };
     public isRecording: boolean = false;
+    public isTranscribing: boolean = false;
     /** Current client state */
     private _state: SfuClientState = SfuClientState.DISCONNECTED;
     /** Communication bus */
@@ -484,11 +485,12 @@ export class SfuClient extends EventTarget {
                 "message",
                 (message) => {
                     if (message.data) {
-                        const { availableFeatures, isRecording } = JSON.parse(
+                        const { availableFeatures, isRecording, isTranscribing } = JSON.parse(
                             message.data
                         ) as StartupData;
                         this.availableFeatures = availableFeatures;
                         this.isRecording = isRecording;
+                        this.isTranscribing = isTranscribing;
                     }
                     resolve(new Bus(webSocket));
                 },
@@ -622,6 +624,7 @@ export class SfuClient extends EventTarget {
                 break;
             case SERVER_MESSAGE.CHANNEL_INFO_CHANGE:
                 this.isRecording = payload.isRecording;
+                this.isTranscribing = payload.isTranscribing;
                 this._updateClient(CLIENT_UPDATE.CHANNEL_INFO_CHANGE, payload);
                 break;
         }

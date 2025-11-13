@@ -29,7 +29,6 @@ import type {
 } from "#src/shared/types";
 import type { Bus } from "#src/shared/bus.ts";
 import type { Channel } from "#src/models/channel.ts";
-import { RECORDER_STATE } from "#src/models/recorder.ts";
 
 export type SessionId = number | string;
 export type SessionInfo = {
@@ -183,7 +182,8 @@ export class Session extends EventEmitter {
                     this._channel.router && this._channel.recorder && this.permissions.recording
                 )
             },
-            isRecording: this._channel.recorder?.state === RECORDER_STATE.STARTED
+            isRecording: this._channel.recorder?.isRecording || false,
+            isTranscribing: this._channel.recorder?.isTranscribing || false
         };
     }
 

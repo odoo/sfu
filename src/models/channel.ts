@@ -193,7 +193,7 @@ export class Channel extends EventEmitter {
             config.recording.enabled && options.recordingAddress
                 ? new Recorder(this, options.recordingAddress)
                 : undefined;
-        this.recorder?.on("stateChange", () => this._broadcastState());
+        this.recorder?.on("update", () => this._broadcastState());
         this.key = key ? Buffer.from(key, "base64") : undefined;
         this.uuid = crypto.randomUUID();
         this.name = `${remoteAddress}*${this.uuid.slice(-5)}`;
@@ -298,7 +298,7 @@ export class Channel extends EventEmitter {
      * @fires Channel#close
      */
     close(): void {
-        this.recorder?.stop();
+        this.recorder?.terminate();
         for (const session of this.sessions.values()) {
             session.off("close", this._onSessionClose);
             session.close({ code: SESSION_CLOSE_CODE.CHANNEL_CLOSED });
@@ -328,7 +328,7 @@ export class Channel extends EventEmitter {
                     name: SERVER_MESSAGE.CHANNEL_INFO_CHANGE,
                     payload: {
                         isRecording: Boolean(this.recorder?.isRecording),
-                        isTranscribing: false // TODO
+                        isTranscribing: Boolean(this.recorder?.isTranscribing)
                     }
                 },
                 { batch: true }
