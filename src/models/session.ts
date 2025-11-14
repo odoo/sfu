@@ -64,6 +64,7 @@ export enum SESSION_CLOSE_CODE {
 }
 export interface SessionPermissions {
     recording?: boolean;
+    transcription?: boolean;
 }
 export interface TransportConfig {
     /** Transport identifier */
@@ -146,7 +147,8 @@ export class Session extends EventEmitter {
         screen: null
     };
     public readonly permissions: SessionPermissions = Object.seal({
-        recording: false
+        recording: false,
+        transcription: false
     });
     /** Parent channel containing this session */
     private readonly _channel: Channel;
@@ -178,10 +180,10 @@ export class Session extends EventEmitter {
         return {
             availableFeatures: {
                 rtc: Boolean(this._channel.router),
-                recording: Boolean(
-                    this._channel.router && this._channel.recorder && this.permissions.recording
-                )
+                recording: Boolean(this._channel.recorder && this.permissions.recording),
+                transcription: Boolean(this._channel.recorder && this.permissions.transcription)
             },
+            // TODO could be a channelState type
             isRecording: this._channel.recorder?.isRecording || false,
             isTranscribing: this._channel.recorder?.isTranscribing || false
         };

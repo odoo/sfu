@@ -1,5 +1,4 @@
 import * as mediasoup from "mediasoup";
-import type { WebRtcServerOptions } from "mediasoup/node/lib/types";
 
 import * as config from "#src/config.ts";
 import { Logger } from "#src/utils/utils.ts";
@@ -49,11 +48,9 @@ export function close(): void {
 }
 
 async function makeWorker(): Promise<void> {
-    const worker = (await mediasoup.createWorker(config.rtc.workerSettings)) as RtcWorker;
-    worker.appData.webRtcServer = await worker.createWebRtcServer(
-        config.rtc.rtcServerOptions as WebRtcServerOptions
-    );
-    workers.add(worker);
+    const worker = await mediasoup.createWorker(config.rtc.workerSettings);
+    worker.appData.webRtcServer = await worker.createWebRtcServer(config.rtc.rtcServerOptions);
+    workers.add(worker as RtcWorker);
     worker.once("died", (error: Error) => {
         logger.error(`worker died: ${error.message} ${error.stack ?? ""}`);
         workers.delete(worker);

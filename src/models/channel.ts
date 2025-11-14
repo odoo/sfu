@@ -189,18 +189,16 @@ export class Channel extends EventEmitter {
         const now = new Date();
         this.createDate = now.toISOString();
         this.remoteAddress = remoteAddress;
+        this._worker = worker;
+        this.router = router;
         this.recorder =
-            config.recording.enabled && options.recordingAddress
+            this.router && config.recording.enabled && options.recordingAddress
                 ? new Recorder(this, options.recordingAddress)
                 : undefined;
         this.recorder?.on("update", () => this._broadcastState());
         this.key = key ? Buffer.from(key, "base64") : undefined;
         this.uuid = crypto.randomUUID();
         this.name = `${remoteAddress}*${this.uuid.slice(-5)}`;
-        this.router = router;
-        this._worker = worker;
-
-        // Bind event handlers
         this._onSessionClose = this._onSessionClose.bind(this);
     }
 
@@ -210,7 +208,7 @@ export class Channel extends EventEmitter {
             uuid: this.uuid,
             remoteAddress: this.remoteAddress,
             sessionsStats: await this.getSessionsStats(),
-            webRtcEnabled: Boolean(this._worker)
+            webRtcEnabled: Boolean(this.router)
         };
     }
 

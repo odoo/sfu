@@ -18,6 +18,7 @@ export type StartupData = {
 export type AvailableFeatures = {
     rtc: boolean;
     recording: boolean;
+    transcription: boolean;
 };
 
 import type { DownloadStates } from "#src/client.ts";
