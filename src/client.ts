@@ -152,7 +152,8 @@ export class SfuClient extends EventTarget {
     public errors: Error[] = [];
     public availableFeatures: AvailableFeatures = {
         rtc: false,
-        recording: false
+        recording: false,
+        transcription: false
     };
     public isRecording: boolean = false;
     public isTranscribing: boolean = false;
