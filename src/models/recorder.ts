@@ -60,26 +60,6 @@ export class Recorder extends EventEmitter {
         super();
         this.channel = channel;
         this.metaData.uploadAddress = recordingAddress;
-        this.channel.on("sessionJoin", (id: SessionId) => {
-            if (!this.isActive) {
-                return;
-            }
-            const session = this.channel.sessions.get(id);
-            if (!session) {
-                return;
-            }
-            this.tasks.set(
-                session.id,
-                new RecordingTask(session, { audio: true, camera: true, screen: true })
-            );
-        });
-        this.channel.on("sessionLeave", (id: SessionId) => {
-            const task = this.tasks.get(id);
-            if (task) {
-                task.stop();
-                this.tasks.delete(id);
-            }
-        });
     }
 
     async start() {
@@ -123,6 +103,8 @@ export class Recorder extends EventEmitter {
         if (!this.isActive) {
             return;
         }
+        this.channel.off("sessionJoin", this.onSessionJoin);
+        this.channel.off("sessionLeave", this.onSessionLeave);
         this.isRecording = false;
         this.isTranscribing = false;
         this.state = RECORDER_STATE.STOPPING;
@@ -141,6 +123,29 @@ export class Recorder extends EventEmitter {
         this.folder = undefined;
         this.metaData.timeStamps = {};
         this.state = RECORDER_STATE.STOPPED;
+    }
+
+    private onSessionJoin(id: SessionId) {
+        const session = this.channel.sessions.get(id);
+        if (!session) {
+            return;
+        }
+        this.tasks.set(
+            session.id,
+            new RecordingTask(session, {
+                audio: this.isRecording || this.isTranscribing,
+                camera: this.isRecording,
+                screen: this.isRecording
+            })
+        );
+    }
+
+    private onSessionLeave(id: SessionId) {
+        const task = this.tasks.get(id);
+        if (task) {
+            task.stop();
+            this.tasks.delete(id);
+        }
     }
 
     private mark(tag: TIME_TAG) {
@@ -185,6 +190,8 @@ export class Recorder extends EventEmitter {
                 new RecordingTask(session, { audio: true, camera: true, screen: true })
             );
         }
+        this.channel.on("sessionJoin", this.onSessionJoin);
+        this.channel.on("sessionLeave", this.onSessionLeave);
     }
 
     private async stopTasks() {
