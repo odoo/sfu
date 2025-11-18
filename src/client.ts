@@ -629,7 +629,7 @@ export class SfuClient extends EventTarget {
         // Retry connecting with an exponential backoff.
         this._connectRetryDelay =
             Math.min(this._connectRetryDelay * 1.5, MAXIMUM_RECONNECT_DELAY) + 1000 * Math.random();
-        const timeout = window.setTimeout(() => this._connect(), this._connectRetryDelay);
+        const timeout = setTimeout(() => this._connect(), this._connectRetryDelay);
         this._onCleanup(() => clearTimeout(timeout));
     }
 
