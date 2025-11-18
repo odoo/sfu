@@ -274,7 +274,7 @@ export class SfuClient extends EventTarget {
     }
     async startRecording(): Promise<boolean> {
         if (this.state !== SfuClientState.CONNECTED) {
-            throw new Error("Cannot start recording when not connected");
+            return false;
         }
         return this._bus!.request(
             {
@@ -286,11 +286,35 @@ export class SfuClient extends EventTarget {
 
     async stopRecording(): Promise<boolean> {
         if (this.state !== SfuClientState.CONNECTED) {
-            throw new Error("Cannot stop recording when not connected");
+            return false;
         }
         return this._bus!.request(
             {
                 name: CLIENT_REQUEST.STOP_RECORDING
+            },
+            { batch: true }
+        );
+    }
+
+    async startTranscription(): Promise<boolean> {
+        if (this.state !== SfuClientState.CONNECTED) {
+            return false;
+        }
+        return this._bus!.request(
+            {
+                name: CLIENT_REQUEST.START_TRANSCRIPTION
+            },
+            { batch: true }
+        );
+    }
+
+    async stopTranscription(): Promise<boolean> {
+        if (this.state !== SfuClientState.CONNECTED) {
+            return false;
+        }
+        return this._bus!.request(
+            {
+                name: CLIENT_REQUEST.STOP_TRANSCRIPTION
             },
             { batch: true }
         );

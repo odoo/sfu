@@ -62,6 +62,8 @@ export type BusMessage =
       }
     | { name: typeof CLIENT_REQUEST.START_RECORDING; payload?: never }
     | { name: typeof CLIENT_REQUEST.STOP_RECORDING; payload?: never }
+    | { name: typeof CLIENT_REQUEST.START_TRANSCRIPTION; payload?: never }
+    | { name: typeof CLIENT_REQUEST.STOP_TRANSCRIPTION; payload?: never }
     | {
           name: typeof SERVER_MESSAGE.BROADCAST;
           payload: { senderId: SessionId; message: JSONSerializable };
@@ -101,6 +103,8 @@ export interface RequestMap {
     [CLIENT_REQUEST.INIT_PRODUCER]: { id: string };
     [CLIENT_REQUEST.START_RECORDING]: boolean;
     [CLIENT_REQUEST.STOP_RECORDING]: boolean;
+    [CLIENT_REQUEST.START_TRANSCRIPTION]: boolean;
+    [CLIENT_REQUEST.STOP_TRANSCRIPTION]: boolean;
     [SERVER_REQUEST.INIT_CONSUMER]: void;
     [SERVER_REQUEST.INIT_TRANSPORTS]: RtpCapabilities;
     [SERVER_REQUEST.PING]: void;

@@ -39,7 +39,9 @@ export enum CLIENT_REQUEST {
     /** Requests to start recording of the call */
     START_RECORDING = "START_RECORDING",
     /** Requests to stop recording of the call */
-    STOP_RECORDING = "STOP_RECORDING"
+    STOP_RECORDING = "STOP_RECORDING",
+    START_TRANSCRIPTION = "START_TRANSCRIPTION",
+    STOP_TRANSCRIPTION = "STOP_TRANSCRIPTION"
 }
 
 export enum CLIENT_MESSAGE {

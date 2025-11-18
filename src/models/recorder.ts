@@ -42,6 +42,7 @@ export class Recorder extends EventEmitter {
      * this captures only the audio of the call.
      **/
     isTranscribing: boolean = false;
+    state: RECORDER_STATE = RECORDER_STATE.STOPPED;
     private channel: Channel;
     private folder?: Folder;
     private tasks = new Map<SessionId, RecordingTask>();
@@ -50,7 +51,6 @@ export class Recorder extends EventEmitter {
         uploadAddress: "",
         timeStamps: {}
     };
-    private state: RECORDER_STATE = RECORDER_STATE.STOPPED;
 
     get isActive(): boolean {
         return this.state === RECORDER_STATE.STARTED;

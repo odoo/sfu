@@ -695,14 +695,26 @@ export class Session extends EventEmitter {
                 return { id: producer.id };
             }
             case CLIENT_REQUEST.START_RECORDING: {
-                if (this.permissions.recording && this._channel.recorder) {
-                    return this._channel.recorder.start();
+                if (this.permissions.recording) {
+                    return this._channel.recorder?.start();
                 }
                 return;
             }
             case CLIENT_REQUEST.STOP_RECORDING: {
-                if (this.permissions.recording && this._channel.recorder) {
-                    return this._channel.recorder.stop();
+                if (this.permissions.recording) {
+                    return this._channel.recorder?.stop();
+                }
+                return;
+            }
+            case CLIENT_REQUEST.START_TRANSCRIPTION: {
+                if (this.permissions.transcription) {
+                    return this._channel.recorder?.startTranscription();
+                }
+                return;
+            }
+            case CLIENT_REQUEST.STOP_TRANSCRIPTION: {
+                if (this.permissions.transcription) {
+                    return this._channel.recorder?.stopTranscription();
                 }
                 return;
             }
