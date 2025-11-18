@@ -43,7 +43,7 @@ export class Recorder extends EventEmitter {
      **/
     isTranscribing: boolean = false;
     private channel: Channel;
-    private folder: Folder | undefined;
+    private folder?: Folder;
     private tasks = new Map<SessionId, RecordingTask>();
     /** Path to which the final recording will be uploaded to */
     private metaData: Metadata = {
