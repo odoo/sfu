@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 
 import { getFolder, type Folder } from "#src/services/resources.ts";
-import { RecordingTask } from "#src/models/recording_task.ts";
+import { RecordingTask, type RecordingParameters } from "#src/models/recording_task.ts";
 import { Logger } from "#src/utils/utils.ts";
 
 import type { Channel } from "#src/models/channel";
@@ -108,7 +108,6 @@ export class Recorder extends EventEmitter {
         this.isRecording = false;
         this.isTranscribing = false;
         this.state = RECORDER_STATE.STOPPING;
-        // remove all listener from the channel
         // TODO name
         const name = "test-folder-name";
         const results = await this.stopTasks();
@@ -130,14 +129,7 @@ export class Recorder extends EventEmitter {
         if (!session) {
             return;
         }
-        this.tasks.set(
-            session.id,
-            new RecordingTask(session, {
-                audio: this.isRecording || this.isTranscribing,
-                camera: this.isRecording,
-                screen: this.isRecording
-            })
-        );
+        this.tasks.set(session.id, new RecordingTask(session, this.getTaskParameters()));
     }
 
     private onSessionLeave(id: SessionId) {
@@ -173,10 +165,9 @@ export class Recorder extends EventEmitter {
     }
 
     private async update() {
+        const params = this.getTaskParameters();
         for (const task of this.tasks.values()) {
-            task.audio = this.isRecording || this.isTranscribing;
-            task.camera = this.isRecording;
-            task.screen = this.isRecording;
+            Object.assign(task, params);
         }
     }
 
@@ -185,10 +176,7 @@ export class Recorder extends EventEmitter {
         this.folder = getFolder();
         logger.trace(`TO IMPLEMENT: recording channel ${this.channel.name}`);
         for (const [sessionId, session] of this.channel.sessions) {
-            this.tasks.set(
-                sessionId,
-                new RecordingTask(session, { audio: true, camera: true, screen: true })
-            );
+            this.tasks.set(sessionId, new RecordingTask(session, this.getTaskParameters()));
         }
         this.channel.on("sessionJoin", this.onSessionJoin);
         this.channel.on("sessionLeave", this.onSessionLeave);
@@ -201,5 +189,13 @@ export class Recorder extends EventEmitter {
         }
         this.tasks.clear();
         return Promise.allSettled(proms);
+    }
+
+    private getTaskParameters(): RecordingParameters {
+        return {
+            audio: this.isRecording || this.isTranscribing,
+            camera: this.isRecording,
+            screen: this.isRecording
+        };
     }
 }

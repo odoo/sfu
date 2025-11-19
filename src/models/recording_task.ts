@@ -7,6 +7,21 @@ import { FFMPEG } from "#src/models/ffmpeg.ts";
 
 import type { PlainTransport } from "mediasoup/node/lib/PlainTransportTypes";
 
+export type RecordingParameters = {
+    audio: boolean;
+    camera: boolean;
+    screen: boolean;
+};
+
+export enum RECORDING_TASK_EVENT {
+    AUDIO_STARTED = "audio-started",
+    AUDIO_STOPPED = "audio-stopped",
+    CAMERA_STARTED = "camera-started",
+    CAMERA_STOPPED = "camera-stopped",
+    SCREEN_STARTED = "screen-started",
+    SCREEN_STOPPED = "screen-stopped"
+}
+
 const logger = new Logger("RECORDING_TASK");
 
 export class RecordingTask extends EventEmitter {
@@ -37,8 +52,14 @@ export class RecordingTask extends EventEmitter {
             `TO IMPLEMENT: recording task for session ${this.session.id} - audio: ${value}`
         );
         logger.debug(`rtp: ${this._audioRTP}, ffmpeg: ${this._audioFFFMPEG}`);
-        // await record(audio)
-        // if (this.isStopped) { cleanup(audio) };
+        if (this._audio) {
+            this._audioFFFMPEG = new FFMPEG(); // should take RTP info as param
+            this.emit(RECORDING_TASK_EVENT.AUDIO_STARTED, this._audioFFFMPEG.id);
+        } else if (this._audioFFFMPEG) {
+            this.emit(RECORDING_TASK_EVENT.AUDIO_STOPPED, this._audioFFFMPEG.id);
+            this._audioFFFMPEG.kill();
+            this._audioFFFMPEG = undefined;
+        }
     }
     set camera(value: boolean) {
         if (value === this._camera || this.isStopped) {
@@ -61,10 +82,7 @@ export class RecordingTask extends EventEmitter {
         logger.debug(`rtp: ${this._screenRTP}, ffmpeg: ${this._screenFFMPEG}`);
     }
 
-    constructor(
-        session: Session,
-        { audio, camera, screen }: { audio?: boolean; camera?: boolean; screen?: boolean } = {}
-    ) {
+    constructor(session: Session, { audio, camera, screen }: RecordingParameters) {
         super();
         this.session = session;
         this._audio = audio ?? false;
