@@ -6,7 +6,7 @@ export class FFMPEG extends EventEmitter {
     id: number;
     constructor() {
         super();
-        this.id = currentId++ % 999999;
+        this.id = currentId++;
     }
 
     async kill() {}
