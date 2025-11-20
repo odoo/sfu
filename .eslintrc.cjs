@@ -20,7 +20,7 @@ module.exports = {
     plugins: ["@typescript-eslint"],
     overrides: [
         {
-            files: [".eslintrc.cjs"],
+            files: [".eslintrc.cjs", "jest.config.cjs"],
             parserOptions: {
                 project: null
             }
