@@ -66,8 +66,8 @@ export class Recorder extends EventEmitter {
         // TODO: for the transcription, we should play with isRecording / isTranscribing to see whether to stop or start or just disabled one of the features
         if (!this.isRecording) {
             this.isRecording = true;
-            await this.refreshConfiguration();
-            this.mark(TIME_TAG.RECORDING_STARTED);
+            await this._refreshConfiguration();
+            this._mark(TIME_TAG.RECORDING_STARTED);
         }
         return this.isRecording;
     }
@@ -75,8 +75,8 @@ export class Recorder extends EventEmitter {
     async stop() {
         if (this.isRecording) {
             this.isRecording = false;
-            await this.refreshConfiguration();
-            this.mark(TIME_TAG.RECORDING_STOPPED);
+            await this._refreshConfiguration();
+            this._mark(TIME_TAG.RECORDING_STOPPED);
         }
         return this.isRecording;
     }
@@ -84,8 +84,8 @@ export class Recorder extends EventEmitter {
     async startTranscription() {
         if (!this.isTranscribing) {
             this.isTranscribing = true;
-            await this.refreshConfiguration();
-            this.mark(TIME_TAG.TRANSCRIPTION_STARTED);
+            await this._refreshConfiguration();
+            this._mark(TIME_TAG.TRANSCRIPTION_STARTED);
         }
         return this.isTranscribing;
     }
@@ -93,8 +93,8 @@ export class Recorder extends EventEmitter {
     async stopTranscription() {
         if (this.isTranscribing) {
             this.isTranscribing = false;
-            await this.refreshConfiguration();
-            this.mark(TIME_TAG.TRANSCRIPTION_STOPPED);
+            await this._refreshConfiguration();
+            this._mark(TIME_TAG.TRANSCRIPTION_STOPPED);
         }
         return this.isTranscribing;
     }
@@ -103,14 +103,14 @@ export class Recorder extends EventEmitter {
         if (!this.isActive) {
             return;
         }
-        this.channel.off("sessionJoin", this.onSessionJoin);
-        this.channel.off("sessionLeave", this.onSessionLeave);
+        this.channel.off("sessionJoin", this._onSessionJoin);
+        this.channel.off("sessionLeave", this._onSessionLeave);
         this.isRecording = false;
         this.isTranscribing = false;
         this.state = RECORDER_STATE.STOPPING;
         // TODO name
         const name = "test-folder-name";
-        const results = await this.stopTasks();
+        const results = await this._stopTasks();
         const hasFailure = results.some((r) => r.status === "rejected");
         if (save && !hasFailure) {
             // TODO turn this.metadata to JSON, then add it as a file in the folder.
@@ -124,15 +124,15 @@ export class Recorder extends EventEmitter {
         this.state = RECORDER_STATE.STOPPED;
     }
 
-    private onSessionJoin(id: SessionId) {
+    private _onSessionJoin(id: SessionId) {
         const session = this.channel.sessions.get(id);
         if (!session) {
             return;
         }
-        this.tasks.set(session.id, new RecordingTask(session, this.getTaskParameters()));
+        this.tasks.set(session.id, new RecordingTask(session, this._getTaskParameters()));
     }
 
-    private onSessionLeave(id: SessionId) {
+    private _onSessionLeave(id: SessionId) {
         const task = this.tasks.get(id);
         if (task) {
             task.stop();
@@ -140,20 +140,20 @@ export class Recorder extends EventEmitter {
         }
     }
 
-    private mark(tag: TIME_TAG) {
+    private _mark(tag: TIME_TAG) {
         logger.trace(`TO IMPLEMENT: mark ${tag}`);
         // TODO we basically add an entry to the timestamp object.
     }
 
-    private async refreshConfiguration() {
+    private async _refreshConfiguration() {
         if (this.isRecording || this.isTranscribing) {
             if (this.isActive) {
-                await this.update().catch(async () => {
+                await this._update().catch(async () => {
                     logger.warn(`Failed to update recording or ${this.channel.name}`);
                     await this.terminate();
                 });
             } else {
-                await this.init().catch(async () => {
+                await this._init().catch(async () => {
                     logger.error(`Failed to start recording or ${this.channel.name}`);
                     await this.terminate();
                 });
@@ -164,25 +164,25 @@ export class Recorder extends EventEmitter {
         this.emit("update", { isRecording: this.isRecording, isTranscribing: this.isTranscribing });
     }
 
-    private async update() {
-        const params = this.getTaskParameters();
+    private async _update() {
+        const params = this._getTaskParameters();
         for (const task of this.tasks.values()) {
             Object.assign(task, params);
         }
     }
 
-    private async init() {
+    private async _init() {
         this.state = RECORDER_STATE.STARTED;
         this.folder = getFolder();
         logger.trace(`TO IMPLEMENT: recording channel ${this.channel.name}`);
         for (const [sessionId, session] of this.channel.sessions) {
-            this.tasks.set(sessionId, new RecordingTask(session, this.getTaskParameters()));
+            this.tasks.set(sessionId, new RecordingTask(session, this._getTaskParameters()));
         }
-        this.channel.on("sessionJoin", this.onSessionJoin);
-        this.channel.on("sessionLeave", this.onSessionLeave);
+        this.channel.on("sessionJoin", this._onSessionJoin);
+        this.channel.on("sessionLeave", this._onSessionLeave);
     }
 
-    private async stopTasks() {
+    private async _stopTasks() {
         const proms = [];
         for (const task of this.tasks.values()) {
             proms.push(task.stop());
@@ -191,7 +191,7 @@ export class Recorder extends EventEmitter {
         return Promise.allSettled(proms);
     }
 
-    private getTaskParameters(): RecordingParameters {
+    private _getTaskParameters(): RecordingParameters {
         return {
             audio: this.isRecording || this.isTranscribing,
             camera: this.isRecording,
