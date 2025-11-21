@@ -197,6 +197,10 @@ export class Session extends EventEmitter {
         return this._state;
     }
 
+    get router() {
+        return this._channel.router;
+    }
+
     set state(state: SESSION_STATE) {
         this._state = state;
         /**

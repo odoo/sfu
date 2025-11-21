@@ -31,6 +31,10 @@ const logger = new Logger("RECORDER");
  * accompanied with a metadata file describing the recording (timestamps, ids,...).
  *
  * These raw recordings can then be used for further processing (transcription, compilation,...).
+ *
+ * Recorder acts at the channel level, managing the creation and closure of sessions in that channel,
+ * whereas the recording_task acts at the session level, managing the recording of an individual session
+ * and following its producer lifecycle.
  */
 export class Recorder extends EventEmitter {
     /**
