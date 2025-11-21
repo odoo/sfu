@@ -43,11 +43,11 @@ export class Recorder extends EventEmitter {
      **/
     isTranscribing: boolean = false;
     state: RECORDER_STATE = RECORDER_STATE.STOPPED;
-    private channel: Channel;
     private folder?: Folder;
-    private tasks = new Map<SessionId, RecordingTask>();
+    private readonly channel: Channel;
+    private readonly tasks = new Map<SessionId, RecordingTask>();
     /** Path to which the final recording will be uploaded to */
-    private metaData: Metadata = {
+    private readonly metaData: Metadata = {
         uploadAddress: "",
         timeStamps: {}
     };
