@@ -26,10 +26,10 @@ const logger = new Logger("RECORDING_TASK");
 
 export class RecordingTask extends EventEmitter {
     /**
-     * Whether or not the recording process has been stopped. Used as termination/cleanup condition for async processes
+     * Whether or not the recording process has been stopped. Used as ok termination/cleanup condition for async processes
      */
     isStopped = false;
-    private session: Session;
+    private _session: Session;
     private _audio: boolean = false;
     private _camera: boolean = false;
     private _screen: boolean = false;
@@ -40,16 +40,18 @@ export class RecordingTask extends EventEmitter {
     private _cameraFFMPEG?: FFMPEG = undefined;
     private _screenFFMPEG?: FFMPEG = undefined;
 
-    // TODO when set, start/stop recording process (create a RTP, create FFMPEG/Gstreamer process, pipe RTP to FFMPEG/Gstreamer)
-    // The initialization process will likely be async and prone to race conditions, once the process has started, we should
-    // remember to check if this.isStopped, and if so, stop the process.
+    /**
+     * TODO when set, start/stop recording process (create a RTP, create FFMPEG/Gstreamer process, pipe RTP to FFMPEG/Gstreamer)
+     * The initialization process will likely be async and prone to race conditions, once the process has started, we should
+     * remember to check if this.isStopped, and if so, stop the process.
+     */
     set audio(value: boolean) {
         if (value === this._audio || this.isStopped) {
             return;
         }
         this._audio = value;
         logger.trace(
-            `TO IMPLEMENT: recording task for session ${this.session.id} - audio: ${value}`
+            `TO IMPLEMENT: recording task for session ${this._session.id} - audio: ${value}`
         );
         logger.debug(`rtp: ${this._audioRTP}, ffmpeg: ${this._audioFFFMPEG}`);
         if (this._audio) {
@@ -67,7 +69,7 @@ export class RecordingTask extends EventEmitter {
         }
         this._camera = value;
         logger.trace(
-            `TO IMPLEMENT: recording task for session ${this.session.id} - camera: ${value}`
+            `TO IMPLEMENT: recording task for session ${this._session.id} - camera: ${value}`
         );
         logger.debug(`rtp: ${this._cameraRTP}, ffmpeg: ${this._cameraFFMPEG}`);
     }
@@ -77,19 +79,19 @@ export class RecordingTask extends EventEmitter {
         }
         this._screen = value;
         logger.trace(
-            `TO IMPLEMENT: recording task for session ${this.session.id} - screen: ${value}`
+            `TO IMPLEMENT: recording task for session ${this._session.id} - screen: ${value}`
         );
         logger.debug(`rtp: ${this._screenRTP}, ffmpeg: ${this._screenFFMPEG}`);
     }
 
     constructor(session: Session, { audio, camera, screen }: RecordingParameters) {
         super();
-        this.session = session;
+        this._session = session;
         this._audio = audio ?? false;
         this._camera = camera ?? false;
         this._screen = screen ?? false;
         logger.trace(
-            `TO IMPLEMENT: recording task for session ${this.session.id} - audio: ${this._audio}, camera: ${this._camera}, screen: ${this._screen}`
+            `TO IMPLEMENT: recording task for session ${this._session.id} - audio: ${this._audio}, camera: ${this._camera}, screen: ${this._screen}`
         );
     }
 
