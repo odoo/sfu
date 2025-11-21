@@ -112,7 +112,7 @@ export function getFolder(): Folder {
     return new Folder(`${tempDir}/${Date.now()}-${unique++}`);
 }
 
-class DynamicPort {
+export class DynamicPort {
     number: number;
 
     constructor(number: number) {

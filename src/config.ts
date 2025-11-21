@@ -3,7 +3,8 @@ import os from "node:os";
 import type {
     RouterRtpCodecCapability,
     WorkerSettings,
-    WebRtcServerOptions
+    WebRtcServerOptions,
+    PlainTransportOptions
 } from "mediasoup/node/lib/types";
 // eslint-disable-next-line node/no-unpublished-import
 import type { ProducerOptions } from "mediasoup-client/lib/Producer";
@@ -240,6 +241,7 @@ const baseProducerOptions: ProducerOptions = {
 export interface RtcConfig {
     readonly workerSettings: WorkerSettings;
     readonly rtcServerOptions: WebRtcServerOptions;
+    readonly plainTransportOptions: PlainTransportOptions;
     readonly rtcTransportOptions: {
         readonly maxSctpMessageSize: number;
         readonly sctpSendBufferSize: number;
@@ -284,6 +286,11 @@ export const rtc: RtcConfig = Object.freeze({
     rtcTransportOptions: {
         maxSctpMessageSize: MAX_BUF_IN,
         sctpSendBufferSize: MAX_BUF_OUT
+    },
+    plainTransportOptions: {
+        listenIp: { ip: "0.0.0.0", announcedIp: PUBLIC_IP },
+        rtcpMux: true,
+        comedia: false
     },
     producerOptionsByKind: {
         /** Audio producer options */

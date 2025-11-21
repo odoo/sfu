@@ -1,11 +1,15 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { EventEmitter } from "node:events";
 
+import type { Producer, Consumer, PlainTransport } from "mediasoup/node/lib/types";
+
 import { Session } from "#src/models/session.ts";
 import { Logger } from "#src/utils/utils.ts";
-import { FFMPEG } from "#src/models/ffmpeg.ts";
+import { FFMPEG, type RtpData } from "#src/models/ffmpeg.ts";
+import { rtc } from "#src/config";
+import { getPort, type DynamicPort } from "#src/services/resources";
 
-import type { PlainTransport } from "mediasoup/node/lib/PlainTransportTypes";
+import { STREAM_TYPE } from "#src/shared/enums";
 
 export type RecordingParameters = {
     audio: boolean;
@@ -14,88 +18,167 @@ export type RecordingParameters = {
 };
 
 export enum RECORDING_TASK_EVENT {
-    AUDIO_STARTED = "audio-started",
-    AUDIO_STOPPED = "audio-stopped",
-    CAMERA_STARTED = "camera-started",
-    CAMERA_STOPPED = "camera-stopped",
-    SCREEN_STARTED = "screen-started",
-    SCREEN_STOPPED = "screen-stopped"
+    UPDATE = "update"
 }
+
+type RecordingData = {
+    active: boolean; // active is different from boolean(ffmpeg) so we can flag synchronously and avoid race conditions
+    transport?: PlainTransport;
+    consumer?: Consumer;
+    ffmpeg?: FFMPEG;
+    port?: DynamicPort;
+    type: STREAM_TYPE;
+};
+
+type RecordingDataByStreamType = {
+    [STREAM_TYPE.AUDIO]: RecordingData;
+    [STREAM_TYPE.CAMERA]: RecordingData;
+    [STREAM_TYPE.SCREEN]: RecordingData;
+};
 
 const logger = new Logger("RECORDING_TASK");
 
 export class RecordingTask extends EventEmitter {
-    /**
-     * Whether or not the recording process has been stopped. Used as ok termination/cleanup condition for async processes
-     */
-    isStopped = false;
     private _session: Session;
-    private _audio: boolean = false;
-    private _camera: boolean = false;
-    private _screen: boolean = false;
-    private _audioRTP?: PlainTransport = undefined;
-    private _cameraRTP?: PlainTransport = undefined;
-    private _screenRTP?: PlainTransport = undefined;
-    private _audioFFFMPEG?: FFMPEG = undefined;
-    private _cameraFFMPEG?: FFMPEG = undefined;
-    private _screenFFMPEG?: FFMPEG = undefined;
+    private readonly recordingDataByStreamType: RecordingDataByStreamType = {
+        [STREAM_TYPE.AUDIO]: {
+            active: false,
+            type: STREAM_TYPE.AUDIO
+        },
+        [STREAM_TYPE.CAMERA]: {
+            active: false,
+            type: STREAM_TYPE.CAMERA
+        },
+        [STREAM_TYPE.SCREEN]: {
+            active: false,
+            type: STREAM_TYPE.SCREEN
+        }
+    };
 
-    /**
-     * TODO when set, start/stop recording process (create a RTP, create FFMPEG/Gstreamer process, pipe RTP to FFMPEG/Gstreamer)
-     * The initialization process will likely be async and prone to race conditions, once the process has started, we should
-     * remember to check if this.isStopped, and if so, stop the process.
-     */
     set audio(value: boolean) {
-        if (value === this._audio || this.isStopped) {
-            return;
-        }
-        this._audio = value;
-        logger.trace(
-            `TO IMPLEMENT: recording task for session ${this._session.id} - audio: ${value}`
-        );
-        logger.debug(`rtp: ${this._audioRTP}, ffmpeg: ${this._audioFFFMPEG}`);
-        if (this._audio) {
-            this._audioFFFMPEG = new FFMPEG(); // should take RTP info as param
-            this.emit(RECORDING_TASK_EVENT.AUDIO_STARTED, this._audioFFFMPEG.id);
-        } else if (this._audioFFFMPEG) {
-            this.emit(RECORDING_TASK_EVENT.AUDIO_STOPPED, this._audioFFFMPEG.id);
-            this._audioFFFMPEG.kill();
-            this._audioFFFMPEG = undefined;
-        }
+        this._setRecording(STREAM_TYPE.AUDIO, value);
     }
     set camera(value: boolean) {
-        if (value === this._camera || this.isStopped) {
-            return;
-        }
-        this._camera = value;
-        logger.trace(
-            `TO IMPLEMENT: recording task for session ${this._session.id} - camera: ${value}`
-        );
-        logger.debug(`rtp: ${this._cameraRTP}, ffmpeg: ${this._cameraFFMPEG}`);
+        this._setRecording(STREAM_TYPE.CAMERA, value);
     }
     set screen(value: boolean) {
-        if (value === this._screen || this.isStopped) {
-            return;
-        }
-        this._screen = value;
-        logger.trace(
-            `TO IMPLEMENT: recording task for session ${this._session.id} - screen: ${value}`
-        );
-        logger.debug(`rtp: ${this._screenRTP}, ffmpeg: ${this._screenFFMPEG}`);
+        this._setRecording(STREAM_TYPE.SCREEN, value);
     }
 
     constructor(session: Session, { audio, camera, screen }: RecordingParameters) {
         super();
         this._session = session;
-        this._audio = audio ?? false;
-        this._camera = camera ?? false;
-        this._screen = screen ?? false;
-        logger.trace(
-            `TO IMPLEMENT: recording task for session ${this._session.id} - audio: ${this._audio}, camera: ${this._camera}, screen: ${this._screen}`
+        this._session.on("producer", this._onSessionProducer);
+        this.audio = audio;
+        this.camera = camera;
+        this.screen = screen;
+    }
+
+    private async _setRecording(type: STREAM_TYPE, state: boolean) {
+        const data = this.recordingDataByStreamType[type];
+        if (data.active === state) {
+            return;
+        }
+        data.active = state;
+        const producer = this._session.producers[type];
+        if (!producer) {
+            return; // will be handled later when the session starts producing
+        }
+        this._updateProcess(data, producer);
+    }
+
+    private async _onSessionProducer({
+        type,
+        producer
+    }: {
+        type: STREAM_TYPE;
+        producer: Producer;
+    }) {
+        const data = this.recordingDataByStreamType[type];
+        if (!data.active) {
+            return;
+        }
+        this._clearData(type); // in case we already had a process for an outdated producer
+        this._updateProcess(data, producer);
+    }
+
+    private async _updateProcess(data: RecordingData, producer: Producer) {
+        if (data.active) {
+            if (data.ffmpeg) {
+                return;
+            }
+            data.port = getPort();
+            try {
+                data.ffmpeg = new FFMPEG(await this._createRtp(producer, data));
+                if (data.active) {
+                    if (data.ffmpeg) {
+                        // TODO emit starting
+                    }
+                    logger.verbose(
+                        `starting recording process for ${this._session.name} ${data.type}`
+                    );
+                    return;
+                }
+                return;
+            } catch {
+                logger.warn(
+                    `failed at starting the recording for ${this._session.name} ${data.type}`
+                );
+            }
+        }
+        // TODO emit ending
+        this._clearData(data.type);
+    }
+
+    async _createRtp(producer: Producer, data: RecordingData): Promise<RtpData> {
+        const transport = await this._session.router?.createPlainTransport(
+            rtc.plainTransportOptions
         );
+        data.transport = transport;
+        if (!transport) {
+            throw new Error(`Failed at creating a plain transport for`);
+        }
+        transport.connect({
+            ip: "0.0.0.0",
+            port: data.port!.number
+        });
+        data.consumer = await transport.consume({
+            producerId: producer.id,
+            rtpCapabilities: this._session.router!.rtpCapabilities,
+            paused: true
+        });
+        // TODO may want to use producer.getStats() to get the codec info
+        // for val of producer.getStats().values() { if val.type === "codec": val.minetype, val.clockRate,... }
+        //const codecData = this._channel.router.rtpCapabilities.codecs.find(
+        //    (codec) => codec.kind === producer.kind
+        //);
+        const codecData = producer.rtpParameters.codecs[0];
+        return {
+            payloadType: codecData.payloadType,
+            clockRate: codecData.clockRate,
+            codec: codecData.mimeType.replace(`${producer.kind}`, ""),
+            channels: producer.kind === "audio" ? codecData.channels : undefined,
+            type: data.type
+        };
+    }
+
+    private _clearData(type: STREAM_TYPE) {
+        const data = this.recordingDataByStreamType[type];
+        data.active = false;
+        data.ffmpeg?.kill();
+        data.ffmpeg = undefined;
+        data.transport?.close();
+        data.transport = undefined;
+        data.consumer?.close();
+        data.consumer = undefined;
+        data.port?.release();
+        data.port = undefined;
     }
 
     async stop() {
-        this.isStopped = true;
+        this._session.off("producer", this._onSessionProducer);
+        for (const type of Object.values(STREAM_TYPE)) {
+            this._clearData(type);
+        }
     }
 }
