@@ -62,6 +62,8 @@ export class Recorder extends EventEmitter {
 
     constructor(channel: Channel, recordingAddress: string) {
         super();
+        this._onSessionJoin = this._onSessionJoin.bind(this);
+        this._onSessionLeave = this._onSessionLeave.bind(this);
         this.channel = channel;
         this.metaData.uploadAddress = recordingAddress;
     }
@@ -116,11 +118,13 @@ export class Recorder extends EventEmitter {
         const name = "test-folder-name";
         const results = await this._stopTasks();
         const hasFailure = results.some((r) => r.status === "rejected");
+        if (hasFailure) {
+            logger.warn("recording failed at saving files"); // TODO more info
+        }
         if (save && !hasFailure) {
             // TODO turn this.metadata to JSON, then add it as a file in the folder.
             await this.folder?.seal(name);
         } else {
-            logger.error(`failed at generating recording: ${name}`);
             await this.folder?.delete();
         }
         this.folder = undefined;
@@ -163,7 +167,7 @@ export class Recorder extends EventEmitter {
                 });
             }
         } else {
-            await this.terminate();
+            await this.terminate({ save: true }); // todo check if we always want to save here
         }
         this.emit("update", { isRecording: this.isRecording, isTranscribing: this.isTranscribing });
     }

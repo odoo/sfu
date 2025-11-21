@@ -1,7 +1,7 @@
 /* eslint-disable prettier/prettier */
 import { EventEmitter } from "node:events";
-import { Logger } from "#src/utils/utils";
-import type { STREAM_TYPE } from "#src/shared/enums";
+import { Logger } from "#src/utils/utils.ts";
+import type { STREAM_TYPE } from "#src/shared/enums.ts";
 
 const logger = new Logger("FFMPEG");
 
