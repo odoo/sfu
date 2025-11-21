@@ -6,10 +6,10 @@ import type { Producer, Consumer, PlainTransport } from "mediasoup/node/lib/type
 import { Session } from "#src/models/session.ts";
 import { Logger } from "#src/utils/utils.ts";
 import { FFMPEG, type RtpData } from "#src/models/ffmpeg.ts";
-import { rtc } from "#src/config";
-import { getPort, type DynamicPort } from "#src/services/resources";
+import { rtc } from "#src/config.ts";
+import { getPort, type DynamicPort } from "#src/services/resources.ts";
 
-import { STREAM_TYPE } from "#src/shared/enums";
+import { STREAM_TYPE } from "#src/shared/enums.ts";
 
 export type RecordingParameters = {
     audio: boolean;
@@ -67,6 +67,7 @@ export class RecordingTask extends EventEmitter {
 
     constructor(session: Session, { audio, camera, screen }: RecordingParameters) {
         super();
+        this._onSessionProducer = this._onSessionProducer.bind(this);
         this._session = session;
         this._session.on("producer", this._onSessionProducer);
         this.audio = audio;
