@@ -181,7 +181,7 @@ export class Recorder extends EventEmitter {
 
     private async _init() {
         this.state = RECORDER_STATE.STARTED;
-        this.folder = getFolder();
+        this.folder = await getFolder();
         logger.trace(`TO IMPLEMENT: recording channel ${this.channel.name}`);
         for (const [sessionId, session] of this.channel.sessions) {
             this.tasks.set(sessionId, new RecordingTask(session, this._getTaskParameters()));

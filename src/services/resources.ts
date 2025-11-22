@@ -93,6 +93,11 @@ export async function getWorker(): Promise<mediasoup.types.Worker> {
 export class Folder {
     path: string;
 
+    static async create(path: string) {
+        await fs.mkdir(path, { recursive: true });
+        return new Folder(path);
+    }
+
     constructor(path: string) {
         this.path = path;
     }
@@ -108,10 +113,9 @@ export class Folder {
     }
 }
 
-export function getFolder(): Folder {
-    return new Folder(`${tempDir}/${Date.now()}-${unique++}`);
+export async function getFolder(): Promise<Folder> {
+    return Folder.create(`${tempDir}/${Date.now()}-${unique++}`);
 }
-
 export class DynamicPort {
     number: number;
 
