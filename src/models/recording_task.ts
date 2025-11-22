@@ -1,13 +1,12 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { EventEmitter } from "node:events";
 
-import type { Producer, Consumer, PlainTransport } from "mediasoup/node/lib/types";
+import { RTP } from "#src/models/rtp.ts";
+import { Producer } from "mediasoup/node/lib/types";
 
 import { Session } from "#src/models/session.ts";
 import { Logger } from "#src/utils/utils.ts";
-import { FFMPEG, type RtpData } from "#src/models/ffmpeg.ts";
-import { rtc } from "#src/config.ts";
-import { getPort, type DynamicPort } from "#src/services/resources.ts";
+import { FFMPEG } from "#src/models/ffmpeg.ts";
 
 import { STREAM_TYPE } from "#src/shared/enums.ts";
 
@@ -23,11 +22,9 @@ export enum RECORDING_TASK_EVENT {
 
 type RecordingData = {
     active: boolean; // active is different from boolean(ffmpeg) so we can flag synchronously and avoid race conditions
-    transport?: PlainTransport;
-    consumer?: Consumer;
-    ffmpeg?: FFMPEG;
-    port?: DynamicPort;
     type: STREAM_TYPE;
+    rtp?: RTP;
+    ffmpeg?: FFMPEG;
 };
 
 type RecordingDataByStreamType = {
@@ -85,7 +82,7 @@ export class RecordingTask extends EventEmitter {
         if (!producer) {
             return; // will be handled later when the session starts producing
         }
-        this._updateProcess(data, producer);
+        this._updateProcess(data, producer, type);
     }
 
     private async _onSessionProducer({
@@ -99,28 +96,23 @@ export class RecordingTask extends EventEmitter {
         if (!data.active) {
             return;
         }
-        this._clearData(type); // in case we already had a process for an outdated producer
-        this._updateProcess(data, producer);
+        this._updateProcess(data, producer, type);
     }
 
-    private async _updateProcess(data: RecordingData, producer: Producer) {
+    private async _updateProcess(data: RecordingData, producer: Producer, type: STREAM_TYPE) {
         if (data.active) {
             if (data.ffmpeg) {
                 return;
             }
-            data.port = getPort();
             try {
-                data.ffmpeg = new FFMPEG(await this._createRtp(producer, data));
+                data.rtp = data.rtp || new RTP({ producer, router: this._session.router!, type });
+                data.ffmpeg = new FFMPEG(data.rtp);
                 if (data.active) {
-                    if (data.ffmpeg) {
-                        // TODO emit starting
-                    }
                     logger.verbose(
                         `starting recording process for ${this._session.name} ${data.type}`
                     );
                     return;
                 }
-                return;
             } catch {
                 logger.warn(
                     `failed at starting the recording for ${this._session.name} ${data.type}`
@@ -128,52 +120,21 @@ export class RecordingTask extends EventEmitter {
             }
         }
         // TODO emit ending
-        this._clearData(data.type);
+        this._clearData(data.type, { preserveRTP: true });
     }
 
-    async _createRtp(producer: Producer, data: RecordingData): Promise<RtpData> {
-        const transport = await this._session.router?.createPlainTransport(
-            rtc.plainTransportOptions
-        );
-        data.transport = transport;
-        if (!transport) {
-            throw new Error(`Failed at creating a plain transport for`);
-        }
-        transport.connect({
-            ip: "0.0.0.0",
-            port: data.port!.number
-        });
-        data.consumer = await transport.consume({
-            producerId: producer.id,
-            rtpCapabilities: this._session.router!.rtpCapabilities,
-            paused: true
-        });
-        // TODO may want to use producer.getStats() to get the codec info
-        // for val of producer.getStats().values() { if val.type === "codec": val.minetype, val.clockRate,... }
-        //const codecData = this._channel.router.rtpCapabilities.codecs.find(
-        //    (codec) => codec.kind === producer.kind
-        //);
-        const codecData = producer.rtpParameters.codecs[0];
-        return {
-            payloadType: codecData.payloadType,
-            clockRate: codecData.clockRate,
-            codec: codecData.mimeType.replace(`${producer.kind}`, ""),
-            channels: producer.kind === "audio" ? codecData.channels : undefined,
-            type: data.type
-        };
-    }
-
-    private _clearData(type: STREAM_TYPE) {
+    private _clearData(
+        type: STREAM_TYPE,
+        { preserveRTP }: { preserveRTP?: boolean } = { preserveRTP: false }
+    ) {
         const data = this.recordingDataByStreamType[type];
         data.active = false;
-        data.ffmpeg?.kill();
+        if (!preserveRTP) {
+            data.rtp?.close();
+            data.rtp = undefined;
+        }
+        data.ffmpeg?.close();
         data.ffmpeg = undefined;
-        data.transport?.close();
-        data.transport = undefined;
-        data.consumer?.close();
-        data.consumer = undefined;
-        data.port?.release();
-        data.port = undefined;
     }
 
     async stop() {
