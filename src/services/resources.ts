@@ -104,12 +104,21 @@ export class Folder {
 
     async seal(name: string) {
         const destinationPath = path.join(config.recording.directory, name);
-        await fs.rename(this.path, destinationPath);
-        this.path = destinationPath;
-        logger.verbose(`Moved folder from ${this.path} to ${destinationPath}`);
+        try {
+            await fs.rename(this.path, destinationPath);
+            this.path = destinationPath;
+            logger.verbose(`Moved folder from ${this.path} to ${destinationPath}`);
+        } catch (error) {
+            logger.error(`Failed to move folder from ${this.path} to ${destinationPath}: ${error}`);
+        }
     }
     async delete() {
-        logger.trace(`TO IMPLEMENT`);
+        try {
+            await fs.rm(this.path, { recursive: true });
+            logger.verbose(`Deleted folder ${this.path}`);
+        } catch (error) {
+            logger.error(`Failed to delete folder ${this.path}: ${error}`);
+        }
     }
 }
 
