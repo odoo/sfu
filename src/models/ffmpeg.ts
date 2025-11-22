@@ -1,31 +1,39 @@
 /* eslint-disable prettier/prettier */
 import { EventEmitter } from "node:events";
 import { Logger } from "#src/utils/utils.ts";
-import type { STREAM_TYPE } from "#src/shared/enums.ts";
+import { RTP } from "#src/models/rtp.ts";
 
 const logger = new Logger("FFMPEG");
-
-// TODO may need to give more or less stuff here, will know later.
-export type RtpData = {
-    payloadType: number;
-    clockRate: number;
-    codec: string;
-    channels: number | undefined;
-    type: STREAM_TYPE;
-};
 
 let currentId = 0;
 
 export class FFMPEG extends EventEmitter {
     readonly id: number;
-    private readonly rtp: RtpData;
-    constructor(rtp: RtpData) {
+    private readonly rtp: RTP;
+    private _isClosed = false;
+    constructor(rtp: RTP) {
         super();
         this.rtp = rtp;
         this.id = currentId++;
         logger.trace(`creating FFMPEG for ${this.id} on ${this.rtp.type}`);
+        this._init();
     }
 
-    async kill() {
+    close() {
+        this._isClosed = true;
+        this._cleanup();
+    }
+
+    private async _init() {
+        await this.rtp.isReady;
+        if (this._isClosed) {
+            this._cleanup();
+            return;
+        }
+        logger.trace(`FFMPEG ${this.id} is ready for ${this.rtp.type}`);
+    }
+
+    private _cleanup() {
+        logger.trace(`FFMPEG ${this.id} closed for ${this.rtp.type}`);
     }
 }
