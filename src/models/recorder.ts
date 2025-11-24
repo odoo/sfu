@@ -1,5 +1,7 @@
 import { EventEmitter } from "node:events";
+import path from "node:path";
 
+import { recording } from "#src/config.ts";
 import { getFolder, type Folder } from "#src/services/resources.ts";
 import { RecordingTask, type RecordingParameters } from "#src/models/recording_task.ts";
 import { Logger } from "#src/utils/utils.ts";
@@ -20,7 +22,7 @@ export enum RECORDER_STATE {
 }
 export type Metadata = {
     uploadAddress: string;
-    timeStamps: object;
+    timeStamps: Record<number, Array<TIME_TAG>>;
 };
 
 const logger = new Logger("RECORDER");
@@ -48,7 +50,7 @@ export class Recorder extends EventEmitter {
     isTranscribing: boolean = false;
     state: RECORDER_STATE = RECORDER_STATE.STOPPED;
     private folder?: Folder;
-    private readonly channel: Channel;
+    private readonly channel: Channel; // TODO rename with private prefix
     private readonly tasks = new Map<SessionId, RecordingTask>();
     /** Path to which the final recording will be uploaded to */
     private readonly metaData: Metadata = {
@@ -72,8 +74,8 @@ export class Recorder extends EventEmitter {
         // TODO: for the transcription, we should play with isRecording / isTranscribing to see whether to stop or start or just disabled one of the features
         if (!this.isRecording) {
             this.isRecording = true;
-            await this._refreshConfiguration();
             this._mark(TIME_TAG.RECORDING_STARTED);
+            await this._refreshConfiguration();
         }
         return this.isRecording;
     }
@@ -81,8 +83,8 @@ export class Recorder extends EventEmitter {
     async stop() {
         if (this.isRecording) {
             this.isRecording = false;
-            await this._refreshConfiguration();
             this._mark(TIME_TAG.RECORDING_STOPPED);
+            await this._refreshConfiguration();
         }
         return this.isRecording;
     }
@@ -90,8 +92,8 @@ export class Recorder extends EventEmitter {
     async startTranscription() {
         if (!this.isTranscribing) {
             this.isTranscribing = true;
-            await this._refreshConfiguration();
             this._mark(TIME_TAG.TRANSCRIPTION_STARTED);
+            await this._refreshConfiguration();
         }
         return this.isTranscribing;
     }
@@ -99,8 +101,8 @@ export class Recorder extends EventEmitter {
     async stopTranscription() {
         if (this.isTranscribing) {
             this.isTranscribing = false;
-            await this._refreshConfiguration();
             this._mark(TIME_TAG.TRANSCRIPTION_STOPPED);
+            await this._refreshConfiguration();
         }
         return this.isTranscribing;
     }
@@ -114,16 +116,16 @@ export class Recorder extends EventEmitter {
         this.isRecording = false;
         this.isTranscribing = false;
         this.state = RECORDER_STATE.STOPPING;
-        // TODO name
-        const name = "test-folder-name";
         const results = await this._stopTasks();
         const hasFailure = results.some((r) => r.status === "rejected");
         if (hasFailure) {
             logger.warn("recording failed at saving files"); // TODO more info
         }
         if (save && !hasFailure) {
-            // TODO turn this.metadata to JSON, then add it as a file in the folder.
-            await this.folder?.seal(name);
+            await this.folder?.add("metadata.json", JSON.stringify(this.metaData));
+            await this.folder?.seal(
+                path.join(recording.directory, `${this.channel.name}_${Date.now()}`)
+            );
         } else {
             await this.folder?.delete();
         }
@@ -149,8 +151,9 @@ export class Recorder extends EventEmitter {
     }
 
     private _mark(tag: TIME_TAG) {
-        logger.trace(`TO IMPLEMENT: mark ${tag}`);
-        // TODO we basically add an entry to the timestamp object.
+        const events = this.metaData.timeStamps[Date.now()] || [];
+        events.push(tag);
+        this.metaData.timeStamps[Date.now()] = events;
     }
 
     private async _refreshConfiguration() {

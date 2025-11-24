@@ -10,6 +10,7 @@ import path from "node:path";
 const availablePorts: Set<number> = new Set();
 let unique = 1;
 
+// TODO instead of RtcWorker, try Worker<RtcAppData>
 export interface RtcWorker extends mediasoup.types.Worker {
     appData: {
         webRtcServer?: mediasoup.types.WebRtcServer;
@@ -20,10 +21,14 @@ export interface RtcWorker extends mediasoup.types.Worker {
 
 const logger = new Logger("RESOURCES");
 const workers = new Set<RtcWorker>();
-const tempDir = os.tmpdir() + "/ongoing_recordings";
+const directory = os.tmpdir() + "/open_sfu_resources";
 
 export async function start(): Promise<void> {
     logger.info("starting...");
+    // any existing folders are deleted since they are unreachable
+    await fs.rm(directory, { recursive: true }).catch((error) => {
+        logger.verbose(`Nothing to remove at ${directory}: ${error}`);
+    });
     for (let i = 0; i < config.NUM_WORKERS; ++i) {
         await makeWorker();
     }
@@ -44,6 +49,12 @@ export function close(): void {
         worker.appData.webRtcServer?.close();
         worker.close();
     }
+    for (const dir of Folder.usedDirs) {
+        fs.rm(dir, { recursive: true }).catch((error) => {
+            logger.error(`Failed to delete folder ${dir}: ${error}`);
+        });
+    }
+    Folder.usedDirs.clear();
     workers.clear();
 }
 
@@ -91,21 +102,29 @@ export async function getWorker(): Promise<mediasoup.types.Worker> {
 }
 
 export class Folder {
+    static usedDirs: Set<string> = new Set();
     path: string;
 
-    static async create(path: string) {
-        await fs.mkdir(path, { recursive: true });
-        return new Folder(path);
+    static async create(name: string) {
+        const p: string = path.join(directory, name);
+        await fs.mkdir(p, { recursive: true });
+        return new Folder(p);
     }
 
     constructor(path: string) {
         this.path = path;
+        Folder.usedDirs.add(path);
     }
 
-    async seal(name: string) {
-        const destinationPath = path.join(config.recording.directory, name);
+    async add(name: string, content: string) {
+        await fs.writeFile(path.join(this.path, name), content);
+    }
+
+    async seal(path: string) {
+        const destinationPath = path;
         try {
             await fs.rename(this.path, destinationPath);
+            Folder.usedDirs.delete(this.path);
             this.path = destinationPath;
             logger.verbose(`Moved folder from ${this.path} to ${destinationPath}`);
         } catch (error) {
@@ -123,7 +142,7 @@ export class Folder {
 }
 
 export async function getFolder(): Promise<Folder> {
-    return Folder.create(`${tempDir}/${Date.now()}-${unique++}`);
+    return Folder.create(`${Date.now()}-${unique++}`);
 }
 export class DynamicPort {
     number: number;
