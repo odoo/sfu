@@ -1,16 +1,16 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { EventEmitter } from "node:events";
 
-import { RTP } from "#src/models/rtp.ts";
+import { MediaOutput } from "#src/models/media_output";
 import type { Producer } from "mediasoup/node/lib/types";
 
 import { Session } from "#src/models/session.ts";
 import { Logger } from "#src/utils/utils.ts";
-import { FFMPEG } from "#src/models/ffmpeg.ts";
+import { TIME_TAG, type Recorder } from "#src/models/recorder.ts";
 
 import { STREAM_TYPE } from "#src/shared/enums.ts";
 
-export type RecordingParameters = {
+export type RecordingStates = {
     audio: boolean;
     camera: boolean;
     screen: boolean;
@@ -23,8 +23,7 @@ export enum RECORDING_TASK_EVENT {
 type RecordingData = {
     active: boolean; // active is different from boolean(ffmpeg) so we can flag synchronously and avoid race conditions
     type: STREAM_TYPE;
-    rtp?: RTP;
-    ffmpeg?: FFMPEG;
+    mediaOutput?: MediaOutput;
 };
 
 type RecordingDataByStreamType = {
@@ -37,6 +36,7 @@ const logger = new Logger("RECORDING_TASK");
 
 export class RecordingTask extends EventEmitter {
     private _session: Session;
+    private _recorder: Recorder;
     private readonly recordingDataByStreamType: RecordingDataByStreamType = {
         [STREAM_TYPE.AUDIO]: {
             active: false,
@@ -62,10 +62,11 @@ export class RecordingTask extends EventEmitter {
         this._setRecording(STREAM_TYPE.SCREEN, value);
     }
 
-    constructor(session: Session, { audio, camera, screen }: RecordingParameters) {
+    constructor(recorder: Recorder, session: Session, { audio, camera, screen }: RecordingStates) {
         super();
         this._onSessionProducer = this._onSessionProducer.bind(this);
         this._session = session;
+        this._recorder = recorder;
         this._session.on("producer", this._onSessionProducer);
         this.audio = audio;
         this.camera = camera;
@@ -101,16 +102,20 @@ export class RecordingTask extends EventEmitter {
 
     private async _updateProcess(data: RecordingData, producer: Producer, type: STREAM_TYPE) {
         if (data.active) {
-            if (data.ffmpeg) {
+            if (data.mediaOutput) {
+                // already recording
                 return;
             }
             try {
-                data.rtp = data.rtp || new RTP({ producer, router: this._session.router!, type });
-                data.ffmpeg = new FFMPEG(data.rtp);
+                data.mediaOutput = new MediaOutput({
+                    producer,
+                    router: this._session.router!,
+                    name: `${this._session.id}-${type}`
+                });
+                data.mediaOutput.on("file", (filename: string) => {
+                    this._recorder.mark(TIME_TAG.NEW_FILE, { filename, type });
+                });
                 if (data.active) {
-                    logger.verbose(
-                        `starting recording process for ${this._session.name} ${data.type}`
-                    );
                     return;
                 }
             } catch {
@@ -119,22 +124,14 @@ export class RecordingTask extends EventEmitter {
                 );
             }
         }
-        // TODO emit ending
-        this._clearData(data.type, { preserveRTP: true });
+        this._clearData(data.type);
     }
 
-    private _clearData(
-        type: STREAM_TYPE,
-        { preserveRTP }: { preserveRTP?: boolean } = { preserveRTP: false }
-    ) {
+    private _clearData(type: STREAM_TYPE) {
         const data = this.recordingDataByStreamType[type];
         data.active = false;
-        if (!preserveRTP) {
-            data.rtp?.close();
-            data.rtp = undefined;
-        }
-        data.ffmpeg?.close();
-        data.ffmpeg = undefined;
+        data.mediaOutput?.close();
+        data.mediaOutput = undefined;
     }
 
     async stop() {
