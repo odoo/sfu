@@ -3,17 +3,18 @@ import path from "node:path";
 
 import { recording } from "#src/config.ts";
 import { getFolder, type Folder } from "#src/services/resources.ts";
-import { RecordingTask, type RecordingParameters } from "#src/models/recording_task.ts";
+import { RecordingTask, type RecordingStates } from "#src/models/recording_task.ts";
 import { Logger } from "#src/utils/utils.ts";
 
 import type { Channel } from "#src/models/channel";
 import type { SessionId } from "#src/models/session.ts";
 
-enum TIME_TAG {
+export enum TIME_TAG {
     RECORDING_STARTED = "recording_started",
     RECORDING_STOPPED = "recording_stopped",
     TRANSCRIPTION_STARTED = "transcription_started",
-    TRANSCRIPTION_STOPPED = "transcription_stopped"
+    TRANSCRIPTION_STOPPED = "transcription_stopped",
+    NEW_FILE = "new_file"
 }
 export enum RECORDER_STATE {
     STARTED = "started",
@@ -22,7 +23,7 @@ export enum RECORDER_STATE {
 }
 export type Metadata = {
     uploadAddress: string;
-    timeStamps: Record<number, Array<TIME_TAG>>;
+    timeStamps: Record<number, Array<{ tag: TIME_TAG; value: object }>>;
 };
 
 const logger = new Logger("RECORDER");
@@ -62,6 +63,10 @@ export class Recorder extends EventEmitter {
         return this.state === RECORDER_STATE.STARTED;
     }
 
+    get path(): string | undefined {
+        return this._folder?.path;
+    }
+
     constructor(channel: Channel, recordingAddress: string) {
         super();
         this._onSessionJoin = this._onSessionJoin.bind(this);
@@ -74,7 +79,7 @@ export class Recorder extends EventEmitter {
         // TODO: for the transcription, we should play with isRecording / isTranscribing to see whether to stop or start or just disabled one of the features
         if (!this.isRecording) {
             this.isRecording = true;
-            this._mark(TIME_TAG.RECORDING_STARTED);
+            this.mark(TIME_TAG.RECORDING_STARTED);
             await this._refreshConfiguration();
         }
         return this.isRecording;
@@ -83,7 +88,7 @@ export class Recorder extends EventEmitter {
     async stop() {
         if (this.isRecording) {
             this.isRecording = false;
-            this._mark(TIME_TAG.RECORDING_STOPPED);
+            this.mark(TIME_TAG.RECORDING_STOPPED);
             await this._refreshConfiguration();
         }
         return this.isRecording;
@@ -92,7 +97,7 @@ export class Recorder extends EventEmitter {
     async startTranscription() {
         if (!this.isTranscribing) {
             this.isTranscribing = true;
-            this._mark(TIME_TAG.TRANSCRIPTION_STARTED);
+            this.mark(TIME_TAG.TRANSCRIPTION_STARTED);
             await this._refreshConfiguration();
         }
         return this.isTranscribing;
@@ -101,12 +106,25 @@ export class Recorder extends EventEmitter {
     async stopTranscription() {
         if (this.isTranscribing) {
             this.isTranscribing = false;
-            this._mark(TIME_TAG.TRANSCRIPTION_STOPPED);
+            this.mark(TIME_TAG.TRANSCRIPTION_STOPPED);
             await this._refreshConfiguration();
         }
         return this.isTranscribing;
     }
 
+    mark(tag: TIME_TAG, value: object = {}) {
+        const events = this._metaData.timeStamps[Date.now()] || [];
+        events.push({
+            tag,
+            value
+        });
+        this._metaData.timeStamps[Date.now()] = events;
+    }
+
+    /**
+     * @param param0
+     * @param param0.save - whether to save the recording
+     */
     async terminate({ save = false }: { save?: boolean } = {}) {
         if (!this.isActive) {
             return;
@@ -139,7 +157,7 @@ export class Recorder extends EventEmitter {
         if (!session) {
             return;
         }
-        this._tasks.set(session.id, new RecordingTask(session, this._getTaskParameters()));
+        this._tasks.set(session.id, new RecordingTask(this, session, this._getRecordingStates()));
     }
 
     private _onSessionLeave(id: SessionId) {
@@ -148,12 +166,6 @@ export class Recorder extends EventEmitter {
             task.stop();
             this._tasks.delete(id);
         }
-    }
-
-    private _mark(tag: TIME_TAG) {
-        const events = this._metaData.timeStamps[Date.now()] || [];
-        events.push(tag);
-        this._metaData.timeStamps[Date.now()] = events;
     }
 
     private async _refreshConfiguration() {
@@ -176,7 +188,7 @@ export class Recorder extends EventEmitter {
     }
 
     private async _update() {
-        const params = this._getTaskParameters();
+        const params = this._getRecordingStates();
         for (const task of this._tasks.values()) {
             Object.assign(task, params);
         }
@@ -187,7 +199,10 @@ export class Recorder extends EventEmitter {
         this._folder = await getFolder();
         logger.trace(`TO IMPLEMENT: recording channel ${this.channel.name}`);
         for (const [sessionId, session] of this.channel.sessions) {
-            this._tasks.set(sessionId, new RecordingTask(session, this._getTaskParameters()));
+            this._tasks.set(
+                sessionId,
+                new RecordingTask(this, session, this._getRecordingStates())
+            );
         }
         this.channel.on("sessionJoin", this._onSessionJoin);
         this.channel.on("sessionLeave", this._onSessionLeave);
@@ -202,7 +217,7 @@ export class Recorder extends EventEmitter {
         return Promise.allSettled(proms);
     }
 
-    private _getTaskParameters(): RecordingParameters {
+    private _getRecordingStates(): RecordingStates {
         return {
             audio: this.isRecording || this.isTranscribing,
             camera: this.isRecording,
