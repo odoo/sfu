@@ -1,4 +1,10 @@
-import type { Router, Producer, Consumer, PlainTransport } from "mediasoup/node/lib/types";
+import type {
+    Router,
+    Producer,
+    Consumer,
+    PlainTransport,
+    MediaKind
+} from "mediasoup/node/lib/types";
 import { getPort, type DynamicPort } from "#src/services/resources.ts";
 import { rtc } from "#src/config.ts";
 import { Deferred } from "#src/utils/utils.ts";
@@ -9,6 +15,7 @@ export class RTP {
     payloadType?: number;
     clockRate?: number;
     codec?: string;
+    kind?: MediaKind;
     channels?: number;
     type: STREAM_TYPE;
     private _router: Router;
@@ -59,20 +66,16 @@ export class RTP {
                 paused: true
             });
             if (this._isClosed) {
-                // may be closed by the time the consume is created
+                // may be closed by the time the consumer is created
                 this._cleanup();
                 return;
             }
-            // TODO may want to use producer.getStats() to get the codec info
-            // for val of producer.getStats().values() { if val.type === "codec": val.minetype, val.clockRate,... }
-            //const codecData = this._channel.router.rtpCapabilities.codecs.find(
-            //    (codec) => codec.kind === producer.kind
-            //);
             const codecData = this._producer.rtpParameters.codecs[0];
+            this.kind = this._producer.kind;
             this.payloadType = codecData.payloadType;
             this.clockRate = codecData.clockRate;
-            this.codec = codecData.mimeType.replace(`${this._producer.kind}`, "");
-            this.channels = this._producer.kind === "audio" ? codecData.channels : undefined;
+            this.codec = codecData.mimeType.replace(`${this.kind}`, "");
+            this.channels = this.kind === "audio" ? codecData.channels : undefined;
             this.isReady.resolve();
         } catch {
             this.close();

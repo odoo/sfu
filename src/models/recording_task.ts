@@ -2,7 +2,7 @@
 import { EventEmitter } from "node:events";
 
 import { RTP } from "#src/models/rtp.ts";
-import { Producer } from "mediasoup/node/lib/types";
+import type { Producer } from "mediasoup/node/lib/types";
 
 import { Session } from "#src/models/session.ts";
 import { Logger } from "#src/utils/utils.ts";
