@@ -49,11 +49,11 @@ export class Recorder extends EventEmitter {
      **/
     isTranscribing: boolean = false;
     state: RECORDER_STATE = RECORDER_STATE.STOPPED;
-    private folder?: Folder;
+    private _folder?: Folder;
     private readonly channel: Channel; // TODO rename with private prefix
-    private readonly tasks = new Map<SessionId, RecordingTask>();
+    private readonly _tasks = new Map<SessionId, RecordingTask>();
     /** Path to which the final recording will be uploaded to */
-    private readonly metaData: Metadata = {
+    private readonly _metaData: Metadata = {
         uploadAddress: "",
         timeStamps: {}
     };
@@ -67,7 +67,7 @@ export class Recorder extends EventEmitter {
         this._onSessionJoin = this._onSessionJoin.bind(this);
         this._onSessionLeave = this._onSessionLeave.bind(this);
         this.channel = channel;
-        this.metaData.uploadAddress = recordingAddress;
+        this._metaData.uploadAddress = recordingAddress;
     }
 
     async start() {
@@ -122,15 +122,15 @@ export class Recorder extends EventEmitter {
             logger.warn("recording failed at saving files"); // TODO more info
         }
         if (save && !hasFailure) {
-            await this.folder?.add("metadata.json", JSON.stringify(this.metaData));
-            await this.folder?.seal(
+            await this._folder?.add("metadata.json", JSON.stringify(this._metaData));
+            await this._folder?.seal(
                 path.join(recording.directory, `${this.channel.name}_${Date.now()}`)
             );
         } else {
-            await this.folder?.delete();
+            await this._folder?.delete();
         }
-        this.folder = undefined;
-        this.metaData.timeStamps = {};
+        this._folder = undefined;
+        this._metaData.timeStamps = {};
         this.state = RECORDER_STATE.STOPPED;
     }
 
@@ -139,21 +139,21 @@ export class Recorder extends EventEmitter {
         if (!session) {
             return;
         }
-        this.tasks.set(session.id, new RecordingTask(session, this._getTaskParameters()));
+        this._tasks.set(session.id, new RecordingTask(session, this._getTaskParameters()));
     }
 
     private _onSessionLeave(id: SessionId) {
-        const task = this.tasks.get(id);
+        const task = this._tasks.get(id);
         if (task) {
             task.stop();
-            this.tasks.delete(id);
+            this._tasks.delete(id);
         }
     }
 
     private _mark(tag: TIME_TAG) {
-        const events = this.metaData.timeStamps[Date.now()] || [];
+        const events = this._metaData.timeStamps[Date.now()] || [];
         events.push(tag);
-        this.metaData.timeStamps[Date.now()] = events;
+        this._metaData.timeStamps[Date.now()] = events;
     }
 
     private async _refreshConfiguration() {
@@ -177,17 +177,17 @@ export class Recorder extends EventEmitter {
 
     private async _update() {
         const params = this._getTaskParameters();
-        for (const task of this.tasks.values()) {
+        for (const task of this._tasks.values()) {
             Object.assign(task, params);
         }
     }
 
     private async _init() {
         this.state = RECORDER_STATE.STARTED;
-        this.folder = await getFolder();
+        this._folder = await getFolder();
         logger.trace(`TO IMPLEMENT: recording channel ${this.channel.name}`);
         for (const [sessionId, session] of this.channel.sessions) {
-            this.tasks.set(sessionId, new RecordingTask(session, this._getTaskParameters()));
+            this._tasks.set(sessionId, new RecordingTask(session, this._getTaskParameters()));
         }
         this.channel.on("sessionJoin", this._onSessionJoin);
         this.channel.on("sessionLeave", this._onSessionLeave);
@@ -195,10 +195,10 @@ export class Recorder extends EventEmitter {
 
     private async _stopTasks() {
         const proms = [];
-        for (const task of this.tasks.values()) {
+        for (const task of this._tasks.values()) {
             proms.push(task.stop());
         }
-        this.tasks.clear();
+        this._tasks.clear();
         return Promise.allSettled(proms);
     }
 

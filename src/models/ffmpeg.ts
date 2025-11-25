@@ -15,12 +15,13 @@ export class FFMPEG extends EventEmitter {
         super();
         this.rtp = rtp;
         this.id = currentId++;
-        logger.trace(`creating FFMPEG for ${this.id} on ${this.rtp.type}`);
+        logger.verbose(`creating FFMPEG for ${this.id} on ${this.rtp.type}`);
         this._init();
     }
 
     close() {
         this._isClosed = true;
+        this.emit("close", this.id); // maybe different event if fail/saved properly
         this._cleanup();
     }
 
@@ -30,7 +31,8 @@ export class FFMPEG extends EventEmitter {
             this._cleanup();
             return;
         }
-        logger.trace(`FFMPEG ${this.id} is ready for ${this.rtp.type}`);
+        logger.trace(`To implement: FFMPEG start process ${this.id} for ${this.rtp.type}`);
+        // build FFMPEG params with rtp properties, start the process
     }
 
     private _cleanup() {
