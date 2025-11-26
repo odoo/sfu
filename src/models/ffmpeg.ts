@@ -20,7 +20,7 @@ export class FFMPEG {
         this.rtp = rtp;
         this.id = currentId++;
         this._filename = filename;
-        logger.verbose(`creating FFMPEG for ${this.id}}`);
+        logger.verbose(`creating FFMPEG for ${this.id}`);
         this._init();
     }
 
@@ -36,52 +36,57 @@ export class FFMPEG {
         this._cleanup();
     }
 
-    private async _init() {
+    private _init() {
         if (this._isClosed) {
             this._cleanup();
             return;
         }
         
-        const sdpString = this._createSdpText();
-        logger.trace(`FFMPEG ${this.id} SDP:\n${sdpString}`);
-        
-        const sdpStream = Readable.from([sdpString]);
-        const args = this._getCommandArgs();
-        
-        logger.verbose(`spawning ffmpeg with args: ${args.join(" ")}`);
-        
-        this._process = spawn("ffmpeg", args);
-        
-        if (this._process.stderr) {
-            this._process.stderr.setEncoding("utf-8");
-            this._process.stderr.on("data", (data) => {
-                logger.debug(`[ffmpeg ${this.id}] ${data}`);
+        try {
+            const sdpString = this._createSdpText();
+            logger.trace(`FFMPEG ${this.id} SDP:\n${sdpString}`);
+            
+            const sdpStream = Readable.from([sdpString]);
+            const args = this._getCommandArgs();
+            
+            logger.verbose(`spawning ffmpeg with args: ${args.join(" ")}`);
+            
+            this._process = spawn("ffmpeg", args);
+            
+            if (this._process.stderr) {
+                this._process.stderr.setEncoding("utf-8");
+                this._process.stderr.on("data", (data) => {
+                    logger.debug(`[ffmpeg ${this.id}] ${data}`);
+                });
+            }
+            
+            if (this._process.stdout) {
+                 this._process.stdout.setEncoding("utf-8");
+                 this._process.stdout.on("data", (data) => {
+                     logger.debug(`[ffmpeg ${this.id} stdout] ${data}`);
+                 });
+            }
+
+            this._process.on("error", (error) => {
+                logger.error(`ffmpeg ${this.id} error: ${error.message}`);
+                this.close();
             });
-        }
-        
-        if (this._process.stdout) {
-             this._process.stdout.setEncoding("utf-8");
-             this._process.stdout.on("data", (data) => {
-                 logger.debug(`[ffmpeg ${this.id} stdout] ${data}`);
-             });
-        }
 
-        this._process.on("error", (error) => {
-            logger.error(`ffmpeg ${this.id} error: ${error.message}`);
+            this._process.on("close", (code) => {
+                logger.verbose(`ffmpeg ${this.id} exited with code ${code}`);
+                this.close();
+            });
+
+            sdpStream.on("error", (error) => {
+                logger.error(`sdpStream error: ${error.message}`);
+            });
+
+            if (this._process.stdin) {
+                sdpStream.pipe(this._process.stdin);
+            }
+        } catch (error) {
+            logger.error(`Failed to initialize FFMPEG ${this.id}: ${error}`);
             this.close();
-        });
-
-        this._process.on("close", (code) => {
-            logger.verbose(`ffmpeg ${this.id} exited with code ${code}`);
-            this.close();
-        });
-
-        sdpStream.on("error", (error) => {
-            logger.error(`sdpStream error: ${error.message}`);
-        });
-
-        if (this._process.stdin) {
-            sdpStream.pipe(this._process.stdin);
         }
     }
 
@@ -96,18 +101,19 @@ export class FFMPEG {
         if (!port || !payloadType || !codec || !clockRate || !kind) {
              throw new Error("RTP missing required properties for SDP generation");
         }
-        let sdp = `v=0
-                    o=- 0 0 IN IP4 ${recording.routingInterface}
-                    s=FFmpeg
-                    c=IN IP4 ${recording.routingInterface}
-                    t=0 0
-                    m=${kind} ${port} RTP/AVP ${payloadType}
-                    a=rtpmap:${payloadType} ${codec}/${clockRate}`;
+        
+        let sdp = `v=0\n`;
+        sdp += `o=- 0 0 IN IP4 ${recording.routingInterface}\n`;
+        sdp += `s=FFmpeg\n`;
+        sdp += `c=IN IP4 ${recording.routingInterface}\n`;
+        sdp += `t=0 0\n`;
+        sdp += `m=${kind} ${port} RTP/AVP ${payloadType}\n`;
+        sdp += `a=rtpmap:${payloadType} ${codec}/${clockRate}`;
 
         if (kind === "audio" && channels) {
             sdp += `/${channels}`;
         }
-        sdp += `\na=sendonly\n`;
+        sdp += `\na=recvonly\n`;
         return sdp;
     }
 
