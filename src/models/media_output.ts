@@ -7,7 +7,7 @@ import type {
     MediaKind
 } from "mediasoup/node/lib/types";
 import { getPort, type DynamicPort } from "#src/services/resources.ts";
-import { rtc } from "#src/config.ts";
+import { recording, rtc } from "#src/config.ts";
 import { FFMPEG } from "#src/models/ffmpeg.ts";
 
 export type rtpData = {
@@ -54,7 +54,7 @@ export class MediaOutput extends EventEmitter {
                 throw new Error(`Failed at creating a plain transport for`);
             }
             this._transport.connect({
-                ip: "0.0.0.0",
+                ip: recording.routingInterface,
                 port: this._port.number
             });
             this._consumer = await this._transport.consume({

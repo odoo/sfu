@@ -205,11 +205,12 @@ export const timeouts: TimeoutConfig = Object.freeze({
 });
 
 export const recording = Object.freeze({
+    routingInterface: "0.0.0.0",
     directory: os.tmpdir() + "/recordings",
     enabled: RECORDING,
     maxDuration: 1000 * 60 * 60, // 1 hour, could be a env-var.
     fileTTL: 1000 * 60 * 60 * 24, // 24 hours
-    fileType: "mp4",
+    fileExtension: "mp4",
     videoCodec: "libx264",
     audioCodec: "aac",
     audioLimit: 20,

@@ -3,6 +3,7 @@ import { spawn, ChildProcess } from "node:child_process";
 import { Readable } from "node:stream";
 import { Logger } from "#src/utils/utils.ts";
 import type { rtpData } from "#src/models/media_output";
+import { recording } from "#src/config.ts";
 
 const logger = new Logger("FFMPEG");
 
@@ -96,9 +97,9 @@ export class FFMPEG {
              throw new Error("RTP missing required properties for SDP generation");
         }
         let sdp = `v=0
-                    o=- 0 0 IN IP4 127.0.0.1
+                    o=- 0 0 IN IP4 ${recording.routingInterface}
                     s=FFmpeg
-                    c=IN IP4 127.0.0.1
+                    c=IN IP4 ${recording.routingInterface}
                     t=0 0
                     m=${kind} ${port} RTP/AVP ${payloadType}
                     a=rtpmap:${payloadType} ${codec}/${clockRate}`;
@@ -108,6 +109,32 @@ export class FFMPEG {
         }
         sdp += `\na=sendonly\n`;
         return sdp;
+    }
+
+    private _getContainerExtension(): string {
+        const codec = this.rtp.codec?.toLowerCase();
+        
+        switch (codec) {
+            case "h264":
+            case "h265":
+                return "mp4";
+            
+            case "vp8":
+            case "vp9":
+            case "av1":
+            case "opus":
+            case "vorbis":
+                return "webm";
+            
+            case "pcmu":
+            case "pcma":
+                // G.711 codecs - use WAV container for raw PCM audio
+                return "wav";
+            
+            default:
+                logger.warn(`Unknown codec "${codec}", using .mkv container as fallback`);
+                return "mkv";
+        }
     }
 
     private _getCommandArgs(): string[] {
@@ -129,7 +156,8 @@ export class FFMPEG {
                  "-c:v", "copy"
              ]);
         }
-        args.push(`${this._filename}.webm`);
+        const extension = this._getContainerExtension();
+        args.push(`${this._filename}.${extension}`);
         return args;
     }
 }
