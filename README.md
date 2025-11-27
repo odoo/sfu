@@ -54,6 +54,7 @@ The available environment variables are:
 - **MAX_VIDEO_BITRATE**: if set, defines the `maxBitrate` of the highest encoding layer (simulcast), defaults to 4mbps
 - **CHANNEL_SIZE**: the maximum amount of users per channel, defaults to 100
 - **RECORDING**: enables the recording feature, defaults to false
+- **RECORDING_PATH**: the path where the recordings will be saved, defaults to `${tmpDir}/recordings`.
 - **WORKER_LOG_LEVEL**: "none" | "error" | "warn" | "debug", will only work if `DEBUG` is properly set.
 - **LOG_LEVEL**: "none" | "error" | "warn" | "info" | "debug" | "verbose"
 - **LOG_TIMESTAMP**: adds a timestamp to the log lines, defaults to true, to disable it, set to "disable", "false", "none", "no" or "0"

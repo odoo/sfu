@@ -1,4 +1,5 @@
 import os from "node:os";
+import path from "node:path";
 
 import type {
     RtpCodecCapability,
@@ -13,6 +14,7 @@ const FALSY_INPUT = new Set(["disable", "false", "none", "no", "0"]);
 type LogLevel = "none" | "error" | "warn" | "info" | "debug" | "verbose";
 type WorkerLogLevel = "none" | "error" | "warn" | "debug";
 const testingMode = Boolean(process.env.JEST_WORKER_ID);
+export const tmpDir = path.join(os.tmpdir(), "odoo_sfu");
 
 // ------------------------------------------------------------
 // ------------------   ENV VARIABLES   -----------------------
@@ -70,7 +72,10 @@ export const PORT: number = Number(process.env.PORT) || 8070;
  * Whether the recording feature is enabled, false by default.
  */
 export const RECORDING: boolean = Boolean(process.env.RECORDING) || testingMode;
-
+/**
+ * The path where the recordings will be saved, defaults to `${tmpDir}/recordings`.
+ */
+export const RECORDING_PATH: string = process.env.RECORDING_PATH || path.join(tmpDir, "recordings");
 /**
  * The number of workers to spawn (up to core limits) to manage RTC servers.
  * 0 < NUM_WORKERS <= os.availableParallelism()
@@ -206,7 +211,7 @@ export const timeouts: TimeoutConfig = Object.freeze({
 
 export const recording = Object.freeze({
     routingInterface: "0.0.0.0",
-    directory: os.tmpdir() + "/recordings",
+    directory: RECORDING_PATH,
     enabled: RECORDING,
     maxDuration: 1000 * 60 * 60, // 1 hour, could be a env-var.
     fileTTL: 1000 * 60 * 60 * 24, // 24 hours
