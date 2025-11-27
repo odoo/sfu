@@ -1,11 +1,11 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+
 import * as mediasoup from "mediasoup";
 
 import * as config from "#src/config.ts";
 import { Logger } from "#src/utils/utils.ts";
 import { PortLimitReachedError } from "#src/utils/errors.ts";
-import os from "node:os";
-import fs from "node:fs/promises";
-import path from "node:path";
 
 const availablePorts: Set<number> = new Set();
 let unique = 1;
@@ -21,7 +21,7 @@ export interface RtcWorker extends mediasoup.types.Worker {
 
 const logger = new Logger("RESOURCES");
 const workers = new Set<RtcWorker>();
-const directory = os.tmpdir() + "/open_sfu_resources";
+const directory = path.join(config.tmpDir, "resources");
 
 export async function start(): Promise<void> {
     logger.info("starting...");
