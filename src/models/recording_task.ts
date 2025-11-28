@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { EventEmitter } from "node:events";
 
-import { MediaOutput } from "#src/models/media_output";
 import type { Producer } from "mediasoup/node/lib/types";
 
+import { MediaOutput } from "#src/models/media_output.ts";
 import { Session } from "#src/models/session.ts";
 import { Logger } from "#src/utils/utils.ts";
 import { TIME_TAG, type Recorder } from "#src/models/recorder.ts";
