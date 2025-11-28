@@ -59,9 +59,9 @@ export class MediaOutput extends EventEmitter {
         this._init();
     }
 
-    close() {
+    async close() {
         this._isClosed = true;
-        this._cleanup();
+        await this._cleanup();
     }
 
     private async _init() {
@@ -85,7 +85,7 @@ export class MediaOutput extends EventEmitter {
                 this._cleanup();
                 return;
             }
-            const codecData = this._producer.rtpParameters.codecs[0];
+            const codecData = this._consumer.rtpParameters.codecs[0];
             this._rtpData = {
                 kind: this._producer.kind,
                 payloadType: codecData.payloadType,
@@ -107,26 +107,27 @@ export class MediaOutput extends EventEmitter {
         }
     }
 
-    private _refreshProcess() {
+    private async _refreshProcess() {
         if (this._isClosed || !this._rtpData) {
             return;
         }
         if (this._producer.paused) {
             this._consumer?.pause();
-            this._ffmpeg?.close();
+            await this._ffmpeg?.close();
             this._ffmpeg = undefined;
         } else {
             const fileName = `${this.name}-${Date.now()}`;
             logger.verbose(`writing ${fileName} at ${this._directory}`);
             const fullName = path.join(this._directory, fileName);
             this._ffmpeg = new FFMPEG(this._rtpData, fullName);
+            logger.verbose(`resuming consumer ${this._consumer?.id}`);
             this._consumer?.resume();
             this.emit("file", fileName);
         }
     }
 
-    private _cleanup() {
-        this._ffmpeg?.close();
+    private async _cleanup() {
+        await this._ffmpeg?.close();
         this._consumer?.close();
         this._transport?.close();
         this._port?.release();
