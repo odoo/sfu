@@ -100,7 +100,7 @@ export async function getWorker(): Promise<mediasoup.types.Worker> {
     if (!leastUsedWorker) {
         throw new Error("No mediasoup workers available");
     }
-    logger.debug(`worker ${leastUsedWorker!.pid} with ${lowestUsage} ru_maxrss was selected`);
+    logger.verbose(`worker ${leastUsedWorker!.pid} with ${lowestUsage} ru_maxrss was selected`);
     return leastUsedWorker;
 }
 
@@ -153,10 +153,12 @@ export class DynamicPort {
     constructor(number: number) {
         availablePorts.delete(number);
         this.number = number;
+        logger.verbose(`Acquired port ${this.number}`);
     }
 
     release() {
         availablePorts.add(this.number);
+        logger.verbose(`Released port ${this.number}`);
     }
 }
 

@@ -11,6 +11,9 @@ async function run(): Promise<void> {
     await resources.start();
     await http.start();
     logger.info(`ready - PID: ${process.pid}`);
+    logger.debug(`TO IMPLEMENT: `);
+    logger.debug(`* get session labels from the odoo server`);
+    logger.debug(`* write tests for the recorder`);
 }
 
 function cleanup(): void {

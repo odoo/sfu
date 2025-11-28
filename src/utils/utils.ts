@@ -13,7 +13,8 @@ const ASCII = {
         yellow: "\x1b[33m",
         white: "\x1b[37m",
         cyan: "\x1b[36m",
-        default: "\x1b[0m"
+        default: "\x1b[0m",
+        pink: "\x1b[35m"
     }
 } as const;
 
@@ -122,7 +123,7 @@ export class Logger {
         this._log(console.log, ":INFO:", text, ASCII.color.green);
     }
     debug(text: string): void {
-        this._log(console.log, ":DEBUG:", text);
+        this._log(console.log, ":DEBUG:", text, ASCII.color.pink);
     }
     verbose(text: string): void {
         this._log(console.log, ":VERBOSE:", text, ASCII.color.white);
