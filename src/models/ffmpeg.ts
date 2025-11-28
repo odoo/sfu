@@ -2,6 +2,7 @@
 import { spawn, ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import { Readable } from "node:stream";
+
 import { Logger } from "#src/utils/utils.ts";
 import type { rtpData } from "#src/models/media_output";
 import { recording } from "#src/config.ts";
@@ -26,7 +27,7 @@ export class FFMPEG {
         this._init();
     }
 
-    async close() {
+    close() {
         if (this._isClosed) {
             return;
         }
@@ -35,10 +36,7 @@ export class FFMPEG {
         logger.verbose(`closing FFMPEG ${this.id}`);
         if (this._process && !this._process.killed) {
             logger.debug(`FFMPEG ${this.id} is still running, sending SIGINT`);
-            await new Promise((resolve) => {
-                this._process!.kill("SIGINT");
-                resolve(true);
-            });
+            this._process!.kill("SIGINT");
             logger.debug(`FFMPEG ${this.id} closed`);
         }
     }
@@ -72,7 +70,6 @@ export class FFMPEG {
 
             this._process.on("close", (code) => {
                 logger.verbose(`ffmpeg ${this.id} exited with code ${code}`);
-                this.close();
             });
 
             sdpStream.on("error", (error) => {

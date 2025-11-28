@@ -135,12 +135,8 @@ export class Recorder extends EventEmitter {
         this.isRecording = false;
         this.isTranscribing = false;
         this.state = RECORDER_STATE.STOPPING;
-        const results = await this._stopTasks();
-        const hasFailure = results.some((r) => r.status === "rejected");
-        if (hasFailure) {
-            logger.warn("recording failed at saving files"); // TODO more info
-        }
-        if (save && !hasFailure) {
+        this._stopTasks();
+        if (save) {
             await this._folder?.add("metadata.json", JSON.stringify(this._metaData));
             await this._folder?.seal(
                 path.join(recording.directory, `${this.channel.name}_${Date.now()}`)
@@ -209,13 +205,11 @@ export class Recorder extends EventEmitter {
         this.channel.on("sessionLeave", this._onSessionLeave);
     }
 
-    private async _stopTasks() {
-        const proms = [];
+    private _stopTasks() {
         for (const task of this._tasks.values()) {
-            proms.push(task.stop());
+            task.stop();
         }
         this._tasks.clear();
-        return Promise.allSettled(proms);
     }
 
     private _getRecordingStates(): RecordingStates {

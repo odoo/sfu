@@ -36,7 +36,10 @@ export async function start(): Promise<void> {
     logger.info(
         `transport(RTC) layer at ${config.PUBLIC_IP}:${config.RTC_MIN_PORT}-${config.RTC_MAX_PORT}`
     );
-    for (let i = config.dynamicPorts.min; i <= config.dynamicPorts.max; i++) {
+    /**
+     * Moving ports in steps of 2 because FFMPEG may use their allocated port + 1 for RTCP
+     */
+    for (let i = config.dynamicPorts.min; i <= config.dynamicPorts.max; i += 2) {
         availablePorts.add(i);
     }
     logger.info(
