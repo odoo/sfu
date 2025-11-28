@@ -35,16 +35,15 @@ export class FFMPEG {
         this._logStream?.end();
         logger.verbose(`closing FFMPEG ${this.id}`);
         if (this._process && !this._process.killed) {
-            logger.debug(`FFMPEG ${this.id} is still running, sending SIGINT`);
             this._process!.kill("SIGINT");
-            logger.debug(`FFMPEG ${this.id} closed`);
+            logger.verbose(`FFMPEG ${this.id} SIGINT sent`);
         }
     }
 
     private _init() {
         try {
             const sdpString = this._createSdpText();
-            logger.trace(`FFMPEG ${this.id} SDP:\n${sdpString}`);
+            logger.verbose(`FFMPEG ${this.id} SDP:\n${sdpString}`);
             
             const sdpStream = Readable.from([sdpString]);
             const args = this._getCommandArgs();

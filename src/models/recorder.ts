@@ -51,7 +51,7 @@ export class Recorder extends EventEmitter {
     isTranscribing: boolean = false;
     state: RECORDER_STATE = RECORDER_STATE.STOPPED;
     private _folder?: Folder;
-    private readonly channel: Channel; // TODO rename with private prefix
+    private readonly _channel: Channel; // TODO rename with private prefix
     private readonly _tasks = new Map<SessionId, RecordingTask>();
     /** Path to which the final recording will be uploaded to */
     private readonly _metaData: Metadata = {
@@ -71,7 +71,7 @@ export class Recorder extends EventEmitter {
         super();
         this._onSessionJoin = this._onSessionJoin.bind(this);
         this._onSessionLeave = this._onSessionLeave.bind(this);
-        this.channel = channel;
+        this._channel = channel;
         this._metaData.uploadAddress = recordingAddress;
     }
 
@@ -118,6 +118,7 @@ export class Recorder extends EventEmitter {
             tag,
             value
         });
+        logger.debug(`Marking ${tag} for channel ${this._channel.name}`);
         this._metaData.timeStamps[Date.now()] = events;
     }
 
@@ -129,9 +130,9 @@ export class Recorder extends EventEmitter {
         if (!this.isActive) {
             return;
         }
-        logger.debug("terminating recorder");
-        this.channel.off("sessionJoin", this._onSessionJoin);
-        this.channel.off("sessionLeave", this._onSessionLeave);
+        logger.verbose(`terminating recorder for channel ${this._channel.name}`);
+        this._channel.off("sessionJoin", this._onSessionJoin);
+        this._channel.off("sessionLeave", this._onSessionLeave);
         this.isRecording = false;
         this.isTranscribing = false;
         this.state = RECORDER_STATE.STOPPING;
@@ -139,7 +140,7 @@ export class Recorder extends EventEmitter {
         if (save) {
             await this._folder?.add("metadata.json", JSON.stringify(this._metaData));
             await this._folder?.seal(
-                path.join(recording.directory, `${this.channel.name}_${Date.now()}`)
+                path.join(recording.directory, `${this._channel.name}_${Date.now()}`)
             );
         } else {
             await this._folder?.delete();
@@ -150,7 +151,7 @@ export class Recorder extends EventEmitter {
     }
 
     private _onSessionJoin(id: SessionId) {
-        const session = this.channel.sessions.get(id);
+        const session = this._channel.sessions.get(id);
         if (!session) {
             return;
         }
@@ -169,12 +170,12 @@ export class Recorder extends EventEmitter {
         if (this.isRecording || this.isTranscribing) {
             if (this.isActive) {
                 await this._update().catch(async () => {
-                    logger.warn(`Failed to update recording or ${this.channel.name}`);
+                    logger.warn(`Failed to update recording or ${this._channel.name}`);
                     await this.terminate();
                 });
             } else {
                 await this._init().catch(async () => {
-                    logger.error(`Failed to start recording or ${this.channel.name}`);
+                    logger.error(`Failed to start recording or ${this._channel.name}`);
                     await this.terminate();
                 });
             }
@@ -194,15 +195,15 @@ export class Recorder extends EventEmitter {
     private async _init() {
         this.state = RECORDER_STATE.STARTED;
         this._folder = await getFolder();
-        logger.trace(`TO IMPLEMENT: recording channel ${this.channel.name}`);
-        for (const [sessionId, session] of this.channel.sessions) {
+        logger.verbose(`Initializing recorder for channel: ${this._channel.name}`);
+        for (const [sessionId, session] of this._channel.sessions) {
             this._tasks.set(
                 sessionId,
                 new RecordingTask(this, session, this._getRecordingStates())
             );
         }
-        this.channel.on("sessionJoin", this._onSessionJoin);
-        this.channel.on("sessionLeave", this._onSessionLeave);
+        this._channel.on("sessionJoin", this._onSessionJoin);
+        this._channel.on("sessionLeave", this._onSessionLeave);
     }
 
     private _stopTasks() {

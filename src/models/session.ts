@@ -603,7 +603,7 @@ export class Session extends EventEmitter {
                 if (!producer) {
                     return;
                 }
-                logger.debug(`[${this.name}] ${type} ${active ? "on" : "off"}`);
+                logger.verbose(`[${this.name}] ${type} ${active ? "on" : "off"}`);
 
                 if (active) {
                     await producer.resume();
@@ -688,7 +688,7 @@ export class Session extends EventEmitter {
                     this.info.isCameraOn = true;
                 }
                 const codec = producer.rtpParameters.codecs[0];
-                logger.debug(`[${this.name}] producing ${type}: ${codec?.mimeType}`);
+                logger.verbose(`[${this.name}] producing ${type}: ${codec?.mimeType}`);
                 this._updateRemoteConsumers();
                 this._broadcastInfo();
                 /**
