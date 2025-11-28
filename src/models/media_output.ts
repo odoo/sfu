@@ -9,7 +9,7 @@ import type {
     MediaKind
 } from "mediasoup/node/lib/types";
 
-import { getPort, type DynamicPort } from "#src/services/resources.ts";
+import { DynamicPort } from "#src/services/resources.ts";
 import { recording, rtc } from "#src/config.ts";
 import { FFMPEG } from "#src/models/ffmpeg.ts";
 import { Logger } from "#src/utils/utils.ts";
@@ -66,7 +66,7 @@ export class MediaOutput extends EventEmitter {
 
     private async _init() {
         try {
-            this._port = getPort();
+            this._port = new DynamicPort();
             this._transport = await this._router?.createPlainTransport(rtc.plainTransportOptions);
             if (!this._transport) {
                 throw new Error(`Failed at creating a plain transport for`);
@@ -114,6 +114,7 @@ export class MediaOutput extends EventEmitter {
         if (this._producer.paused) {
             logger.debug(`pausing consumer ${this._consumer?.id}`);
             this._consumer?.pause();
+            logger.debug("TODO notify pause");
         } else {
             logger.debug(`resuming consumer ${this._consumer?.id}`);
             if (!this._ffmpeg) {
@@ -123,6 +124,7 @@ export class MediaOutput extends EventEmitter {
                 this._ffmpeg = new FFMPEG(this._rtpData, fullName);
                 logger.verbose(`resuming consumer ${this._consumer?.id}`);
                 this.emit("file", fileName);
+                logger.debug("TODO notify resume");
             }
             this._consumer?.resume();
         }
