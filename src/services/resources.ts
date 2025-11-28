@@ -21,13 +21,12 @@ export interface RtcWorker extends mediasoup.types.Worker {
 
 const logger = new Logger("RESOURCES");
 const workers = new Set<RtcWorker>();
-const directory = path.join(config.tmpDir, "resources");
 
 export async function start(): Promise<void> {
     logger.info("starting...");
-    // any existing folders are deleted since they are unreachable
-    await fs.rm(directory, { recursive: true }).catch((error) => {
-        logger.verbose(`Nothing to remove at ${directory}: ${error}`);
+    logger.info(`cleaning resources folder (${config.RESOURCES_PATH})...`);
+    await fs.rm(config.RESOURCES_PATH, { recursive: true }).catch((error) => {
+        logger.verbose(`Nothing to remove at ${config.RESOURCES_PATH}: ${error}`);
     });
     for (let i = 0; i < config.NUM_WORKERS; ++i) {
         await makeWorker();
@@ -109,7 +108,7 @@ export class Folder {
     path: string;
 
     static async create(name: string) {
-        const p: string = path.join(directory, name);
+        const p: string = path.join(config.RESOURCES_PATH, name);
         await fs.mkdir(p, { recursive: true });
         return new Folder(p);
     }

@@ -79,6 +79,12 @@ export const RECORDING: boolean = Boolean(process.env.RECORDING) || testingMode;
 export const RECORDING_PATH: string = process.env.RECORDING_PATH || path.join(tmpDir, "recordings");
 fs.mkdirSync(RECORDING_PATH, { recursive: true });
 /**
+ * The path use by the resources service for temporary files, defaults to `${tmpDir}/resources`,
+ * can be used for debugging.
+ */
+export const RESOURCES_PATH: string = process.env.RESOURCES_PATH || path.join(tmpDir, "resources");
+fs.mkdirSync(RESOURCES_PATH, { recursive: true });
+/**
  * The number of workers to spawn (up to core limits) to manage RTC servers.
  * 0 < NUM_WORKERS <= os.availableParallelism()
  */
