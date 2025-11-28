@@ -7,7 +7,7 @@ import * as config from "#src/config.ts";
 import { Logger } from "#src/utils/utils.ts";
 import { PortLimitReachedError } from "#src/utils/errors.ts";
 
-const availablePorts: Set<number> = new Set();
+const availablePorts: number[] = [];
 let unique = 1;
 
 // TODO instead of RtcWorker, try Worker<RtcAppData>
@@ -39,10 +39,10 @@ export async function start(): Promise<void> {
      * Moving ports in steps of 2 because FFMPEG may use their allocated port + 1 for RTCP
      */
     for (let i = config.dynamicPorts.min; i <= config.dynamicPorts.max; i += 2) {
-        availablePorts.add(i);
+        availablePorts.push(i);
     }
     logger.info(
-        `${availablePorts.size} dynamic ports available [${config.dynamicPorts.min}-${config.dynamicPorts.max}]`
+        `${availablePorts.length} dynamic ports available [${config.dynamicPorts.min}-${config.dynamicPorts.max}]`
     );
 }
 
@@ -149,22 +149,17 @@ export async function getFolder(): Promise<Folder> {
 export class DynamicPort {
     number: number;
 
-    constructor(number: number) {
-        availablePorts.delete(number);
-        this.number = number;
+    constructor() {
+        const maybeNum = availablePorts.shift();
+        if (!maybeNum) {
+            throw new PortLimitReachedError();
+        }
+        this.number = maybeNum;
         logger.verbose(`Acquired port ${this.number}`);
     }
 
     release() {
-        availablePorts.add(this.number);
+        availablePorts.push(this.number);
         logger.verbose(`Released port ${this.number}`);
     }
-}
-
-export function getPort(): DynamicPort {
-    const number = availablePorts.values().next().value;
-    if (!number) {
-        throw new PortLimitReachedError();
-    }
-    return new DynamicPort(number);
 }

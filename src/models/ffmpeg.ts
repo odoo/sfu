@@ -8,22 +8,17 @@ import type { rtpData } from "#src/models/media_output";
 import { recording } from "#src/config.ts";
 
 const logger = new Logger("FFMPEG");
-
-let currentId = 0;
-
 export class FFMPEG {
-    readonly id: number;
-    private readonly rtp: rtpData;
+    private readonly _rtp: rtpData;
     private _process?: ChildProcess;
     private _isClosed = false;
-    private _filename: string;
+    private readonly _filename: string;
     private _logStream?: fs.WriteStream;
 
     constructor(rtp: rtpData, filename: string) {
-        this.rtp = rtp;
-        this.id = currentId++;
+        this._rtp = rtp;
         this._filename = filename;
-        logger.verbose(`creating FFMPEG for ${this.id}`);
+        logger.verbose(`creating FFMPEG for ${this._filename}`);
         this._init();
     }
 
@@ -33,17 +28,17 @@ export class FFMPEG {
         }
         this._isClosed = true;
         this._logStream?.end();
-        logger.verbose(`closing FFMPEG ${this.id}`);
+        logger.verbose(`closing FFMPEG ${this._filename}`);
         if (this._process && !this._process.killed) {
             this._process!.kill("SIGINT");
-            logger.verbose(`FFMPEG ${this.id} SIGINT sent`);
+            logger.verbose(`FFMPEG ${this._filename} SIGINT sent`);
         }
     }
 
     private _init() {
         try {
             const sdpString = this._createSdpText();
-            logger.verbose(`FFMPEG ${this.id} SDP:\n${sdpString}`);
+            logger.verbose(`FFMPEG ${this._filename} SDP:\n${sdpString}`);
             
             const sdpStream = Readable.from([sdpString]);
             const args = this._getCommandArgs();
@@ -63,12 +58,12 @@ export class FFMPEG {
             }
 
             this._process.on("error", (error) => {
-                logger.error(`ffmpeg ${this.id} error: ${error.message}`);
+                logger.error(`ffmpeg ${this._filename} error: ${error.message}`);
                 this.close();
             });
 
             this._process.on("close", (code) => {
-                logger.verbose(`ffmpeg ${this.id} exited with code ${code}`);
+                logger.verbose(`ffmpeg ${this._filename} exited with code ${code}`);
             });
 
             sdpStream.on("error", (error) => {
@@ -79,13 +74,13 @@ export class FFMPEG {
                 sdpStream.pipe(this._process.stdin);
             }
         } catch (error) {
-            logger.error(`Failed to initialize FFMPEG ${this.id}: ${error}`);
+            logger.error(`Failed to initialize FFMPEG ${this._filename}: ${error}`);
             this.close();
         }
     }
 
     private _createSdpText(): string {
-        const { port, payloadType, codec, clockRate, channels, kind } = this.rtp;
+        const { port, payloadType, codec, clockRate, channels, kind } = this._rtp;
 
         if (!port || !payloadType || !codec || !clockRate || !kind) {
              throw new Error("RTP missing required properties for SDP generation");
@@ -108,7 +103,7 @@ export class FFMPEG {
     }
 
     private _getContainerExtension(): string {
-        const codec = this.rtp.codec?.toLowerCase();
+        const codec = this._rtp.codec?.toLowerCase();
         
         switch (codec) {
             case "h264":
@@ -141,7 +136,7 @@ export class FFMPEG {
             "-f", "sdp",
             "-i", "pipe:0"
         ];
-        if (this.rtp.kind === "audio") {
+        if (this._rtp.kind === "audio") {
              args = args.concat([
                  "-map", "0:a:0",
                  "-c:a", "copy"
