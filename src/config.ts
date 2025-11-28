@@ -210,7 +210,7 @@ export const timeouts: TimeoutConfig = Object.freeze({
 });
 
 export const recording = Object.freeze({
-    routingInterface: "0.0.0.0",
+    routingInterface: "127.0.0.1",
     directory: RECORDING_PATH,
     enabled: RECORDING,
     maxDuration: 1000 * 60 * 60, // 1 hour, could be a env-var.
@@ -261,7 +261,9 @@ export interface RtcConfig {
 export const rtc: RtcConfig = Object.freeze({
     // https://mediasoup.org/documentation/v3/mediasoup/api/#WorkerSettings
     workerSettings: {
-        logLevel: WORKER_LOG_LEVEL
+        logLevel: WORKER_LOG_LEVEL,
+        rtcMinPort: RTC_MIN_PORT,
+        rtcMaxPort: RTC_MAX_PORT
     },
     // https://mediasoup.org/documentation/v3/mediasoup/api/#WebRtcServer-dictionaries
     rtcServerOptions: {
