@@ -1,4 +1,6 @@
 import { EventEmitter } from "node:events";
+import path from "node:path";
+
 import type {
     Router,
     Producer,
@@ -6,9 +8,13 @@ import type {
     PlainTransport,
     MediaKind
 } from "mediasoup/node/lib/types";
+
 import { getPort, type DynamicPort } from "#src/services/resources.ts";
 import { recording, rtc } from "#src/config.ts";
 import { FFMPEG } from "#src/models/ffmpeg.ts";
+import { Logger } from "#src/utils/utils.ts";
+
+const logger = new Logger("MEDIA_OUTPUT");
 
 export type rtpData = {
     payloadType?: number;
@@ -28,16 +34,28 @@ export class MediaOutput extends EventEmitter {
     private _rtpData?: rtpData;
     private _port?: DynamicPort;
     private _isClosed = false;
+    private _directory: string;
 
     get port() {
         return this._port?.number;
     }
 
-    constructor({ producer, router, name }: { producer: Producer; router: Router; name: string }) {
+    constructor({
+        producer,
+        router,
+        name,
+        directory
+    }: {
+        producer: Producer;
+        router: Router;
+        name: string;
+        directory: string;
+    }) {
         super();
         this._router = router;
         this._producer = producer;
         this.name = name;
+        this._directory = directory;
         this._init();
     }
 
@@ -94,11 +112,15 @@ export class MediaOutput extends EventEmitter {
             return;
         }
         if (this._producer.paused) {
+            this._consumer?.pause();
             this._ffmpeg?.close();
             this._ffmpeg = undefined;
         } else {
             const fileName = `${this.name}-${Date.now()}`;
-            this._ffmpeg = new FFMPEG(this._rtpData, fileName);
+            logger.verbose(`writing ${fileName} at ${this._directory}`);
+            const fullName = path.join(this._directory, fileName);
+            this._ffmpeg = new FFMPEG(this._rtpData, fullName);
+            this._consumer?.resume();
             this.emit("file", fileName);
         }
     }

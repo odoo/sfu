@@ -92,7 +92,7 @@ export class FFMPEG {
 
     private _cleanup() {
         this._process = undefined;
-        logger.trace(`FFMPEG ${this.id} closed`);
+        logger.verbose(`FFMPEG ${this.id} closed`);
     }
 
     private _createSdpText(): string {
