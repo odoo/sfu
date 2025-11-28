@@ -77,14 +77,18 @@ export const RECORDING: boolean = Boolean(process.env.RECORDING) || testingMode;
  * The path where the recordings will be saved, defaults to `${tmpDir}/recordings`.
  */
 export const RECORDING_PATH: string = process.env.RECORDING_PATH || path.join(tmpDir, "recordings");
-fs.mkdirSync(RECORDING_PATH, { recursive: true });
+if (RECORDING) {
+    fs.mkdirSync(RECORDING_PATH, { recursive: true });
+}
 /**
  * The path use by the resources service for temporary files, defaults to `${tmpDir}/resources`,
  * Keeping the default is fine as this is only used for temporary files used for internal process, but it can
  * be changed for debugging.
  */
 export const RESOURCES_PATH: string = process.env.RESOURCES_PATH || path.join(tmpDir, "resources");
-fs.mkdirSync(RESOURCES_PATH, { recursive: true });
+if (RECORDING) {
+    fs.mkdirSync(RESOURCES_PATH, { recursive: true });
+}
 /**
  * The number of workers to spawn (up to core limits) to manage RTC servers.
  * 0 < NUM_WORKERS <= os.availableParallelism()
