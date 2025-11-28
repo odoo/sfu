@@ -110,7 +110,8 @@ export class RecordingTask extends EventEmitter {
                 data.mediaOutput = new MediaOutput({
                     producer,
                     router: this._session.router!,
-                    name: `${this._session.id}-${type}`
+                    name: `${this._session.id}-${type}`,
+                    directory: this._recorder.path!
                 });
                 data.mediaOutput.on("file", (filename: string) => {
                     this._recorder.mark(TIME_TAG.NEW_FILE, { filename, type });
