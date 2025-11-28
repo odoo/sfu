@@ -210,7 +210,7 @@ export const timeouts: TimeoutConfig = Object.freeze({
 });
 
 export const recording = Object.freeze({
-    routingInterface: "0.0.0.0",
+    routingInterface: "127.0.0.1",
     directory: RECORDING_PATH,
     enabled: RECORDING,
     maxDuration: 1000 * 60 * 60, // 1 hour, could be a env-var.
