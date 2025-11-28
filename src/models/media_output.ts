@@ -112,17 +112,19 @@ export class MediaOutput extends EventEmitter {
             return;
         }
         if (this._producer.paused) {
+            logger.debug(`pausing consumer ${this._consumer?.id}`);
             this._consumer?.pause();
-            await this._ffmpeg?.close();
-            this._ffmpeg = undefined;
         } else {
-            const fileName = `${this.name}-${Date.now()}`;
-            logger.verbose(`writing ${fileName} at ${this._directory}`);
-            const fullName = path.join(this._directory, fileName);
-            this._ffmpeg = new FFMPEG(this._rtpData, fullName);
-            logger.verbose(`resuming consumer ${this._consumer?.id}`);
+            logger.debug(`resuming consumer ${this._consumer?.id}`);
+            if (!this._ffmpeg) {
+                const fileName = `${this.name}-${Date.now()}`;
+                logger.verbose(`writing ${fileName} at ${this._directory}`);
+                const fullName = path.join(this._directory, fileName);
+                this._ffmpeg = new FFMPEG(this._rtpData, fullName);
+                logger.verbose(`resuming consumer ${this._consumer?.id}`);
+                this.emit("file", fileName);
+            }
             this._consumer?.resume();
-            this.emit("file", fileName);
         }
     }
 
