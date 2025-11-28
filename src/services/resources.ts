@@ -124,9 +124,9 @@ export class Folder {
         const destinationPath = path;
         try {
             await fs.rename(this.path, destinationPath);
+            logger.verbose(`Moved folder from ${this.path} to ${destinationPath}`);
             Folder.usedDirs.delete(this.path);
             this.path = destinationPath;
-            logger.verbose(`Moved folder from ${this.path} to ${destinationPath}`);
         } catch (error) {
             logger.error(`Failed to move folder from ${this.path} to ${destinationPath}: ${error}`);
         }

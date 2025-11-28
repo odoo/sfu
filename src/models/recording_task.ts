@@ -125,20 +125,22 @@ export class RecordingTask extends EventEmitter {
                 );
             }
         }
-        this._clearData(data.type);
+        await this._clearData(data.type);
     }
 
-    private _clearData(type: STREAM_TYPE) {
+    private async _clearData(type: STREAM_TYPE) {
         const data = this.recordingDataByStreamType[type];
         data.active = false;
-        data.mediaOutput?.close();
+        await data.mediaOutput?.close();
         data.mediaOutput = undefined;
     }
 
     async stop() {
         this._session.off("producer", this._onSessionProducer);
+        const proms = [];
         for (const type of Object.values(STREAM_TYPE)) {
-            this._clearData(type);
+            proms.push(this._clearData(type));
         }
+        await Promise.all(proms);
     }
 }

@@ -1,5 +1,6 @@
 import os from "node:os";
 import path from "node:path";
+import fs from "node:fs";
 
 import type {
     RtpCodecCapability,
@@ -76,6 +77,7 @@ export const RECORDING: boolean = Boolean(process.env.RECORDING) || testingMode;
  * The path where the recordings will be saved, defaults to `${tmpDir}/recordings`.
  */
 export const RECORDING_PATH: string = process.env.RECORDING_PATH || path.join(tmpDir, "recordings");
+fs.mkdirSync(RECORDING_PATH, { recursive: true });
 /**
  * The number of workers to spawn (up to core limits) to manage RTC servers.
  * 0 < NUM_WORKERS <= os.availableParallelism()

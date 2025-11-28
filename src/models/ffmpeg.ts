@@ -1,5 +1,6 @@
 /* eslint-disable prettier/prettier */
 import { spawn, ChildProcess } from "node:child_process";
+import fs from "node:fs";
 import { Readable } from "node:stream";
 import { Logger } from "#src/utils/utils.ts";
 import type { rtpData } from "#src/models/media_output";
@@ -15,6 +16,7 @@ export class FFMPEG {
     private _process?: ChildProcess;
     private _isClosed = false;
     private _filename: string;
+    private _logStream?: fs.WriteStream;
 
     constructor(rtp: rtpData, filename: string) {
         this.rtp = rtp;
@@ -24,24 +26,24 @@ export class FFMPEG {
         this._init();
     }
 
-    close() {
+    async close() {
         if (this._isClosed) {
             return;
         }
         this._isClosed = true;
+        this._logStream?.end();
         logger.verbose(`closing FFMPEG ${this.id}`);
-        if (this._process) {
-            this._process.kill("SIGINT");
+        if (this._process && !this._process.killed) {
+            logger.debug(`FFMPEG ${this.id} is still running, sending SIGINT`);
+            await new Promise((resolve) => {
+                this._process!.kill("SIGINT");
+                resolve(true);
+            });
+            logger.debug(`FFMPEG ${this.id} closed`);
         }
-        this._cleanup();
     }
 
     private _init() {
-        if (this._isClosed) {
-            this._cleanup();
-            return;
-        }
-        
         try {
             const sdpString = this._createSdpText();
             logger.trace(`FFMPEG ${this.id} SDP:\n${sdpString}`);
@@ -52,19 +54,15 @@ export class FFMPEG {
             logger.verbose(`spawning ffmpeg with args: ${args.join(" ")}`);
             
             this._process = spawn("ffmpeg", args);
-            
+
+            this._logStream = fs.createWriteStream(`${this._filename}.log`);
+
             if (this._process.stderr) {
-                this._process.stderr.setEncoding("utf-8");
-                this._process.stderr.on("data", (data) => {
-                    logger.debug(`[ffmpeg ${this.id}] ${data}`);
-                });
+                this._process.stderr.pipe(this._logStream, { end: false });
             }
-            
+
             if (this._process.stdout) {
-                 this._process.stdout.setEncoding("utf-8");
-                 this._process.stdout.on("data", (data) => {
-                     logger.debug(`[ffmpeg ${this.id} stdout] ${data}`);
-                 });
+                this._process.stdout.pipe(this._logStream, { end: false });
             }
 
             this._process.on("error", (error) => {
@@ -90,11 +88,6 @@ export class FFMPEG {
         }
     }
 
-    private _cleanup() {
-        this._process = undefined;
-        logger.verbose(`FFMPEG ${this.id} closed`);
-    }
-
     private _createSdpText(): string {
         const { port, payloadType, codec, clockRate, channels, kind } = this.rtp;
 
@@ -113,6 +106,7 @@ export class FFMPEG {
         if (kind === "audio" && channels) {
             sdp += `/${channels}`;
         }
+        sdp += `\na=rtcp-mux`;
         sdp += `\na=recvonly\n`;
         return sdp;
     }

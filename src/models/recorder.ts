@@ -129,6 +129,7 @@ export class Recorder extends EventEmitter {
         if (!this.isActive) {
             return;
         }
+        logger.debug("terminating recorder");
         this.channel.off("sessionJoin", this._onSessionJoin);
         this.channel.off("sessionLeave", this._onSessionLeave);
         this.isRecording = false;
