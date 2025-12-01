@@ -34,6 +34,7 @@ type RecordingDataByStreamType = {
 
 const logger = new Logger("RECORDING_TASK");
 
+// TODO docstring
 export class RecordingTask extends EventEmitter {
     private _session: Session;
     private _recorder: Recorder;

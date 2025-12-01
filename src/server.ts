@@ -14,6 +14,8 @@ async function run(): Promise<void> {
     logger.debug(`TO IMPLEMENT: `);
     logger.debug(`* get session labels from the odoo server`);
     logger.debug(`* write tests for the recorder`);
+    logger.debug(`* use Promise.withResolvers() instead of Deferred`);
+    logger.debug(`* tests with mocked spawn`);
 }
 
 function cleanup(): void {
