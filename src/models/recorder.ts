@@ -136,7 +136,7 @@ export class Recorder extends EventEmitter {
         this.isRecording = false;
         this.isTranscribing = false;
         this.state = RECORDER_STATE.STOPPING;
-        this._stopTasks();
+        this._stopTasks(); // may want to make it async (resolve on child process close/exit) so we can wait for the end of ffmpeg, when files are no longer written on. to check.
         if (save) {
             await this._folder?.add("metadata.json", JSON.stringify(this._metaData));
             await this._folder?.seal(

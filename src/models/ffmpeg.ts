@@ -45,17 +45,17 @@ export class FFMPEG {
             
             logger.verbose(`spawning ffmpeg with args: ${args.join(" ")}`);
             
+            /**
+             * while testing spawn should be mocked so that we don't make subprocesses and save files
+             * just test if the args are correct (ffmpeg / sdp compliant)
+             */
+            logger.debug(`TODO: mock spawn`);
             this._process = spawn("ffmpeg", args);
 
             this._logStream = fs.createWriteStream(`${this._filename}.log`);
 
-            if (this._process.stderr) {
-                this._process.stderr.pipe(this._logStream, { end: false });
-            }
-
-            if (this._process.stdout) {
-                this._process.stdout.pipe(this._logStream, { end: false });
-            }
+            this._process.stderr?.pipe(this._logStream, { end: false });
+            this._process.stdout?.pipe(this._logStream, { end: false });
 
             this._process.on("error", (error) => {
                 logger.error(`ffmpeg ${this._filename} error: ${error.message}`);
@@ -80,6 +80,7 @@ export class FFMPEG {
     }
 
     private _createSdpText(): string {
+        // TODO docstring on sdp text
         const { port, payloadType, codec, clockRate, channels, kind } = this._rtp;
 
         if (!port || !payloadType || !codec || !clockRate || !kind) {
@@ -129,6 +130,7 @@ export class FFMPEG {
     }
 
     private _getCommandArgs(): string[] {
+        // TODO docstring on command args
         let args = [
             "-loglevel", "debug", // TODO remove
             "-protocol_whitelist", "pipe,udp,rtp",
