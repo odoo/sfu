@@ -23,7 +23,7 @@ export enum RECORDER_STATE {
 }
 export type Metadata = {
     uploadAddress: string;
-    timeStamps: Record<number, Array<{ tag: TIME_TAG; value: object }>>;
+    timeStamps: Array<{ tag: TIME_TAG; timestamp: number; value: object }>;
 };
 
 const logger = new Logger("RECORDER");
@@ -56,7 +56,7 @@ export class Recorder extends EventEmitter {
     /** Path to which the final recording will be uploaded to */
     private readonly _metaData: Metadata = {
         uploadAddress: "",
-        timeStamps: {}
+        timeStamps: []
     };
 
     get isActive(): boolean {
@@ -113,13 +113,11 @@ export class Recorder extends EventEmitter {
     }
 
     mark(tag: TIME_TAG, value: object = {}) {
-        const events = this._metaData.timeStamps[Date.now()] || [];
-        events.push({
+        this._metaData.timeStamps.push({
             tag,
+            timestamp: Date.now(),
             value
         });
-        logger.debug(`Marking ${tag} for channel ${this._channel.name}`);
-        this._metaData.timeStamps[Date.now()] = events;
     }
 
     /**
@@ -146,7 +144,7 @@ export class Recorder extends EventEmitter {
             await this._folder?.delete();
         }
         this._folder = undefined;
-        this._metaData.timeStamps = {};
+        this._metaData.timeStamps = [];
         this.state = RECORDER_STATE.STOPPED;
     }
 
