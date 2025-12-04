@@ -1,17 +1,17 @@
 import { describe, expect } from "@jest/globals";
 
-import { setConfig } from "./utils/utils";
+import { withMockEnv } from "./utils/utils";
 import { RECORDER_STATE } from "#src/models/recorder.ts";
 
-async function recordingSetup(config: Record<string, string>) {
-    const restoreConfig = setConfig(config);
+async function recordingSetup(env: Record<string, string>) {
+    const restoreEnv = withMockEnv(env);
     const { LocalNetwork } = await import("#tests/utils/network");
     const { Channel } = await import("#src/models/channel");
     const network = new LocalNetwork();
     await network.start("0.0.0.0", 61254);
     return {
         restore: () => {
-            restoreConfig();
+            restoreEnv();
             network.close();
         },
         getChannel: (uuid: string) => Channel.records.get(uuid),

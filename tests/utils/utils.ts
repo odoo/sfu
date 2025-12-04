@@ -7,7 +7,7 @@ import { jest } from "@jest/globals";
  * @param config - The environment variables to set. Pass `undefined` to unset a variable.
  * @returns A function to restore the environment.
  */
-export const setConfig = (config: Record<string, string | undefined>): (() => void) => {
+export function withMockEnv(config: Record<string, string | undefined>): () => void {
     const originalEnv = { ...process.env };
     for (const [key, value] of Object.entries(config)) {
         if (value === undefined) {
@@ -25,7 +25,7 @@ export const setConfig = (config: Record<string, string | undefined>): (() => vo
         Object.assign(process.env, originalEnv);
         jest.resetModules();
     };
-};
+}
 
 export function delay(ms = 0): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
