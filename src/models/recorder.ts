@@ -22,7 +22,7 @@ export enum RECORDER_STATE {
     STOPPED = "stopped"
 }
 export type Metadata = {
-    uploadAddress: string;
+    forwardAddress: string;
     timeStamps: Array<{ tag: TIME_TAG; timestamp: number; value: object }>;
 };
 
@@ -55,7 +55,7 @@ export class Recorder extends EventEmitter {
     private readonly _tasks = new Map<SessionId, RecordingTask>();
     /** Path to which the final recording will be uploaded to */
     private readonly _metaData: Metadata = {
-        uploadAddress: "",
+        forwardAddress: "",
         timeStamps: []
     };
 
@@ -67,12 +67,16 @@ export class Recorder extends EventEmitter {
         return this._folder?.path;
     }
 
-    constructor(channel: Channel, recordingAddress: string) {
+    /**
+     * @param channel - the channel to record
+     * @param forwardAddress - the address to which the recording will be forwarded
+     */
+    constructor(channel: Channel, forwardAddress: string) {
         super();
         this._onSessionJoin = this._onSessionJoin.bind(this);
         this._onSessionLeave = this._onSessionLeave.bind(this);
         this._channel = channel;
-        this._metaData.uploadAddress = recordingAddress;
+        this._metaData.forwardAddress = forwardAddress;
     }
 
     async start() {
