@@ -75,6 +75,21 @@ describe("HTTP", () => {
         expect(Channel.records.get(uuid)).toBeDefined();
         expect(url).toBe(`http://${config.PUBLIC_IP}:${config.PORT}`);
     });
+    test("/channel fails without authorization header", async () => {
+        const response = await fetch(`http://${HTTP_INTERFACE}:${PORT}/v${API_VERSION}/channel`, {
+            method: "GET"
+        });
+        expect(response.status).toBe(401);
+    });
+    test("/channel fails without issuer claim", async () => {
+        const response = await fetch(`http://${HTTP_INTERFACE}:${PORT}/v${API_VERSION}/channel`, {
+            method: "GET",
+            headers: {
+                Authorization: "jwt " + makeJwt({})
+            }
+        });
+        expect(response.status).toBe(403);
+    });
     test("/noop", async () => {
         const response = await fetch(`http://${HTTP_INTERFACE}:${PORT}/v${API_VERSION}/noop`, {
             method: "GET"
