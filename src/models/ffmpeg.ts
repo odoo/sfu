@@ -49,7 +49,7 @@ export class FFMPEG {
              * while testing spawn should be mocked so that we don't make subprocesses and save files
              * just test if the args are correct (ffmpeg / sdp compliant)
              */
-            logger.debug(`TODO: mock spawn`);
+
             this._process = spawn("ffmpeg", args);
 
             this._logStream = fs.createWriteStream(`${this._filename}.log`);
