@@ -72,7 +72,7 @@ export const PORT: number = Number(process.env.PORT) || 8070;
 /**
  * Whether the recording feature is enabled, false by default.
  */
-export const RECORDING: boolean = Boolean(process.env.RECORDING) || testingMode;
+export const RECORDING: boolean = Boolean(process.env.RECORDING);
 /**
  * The path where the recordings will be saved, defaults to `${tmpDir}/recordings`.
  */

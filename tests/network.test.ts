@@ -11,7 +11,6 @@ import { timeouts } from "#src/config";
 
 import { LocalNetwork } from "#tests/utils/network";
 import { delay } from "#tests/utils/utils.ts";
-import { RECORDER_STATE } from "#src/models/recorder.ts";
 
 const HTTP_INTERFACE = "0.0.0.0";
 const PORT = 61254;
@@ -289,52 +288,5 @@ describe("Full network", () => {
         expect(event2.detail.payload.senderId).toBe(sender.session.id);
         expect(event1.detail.payload.message).toBe(message);
         expect(event2.detail.payload.message).toBe(message);
-    });
-    test("POC RECORDING", async () => {
-        const channelUUID = await network.getChannelUUID();
-        const user1 = await network.connect(channelUUID, 1);
-        await user1.isConnected;
-        const user2 = await network.connect(channelUUID, 3);
-        await user2.isConnected;
-        expect(user2.sfuClient.availableFeatures.recording).toBe(true);
-        const startResult = (await user2.sfuClient.startRecording()) as boolean;
-        expect(startResult).toBe(true);
-        const stopResult = (await user2.sfuClient.stopRecording()) as boolean;
-        expect(stopResult).toBe(false);
-    });
-    test("POC TRANSCRIPTION", async () => {
-        const channelUUID = await network.getChannelUUID();
-        const user1 = await network.connect(channelUUID, 1);
-        await user1.isConnected;
-        const user2 = await network.connect(channelUUID, 3);
-        await user2.isConnected;
-        expect(user2.sfuClient.availableFeatures.transcription).toBe(true);
-        const startResult = (await user2.sfuClient.startTranscription()) as boolean;
-        expect(startResult).toBe(true);
-        const stopResult = (await user2.sfuClient.stopTranscription()) as boolean;
-        expect(stopResult).toBe(false);
-    });
-    test("POC COMBINED TRANSCRIPTION/RECORDING", async () => {
-        const channelUUID = await network.getChannelUUID();
-        const channel = Channel.records.get(channelUUID);
-        const user1 = await network.connect(channelUUID, 1);
-        await user1.isConnected;
-        const user2 = await network.connect(channelUUID, 3);
-        await user2.isConnected;
-        await user2.sfuClient.startTranscription();
-        await user1.sfuClient.startRecording();
-        const recorder = channel!.recorder!;
-        expect(recorder.isRecording).toBe(true);
-        expect(recorder.isTranscribing).toBe(true);
-        expect(recorder.state).toBe(RECORDER_STATE.STARTED);
-        await user1.sfuClient.stopRecording();
-        // stopping the recording while a transcription is active should not stop the transcription
-        expect(recorder.isRecording).toBe(false);
-        expect(recorder.isTranscribing).toBe(true);
-        expect(recorder.state).toBe(RECORDER_STATE.STARTED);
-        await user2.sfuClient.stopTranscription();
-        expect(recorder.isRecording).toBe(false);
-        expect(recorder.isTranscribing).toBe(false);
-        expect(recorder.state).toBe(RECORDER_STATE.STOPPED);
     });
 });
