@@ -6,6 +6,7 @@ import * as config from "#src/config";
 import { API_VERSION } from "#src/services/http";
 
 import { LocalNetwork, makeJwt } from "#tests/utils/network";
+import { withMockEnv } from "#tests/utils/utils";
 import { once } from "node:events";
 import { FakeMediaStreamTrack } from "fake-mediastreamtrack";
 import { STREAM_TYPE } from "#src/shared/enums.ts";
@@ -163,5 +164,79 @@ describe("HTTP", () => {
             method: "GET"
         });
         expect(response2.status).toBe(404);
+    });
+});
+
+describe("HTTP PROXY", () => {
+    let network: LocalNetwork;
+
+    afterEach(() => {
+        network?.close();
+        jest.useRealTimers();
+    });
+
+    test("headers are ignored when PROXY is not set", async () => {
+        network = new LocalNetwork();
+        await network.start(HTTP_INTERFACE, PORT);
+
+        const response = await fetch(`http://${HTTP_INTERFACE}:${PORT}/v${API_VERSION}/channel`, {
+            method: "GET",
+            headers: {
+                Authorization: "jwt " + makeJwt({ iss: `http://${HTTP_INTERFACE}:${PORT}/` }),
+                "X-Forwarded-Host": "proxy-host",
+                "X-Forwarded-Proto": "https",
+                "X-Forwarded-For": "1.2.3.4"
+            }
+        });
+        expect(response.ok).toBe(true);
+        const { url } = await response.json();
+        expect(url).toBe(`http://${config.PUBLIC_IP}:${config.PORT}`);
+    });
+
+    test("headers are used when PROXY is set", async () => {
+        const restore = withMockEnv({ PROXY: "true" });
+        const { LocalNetwork: LocalNetworkProxy } = await import("#tests/utils/network");
+
+        network = new LocalNetworkProxy();
+        await network.start(HTTP_INTERFACE, PORT);
+
+        const response = await fetch(`http://${HTTP_INTERFACE}:${PORT}/v${API_VERSION}/channel`, {
+            method: "GET",
+            headers: {
+                Authorization: "jwt " + makeJwt({ iss: `http://${HTTP_INTERFACE}:${PORT}/` }),
+                "X-Forwarded-Host": "proxy-host",
+                "X-Forwarded-Proto": "https"
+            }
+        });
+        expect(response.ok).toBe(true);
+        const { url } = await response.json();
+        expect(url).toBe("https://proxy-host");
+
+        restore();
+    });
+
+    test("X-Forwarded-For updates remoteAddress", async () => {
+        const restore = withMockEnv({ PROXY: "true" });
+        const { LocalNetwork: LocalNetworkProxy } = await import("#tests/utils/network");
+        const { Channel: ChannelProxy } = await import("#src/models/channel");
+
+        network = new LocalNetworkProxy();
+        await network.start(HTTP_INTERFACE, PORT);
+
+        const response = await fetch(`http://${HTTP_INTERFACE}:${PORT}/v${API_VERSION}/channel`, {
+            method: "GET",
+            headers: {
+                Authorization: "jwt " + makeJwt({ iss: `http://${HTTP_INTERFACE}:${PORT}/` }),
+                "X-Forwarded-For": "1.2.3.4"
+            }
+        });
+        expect(response.ok).toBe(true);
+        const { uuid } = await response.json();
+
+        const channel = ChannelProxy.records.get(uuid);
+        expect(channel).toBeDefined();
+        expect(channel!.remoteAddress).toBe("1.2.3.4");
+
+        restore();
     });
 });
