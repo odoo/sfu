@@ -1,10 +1,17 @@
 import type { SpawnOptions, ChildProcess } from "node:child_process";
-
-import { describe, expect, jest, test } from "@jest/globals";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { PassThrough } from "node:stream";
 import { EventEmitter } from "node:events";
+
+import { describe, expect, jest, test } from "@jest/globals";
+
+import { RECORDER_STATE } from "#src/models/recorder.ts";
 import { FakeMediaStreamTrack } from "fake-mediastreamtrack";
 import { STREAM_TYPE } from "#src/shared/enums.ts";
+
+import { withMockEnv } from "./utils/utils";
 
 type ChildProcessLike = {
     stdin: PassThrough;
@@ -31,11 +38,17 @@ jest.mock("node:child_process", () => {
     };
 });
 
-import { withMockEnv } from "./utils/utils";
-import { RECORDER_STATE } from "#src/models/recorder.ts";
-
 async function recordingSetup(env: Record<string, string>) {
-    const restoreEnv = withMockEnv(env);
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sfu-test-"));
+    const resourcesPath = path.join(tmpDir, "resources");
+    const recordingPath = path.join(tmpDir, "recordings");
+
+    // making sure that during the tests, we don't clog the resources and recordings directories
+    const restoreEnv = withMockEnv({
+        RESOURCES_PATH: resourcesPath,
+        RECORDING_PATH: recordingPath,
+        ...env
+    });
     const { LocalNetwork } = await import("#tests/utils/network");
     const { Channel } = await import("#src/models/channel");
     const network = new LocalNetwork();
@@ -44,6 +57,7 @@ async function recordingSetup(env: Record<string, string>) {
         restore: () => {
             restoreEnv();
             network.close();
+            fs.rmSync(tmpDir, { recursive: true, force: true });
         },
         getChannel: (uuid: string) => Channel.records.get(uuid),
         network
