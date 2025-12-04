@@ -1,4 +1,35 @@
-import { describe, expect } from "@jest/globals";
+import type { SpawnOptions, ChildProcess } from "node:child_process";
+
+import { describe, expect, jest, test } from "@jest/globals";
+import { PassThrough } from "node:stream";
+import { EventEmitter } from "node:events";
+import { FakeMediaStreamTrack } from "fake-mediastreamtrack";
+import { STREAM_TYPE } from "#src/shared/enums.ts";
+
+type ChildProcessLike = {
+    stdin: PassThrough;
+    stdout: PassThrough;
+    stderr: PassThrough;
+    kill: (signal?: number | string) => boolean;
+    killed: boolean;
+    pid: number;
+} & ChildProcess;
+
+const mockSpawn = jest.fn();
+jest.mock("node:child_process", () => {
+    const original = jest.requireActual("node:child_process") as {
+        spawn: (command: string, args: string[], options: SpawnOptions) => ChildProcessLike;
+    };
+    return {
+        ...original,
+        spawn: (command: string, args: string[], options: SpawnOptions): ChildProcessLike => {
+            if (command === "ffmpeg") {
+                return mockSpawn(command, args, options) as ChildProcessLike;
+            }
+            return original.spawn(command, args, options);
+        }
+    };
+});
 
 import { withMockEnv } from "./utils/utils";
 import { RECORDER_STATE } from "#src/models/recorder.ts";
@@ -78,5 +109,77 @@ describe("Recording & Transcription", () => {
         expect(recorder.isTranscribing).toBe(false);
         expect(recorder.state).toBe(RECORDER_STATE.STOPPED);
         restore();
+    });
+
+    test("Spawns FFMPEG for both audio and video streams", async () => {
+        mockSpawn.mockImplementation(() => {
+            const mp = new EventEmitter() as ChildProcessLike;
+            mp.stdin = new PassThrough();
+            mp.stdout = new PassThrough();
+            mp.stderr = new PassThrough();
+            mp.kill = jest.fn() as (signal?: number | string) => boolean;
+            mp.killed = false;
+            return mp;
+        });
+
+        const { restore, network } = await recordingSetup({ RECORDING: "true" });
+
+        try {
+            const channelUUID = await network.getChannelUUID();
+            const user = await network.connect(channelUUID, 1);
+            await user.isConnected;
+            await user.sfuClient.startRecording();
+
+            const audioTrack = new FakeMediaStreamTrack({ kind: "audio" });
+            await user.sfuClient.updateUpload(STREAM_TYPE.AUDIO, audioTrack);
+
+            const videoTrack = new FakeMediaStreamTrack({ kind: "video" });
+            await user.sfuClient.updateUpload(STREAM_TYPE.CAMERA, videoTrack);
+
+            await new Promise<void>((resolve) => {
+                const interval = setInterval(() => {
+                    if (mockSpawn.mock.calls.length >= 2) {
+                        clearInterval(interval);
+                        resolve();
+                    }
+                }, 100);
+            });
+
+            expect(mockSpawn).toHaveBeenCalledTimes(2);
+
+            const results = mockSpawn.mock.results as Array<{ value: ChildProcessLike }>;
+            const process1 = results[0].value;
+            const process2 = results[1].value;
+
+            const readSdp = (proc: ChildProcessLike) =>
+                new Promise<string>((resolve) => {
+                    if (proc.stdin!.readableLength > 0) {
+                        resolve(proc.stdin!.read().toString());
+                    } else {
+                        proc.stdin!.once("data", (chunk: Buffer) => resolve(chunk.toString()));
+                    }
+                });
+
+            const sdp1 = await readSdp(process1);
+            const sdp2 = await readSdp(process2);
+
+            const sdps = [sdp1, sdp2];
+            const audioSdp = sdps.find((s) => s.includes("m=audio"));
+            const videoSdp = sdps.find((s) => s.includes("m=video"));
+
+            expect(audioSdp).toBeDefined();
+            expect(audioSdp).toContain("s=FFmpeg");
+            expect(videoSdp).toBeDefined();
+            expect(videoSdp).toContain("s=FFmpeg");
+
+            const callArgs = mockSpawn.mock.calls.map((c) => c[1] as string[]);
+            const audioArgs = callArgs.find((args) => args.includes("-c:a"));
+            const videoArgs = callArgs.find((args) => args.includes("-c:v"));
+
+            expect(audioArgs).toBeDefined();
+            expect(videoArgs).toBeDefined();
+        } finally {
+            restore();
+        }
     });
 });
