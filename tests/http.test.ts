@@ -152,6 +152,29 @@ describe("HTTP", () => {
         });
         expect(user1.session.state).toBe(SESSION_STATE.CLOSED);
     });
+    test("/disconnect does not execute for unowned channel", async () => {
+        const remoteAddress = "test.other-owner.net";
+        const channel = await Channel.create(remoteAddress, "issuer");
+        const sessionId = 5;
+        const user1 = await network.connect(channel.uuid, sessionId);
+
+        const response = await fetch(
+            `http://${HTTP_INTERFACE}:${PORT}/v${API_VERSION}/disconnect`,
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: makeJwt({
+                    sessionIdsByChannel: {
+                        [channel.uuid]: [sessionId]
+                    }
+                })
+            }
+        );
+        expect(response.status).toBe(200);
+        expect(user1.session.state).not.toBe(SESSION_STATE.CLOSED);
+    });
     test("/disconnect fails with an incorrect JWT", async () => {
         const channelUUID = await network.getChannelUUID();
         const sessionId = 5;
