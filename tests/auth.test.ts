@@ -1,4 +1,5 @@
 import { describe, beforeEach, afterEach, expect } from "@jest/globals";
+
 import * as auth from "#src/services/auth";
 import { AuthenticationError } from "#src/utils/errors";
 

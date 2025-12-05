@@ -6,12 +6,12 @@ import { PassThrough } from "node:stream";
 import { EventEmitter } from "node:events";
 
 import { describe, expect, jest, test } from "@jest/globals";
+import { FakeMediaStreamTrack } from "fake-mediastreamtrack";
 
 import { RECORDER_STATE } from "#src/models/recorder.ts";
-import { FakeMediaStreamTrack } from "fake-mediastreamtrack";
 import { STREAM_TYPE } from "#src/shared/enums.ts";
 
-import { withMockEnv } from "./utils/utils";
+import { withMockEnv } from "#tests/utils/utils";
 
 type ChildProcessLike = {
     stdin: PassThrough;
