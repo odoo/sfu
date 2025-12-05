@@ -6,9 +6,9 @@ import { getFolder, type Folder } from "#src/services/resources.ts";
 import { RecordingTask, type RecordingStates } from "#src/models/recording_task.ts";
 import { Logger } from "#src/utils/utils.ts";
 
-import type { Channel } from "#src/models/channel";
+import type { Channel } from "#src/models/channel.ts";
 import type { SessionId } from "#src/models/session.ts";
-import { STREAM_TYPE } from "#src/shared/enums";
+import { STREAM_TYPE } from "#src/shared/enums.ts";
 
 export enum TIME_TAG {
     RECORDING_STARTED = "recording_started",
@@ -34,7 +34,10 @@ export type TimeTagInfo = {
 };
 export type Metadata = {
     forwardAddress: string;
-    timeStamps: Array<{ tag: TIME_TAG; timestamp: number; info?: TimeTagInfo }>;
+    timeStamps: Array<
+        | { tag: TIME_TAG.FILE_STATE_CHANGE; timestamp: number; info: TimeTagInfo }
+        | { tag: Exclude<TIME_TAG, TIME_TAG.FILE_STATE_CHANGE>; timestamp: number }
+    >;
 };
 
 const logger = new Logger("RECORDER");
@@ -125,13 +128,25 @@ export class Recorder extends EventEmitter {
         }
         return this.isTranscribing;
     }
-
+    /* eslint-disable no-dupe-class-members */ // overloads
+    mark(tag: TIME_TAG.FILE_STATE_CHANGE, info: TimeTagInfo): void;
+    mark(tag: Exclude<TIME_TAG, TIME_TAG.FILE_STATE_CHANGE>): void;
     mark(tag: TIME_TAG, info?: TimeTagInfo) {
-        this._metaData.timeStamps.push({
-            tag,
-            timestamp: Date.now(),
-            info
-        });
+        if (tag === TIME_TAG.FILE_STATE_CHANGE) {
+            if (!info) {
+                throw new Error("Info is required for FILE_STATE_CHANGE");
+            }
+            this._metaData.timeStamps.push({
+                tag,
+                timestamp: Date.now(),
+                info
+            });
+        } else {
+            this._metaData.timeStamps.push({
+                tag: tag as Exclude<TIME_TAG, TIME_TAG.FILE_STATE_CHANGE>,
+                timestamp: Date.now()
+            });
+        }
     }
 
     /**
