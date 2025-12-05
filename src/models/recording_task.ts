@@ -112,9 +112,16 @@ export class RecordingTask extends EventEmitter {
                     name: `${this._session.id}-${type}`,
                     directory: this._recorder.path!
                 });
-                data.mediaOutput.on("file", (filename: string) => {
-                    this._recorder.mark(TIME_TAG.NEW_FILE, { filename, type });
-                });
+                data.mediaOutput.on(
+                    "fileStateChange",
+                    ({ active, filename }: { active: boolean; filename: string }) => {
+                        this._recorder.mark(TIME_TAG.FILE_STATE_CHANGE, {
+                            active,
+                            filename,
+                            type
+                        });
+                    }
+                );
                 if (data.active) {
                     return;
                 }
