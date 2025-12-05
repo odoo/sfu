@@ -52,7 +52,7 @@ export class FFMPEG {
             logger.debug(`spawning ffmpeg with args: ${args.join(" ")}`);
             this._process = spawn("ffmpeg", args);
 
-            this._logStream = fs.createWriteStream(`${this.filename}.log`);
+            this._logStream = fs.createWriteStream(`${path.join(this._directory, this.filename)}.log`);
             this._process.stderr?.pipe(this._logStream, { end: false });
             this._process.stdout?.pipe(this._logStream, { end: false });
 
