@@ -118,6 +118,7 @@ const logger = new Logger("SESSION");
  * @fires Session#stateChange - Emitted when session state changes
  * @fires Session#close - Emitted when session is closed
  * @fires Session#producer - Emitted when a new producer is created
+ * @fires Session#handledError - Emitted when an error is handled
  */
 export class Session extends EventEmitter {
     /** Communication bus for WebSocket messaging */
@@ -537,6 +538,7 @@ export class Session extends EventEmitter {
      */
     private _handleError(error: Error): void {
         this.errors.push(error);
+        this.emit("handledError", error);
         logger.error(
             `[${this.name}] handling error (${this.errors.length}): ${error.message} : ${error.stack}`
         );

@@ -26,7 +26,3 @@ export function withMockEnv(config: Record<string, string | undefined>): () => v
         jest.resetModules();
     };
 }
-
-export function delay(ms = 0): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
