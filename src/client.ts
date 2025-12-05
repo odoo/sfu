@@ -407,7 +407,10 @@ export class SfuClient extends EventTarget {
                 appData: { type }
             });
         } catch (error) {
-            this._handleError(error as Error);
+            const exit = this._handleError(error as Error);
+            if (exit) {
+                return;
+            }
             // retry after some delay
             this._recoverProducerTimeouts[type] = setTimeout(async () => {
                 await this.updateUpload(type, track);
@@ -452,7 +455,10 @@ export class SfuClient extends EventTarget {
         this._bus.onRequest = this._handleRequest;
     }
 
-    private _handleError(error: Error) {
+    /**
+     * Handles an error and returns true if the connection should be closed.
+     */
+    private _handleError(error: Error): boolean {
         this.errors.push(error);
         this.dispatchEvent(
             new CustomEvent("handledError", {
@@ -463,8 +469,9 @@ export class SfuClient extends EventTarget {
         if (this.errors.length > MAX_ERRORS) {
             // not awaited
             this._handleConnectionEnd();
-            return;
+            return true;
         }
+        return false;
     }
 
     private _close(cause?: string): void {
