@@ -38,7 +38,7 @@ jest.mock("node:child_process", () => {
     };
 });
 
-async function recordingSetup(env: Record<string, string>) {
+async function recordingSetup(env: Record<string, string | undefined>) {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sfu-test-"));
     const resourcesPath = path.join(tmpDir, "resources");
     const recordingPath = path.join(tmpDir, "recordings");
@@ -66,12 +66,11 @@ async function recordingSetup(env: Record<string, string>) {
 
 describe("Recording & Transcription", () => {
     test("Does not record when the feature is disabled", async () => {
-        const { restore } = await recordingSetup({ RECORDING: "" });
+        const { restore } = await recordingSetup({ RECORDING: undefined });
         const config = await import("#src/config");
         expect(config.recording.enabled).toBe(false);
         restore();
     });
-
     test("Returns false when calling start/stop recording/transcription when not connected", async () => {
         const { SfuClient } = await import("#src/client");
         const client = new SfuClient();

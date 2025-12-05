@@ -31,4 +31,25 @@ describe("rtc service", () => {
         }
         expect(usedWorkers.size).toBe(config.NUM_WORKERS);
     });
+    test("worker should be replaced if it dies", async () => {
+        const worker = await resources.getWorker();
+        const pid = worker.pid;
+        process.kill(pid, "SIGTERM");
+
+        await new Promise<void>((resolve) => {
+            const interval = setInterval(() => {
+                if (
+                    resources.workers.size === config.NUM_WORKERS &&
+                    !resources.workers.has(worker)
+                ) {
+                    clearInterval(interval);
+                    resolve();
+                }
+            }, 10);
+        });
+
+        const newWorker = await resources.getWorker();
+        expect(newWorker.pid).not.toBe(pid);
+        expect(resources.workers.size).toBe(config.NUM_WORKERS);
+    });
 });

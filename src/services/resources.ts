@@ -20,7 +20,10 @@ export interface RtcWorker extends mediasoup.types.Worker {
 // TODO maybe write some docstring, file used to manage resources such as folders, workers, ports
 
 const logger = new Logger("RESOURCES");
-const workers = new Set<RtcWorker>();
+/**
+ * Exported for testing purposes
+ */
+export const workers = new Set<RtcWorker>();
 
 export async function start(): Promise<void> {
     logger.info("starting...");
