@@ -52,4 +52,25 @@ describe("rtc service", () => {
         expect(newWorker.pid).not.toBe(pid);
         expect(resources.workers.size).toBe(config.NUM_WORKERS);
     });
+
+    test("getAllowedCodecs should respect environment variables", async () => {
+        const { withMockEnv } = await import("./utils/utils");
+        const restore = withMockEnv({
+            AUDIO_CODECS: "opus,PCMU",
+            VIDEO_CODECS: "VP8,H264"
+        });
+
+        const { getAllowedCodecs } = await import("#src/utils/utils");
+        const codecs = getAllowedCodecs();
+
+        expect(codecs).toHaveLength(4);
+        expect(codecs.map((c) => c.mimeType)).toEqual([
+            "audio/opus",
+            "audio/PCMU",
+            "video/VP8",
+            "video/H264"
+        ]);
+
+        restore();
+    });
 });
