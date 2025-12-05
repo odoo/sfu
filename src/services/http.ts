@@ -182,7 +182,7 @@ function setupRoutes(routeListener: RouteListener): void {
     });
 }
 
-class RouteListener {
+export class RouteListener {
     private readonly GETs = new Map<string, RouteEntry>();
     private readonly POSTs = new Map<string, RouteEntry>();
     private readonly OPTIONs = new Map<string, RouteEntry>();
