@@ -1,5 +1,4 @@
 import { EventEmitter } from "node:events";
-import path from "node:path";
 
 import type {
     Router,
@@ -114,23 +113,26 @@ export class MediaOutput extends EventEmitter {
         if (this._producer.paused) {
             logger.debug(`pausing consumer ${this._consumer?.id}`);
             this._consumer?.pause();
-            logger.debug("TODO notify pause");
+            if (this._ffmpeg) {
+                this.emit("fileStateChange", { active: false, filename: this._ffmpeg.filename });
+            }
         } else {
             logger.debug(`resuming consumer ${this._consumer?.id}`);
             if (!this._ffmpeg) {
                 const fileName = `${this.name}-${Date.now()}`;
                 logger.verbose(`writing ${fileName} at ${this._directory}`);
-                const fullName = path.join(this._directory, fileName);
-                this._ffmpeg = new FFMPEG(this._rtpData, fullName);
+                this._ffmpeg = new FFMPEG(this._rtpData, this._directory, fileName);
                 logger.verbose(`resuming consumer ${this._consumer?.id}`);
-                this.emit("file", fileName);
-                logger.debug("TODO notify resume");
             }
             this._consumer?.resume();
+            this.emit("fileStateChange", { active: true, filename: this._ffmpeg.filename });
         }
     }
 
     private async _cleanup() {
+        if (this._ffmpeg) {
+            this.emit("fileStateChange", { active: false, filename: this._ffmpeg.filename });
+        }
         const prom = this._ffmpeg?.close();
         this._consumer?.close();
         this._transport?.close();

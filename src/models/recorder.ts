@@ -8,28 +8,38 @@ import { Logger } from "#src/utils/utils.ts";
 
 import type { Channel } from "#src/models/channel";
 import type { SessionId } from "#src/models/session.ts";
+import { STREAM_TYPE } from "#src/shared/enums";
 
 export enum TIME_TAG {
     RECORDING_STARTED = "recording_started",
     RECORDING_STOPPED = "recording_stopped",
     TRANSCRIPTION_STARTED = "transcription_started",
     TRANSCRIPTION_STOPPED = "transcription_stopped",
-    NEW_FILE = "new_file"
+    FILE_STATE_CHANGE = "file_state_change"
 }
 export enum RECORDER_STATE {
     STARTED = "started",
     STOPPING = "stopping",
     STOPPED = "stopped"
 }
+export type TimeTagInfo = {
+    filename: string;
+    type: STREAM_TYPE;
+    /**
+     * The file lasts for the whole duration of the client producer, which means that it can represent a sequence of streams,
+     * with periods of inactivity (no packets). active is set to true when the stream is active, which means that the producer is
+     * actively broadcasting data, and false when it is not.
+     */
+    active: boolean;
+};
 export type Metadata = {
     forwardAddress: string;
-    timeStamps: Array<{ tag: TIME_TAG; timestamp: number; value: object }>;
+    timeStamps: Array<{ tag: TIME_TAG; timestamp: number; info?: TimeTagInfo }>;
 };
 
 const logger = new Logger("RECORDER");
 
 /**
- * TODO some docstring
  * The recorder generates a "raw" file bundle, of recordings of individual audio and video streams,
  * accompanied with a metadata file describing the recording (timestamps, ids,...).
  *
@@ -116,11 +126,11 @@ export class Recorder extends EventEmitter {
         return this.isTranscribing;
     }
 
-    mark(tag: TIME_TAG, value: object = {}) {
+    mark(tag: TIME_TAG, info?: TimeTagInfo) {
         this._metaData.timeStamps.push({
             tag,
             timestamp: Date.now(),
-            value
+            info
         });
     }
 

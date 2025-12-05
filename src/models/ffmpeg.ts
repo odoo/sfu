@@ -2,6 +2,7 @@
 import { spawn, ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import { Readable } from "node:stream";
+import path from "node:path";
 
 import { Logger } from "#src/utils/utils.ts";
 import type { rtpData } from "#src/models/media_output";
@@ -9,16 +10,18 @@ import { recording } from "#src/config.ts";
 
 const logger = new Logger("FFMPEG");
 export class FFMPEG {
+    readonly filename: string;
     private readonly _rtp: rtpData;
     private _process?: ChildProcess;
     private _isClosed = false;
-    private readonly _filename: string;
     private _logStream?: fs.WriteStream;
+    private readonly _directory: string;
 
-    constructor(rtp: rtpData, filename: string) {
+    constructor(rtp: rtpData, directory: string, filename: string) {
         this._rtp = rtp;
-        this._filename = filename;
-        logger.verbose(`creating FFMPEG for ${this._filename}`);
+        this.filename = filename;
+        this._directory = directory;
+        logger.verbose(`creating FFMPEG for ${this.filename}`);
         this._init();
     }
 
@@ -28,14 +31,14 @@ export class FFMPEG {
         }
         this._isClosed = true;
         this._logStream?.end();
-        logger.verbose(`closing FFMPEG ${this._filename}`);
+        logger.verbose(`closing FFMPEG ${this.filename}`);
         if (this._process && !this._process.killed) {
             const closed = new Promise((resolve) => {
                 this._process!.on("close", resolve);
-                logger.verbose(`FFMPEG ${this._filename} closed`);
+                logger.verbose(`FFMPEG ${this.filename} closed`);
             });
             this._process!.kill("SIGINT");
-            logger.verbose(`FFMPEG ${this._filename} SIGINT sent`);
+            logger.verbose(`FFMPEG ${this.filename} SIGINT sent`);
             await closed;
         }
     }
@@ -43,23 +46,23 @@ export class FFMPEG {
     private _init() {
         try {
             const sdpString = this._createSdpText();
-            logger.verbose(`FFMPEG ${this._filename} SDP:\n${sdpString}`);
+            logger.verbose(`FFMPEG ${this.filename} SDP:\n${sdpString}`);
             const sdpStream = Readable.from([sdpString]);
             const args = this._getCommandArgs();
             logger.debug(`spawning ffmpeg with args: ${args.join(" ")}`);
             this._process = spawn("ffmpeg", args);
 
-            this._logStream = fs.createWriteStream(`${this._filename}.log`);
+            this._logStream = fs.createWriteStream(`${this.filename}.log`);
             this._process.stderr?.pipe(this._logStream, { end: false });
             this._process.stdout?.pipe(this._logStream, { end: false });
 
             this._process.on("error", (error) => {
-                logger.error(`ffmpeg ${this._filename} error: ${error.message}`);
+                logger.error(`ffmpeg ${this.filename} error: ${error.message}`);
                 this.close();
             });
 
             this._process.on("close", (code) => {
-                logger.verbose(`ffmpeg ${this._filename} exited with code ${code}`);
+                logger.verbose(`ffmpeg ${this.filename} exited with code ${code}`);
             });
 
             sdpStream.on("error", (error) => {
@@ -70,7 +73,7 @@ export class FFMPEG {
                 sdpStream.pipe(this._process.stdin);
             }
         } catch (error) {
-            logger.error(`Failed to initialize FFMPEG ${this._filename}: ${error}`);
+            logger.error(`Failed to initialize FFMPEG ${this.filename}: ${error}`);
             this.close();
         }
     }
@@ -146,7 +149,7 @@ export class FFMPEG {
              ]);
         }
         const extension = this._getContainerExtension();
-        args.push(`${this._filename}.${extension}`);
+        args.push(`${path.join(this._directory, this.filename)}.${extension}`);
         return args;
     }
 }
