@@ -50,6 +50,9 @@ export interface ParseBodyOptions {
     json?: boolean;
 }
 
+/**
+ * @deprecated Use Promise.withResolvers() when available
+ */
 export class Deferred<T = unknown> {
     private readonly _promise: Promise<T>;
     public resolve!: (value: T | PromiseLike<T>) => void;
