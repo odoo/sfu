@@ -71,6 +71,16 @@ describe("Recording & Transcription", () => {
         expect(config.recording.enabled).toBe(false);
         restore();
     });
+
+    test("Returns false when calling start/stop recording/transcription when not connected", async () => {
+        const { SfuClient } = await import("#src/client");
+        const client = new SfuClient();
+
+        expect(await client.startRecording()).toBe(false);
+        expect(await client.stopRecording()).toBe(false);
+        expect(await client.startTranscription()).toBe(false);
+        expect(await client.stopTranscription()).toBe(false);
+    });
     test("can record", async () => {
         const { restore, network } = await recordingSetup({ RECORDING: "true" });
         const channelUUID = await network.getChannelUUID();
