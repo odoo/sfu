@@ -164,6 +164,7 @@ export class Recorder extends EventEmitter {
         this.isTranscribing = false;
         this.state = RECORDER_STATE.STOPPING;
         const currentFolder = this._folder;
+        const metadata = JSON.stringify(this._metaData);
         /**
          * Not awaiting this._stopRecordingTasks() as FFMPEG can take arbitrarily long to complete (several seconds, or more),
          * and we don't want to block the termination of the recorder as a new recording can be started straight away,
@@ -173,7 +174,7 @@ export class Recorder extends EventEmitter {
             .then((results) => {
                 const failed = results.some((result) => result.status === "rejected");
                 if (save && !failed) {
-                    currentFolder?.add("metadata.json", JSON.stringify(this._metaData));
+                    currentFolder?.add("metadata.json", metadata);
                     currentFolder?.seal(
                         path.join(recording.directory, `${this._channel.name}_${Date.now()}`)
                     );
