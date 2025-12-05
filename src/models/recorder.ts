@@ -138,15 +138,30 @@ export class Recorder extends EventEmitter {
         this.isRecording = false;
         this.isTranscribing = false;
         this.state = RECORDER_STATE.STOPPING;
-        this._stopTasks(); // may want to make it async (resolve on child process close/exit) so we can wait for the end of ffmpeg, when files are no longer written on. to check.
-        if (save) {
-            await this._folder?.add("metadata.json", JSON.stringify(this._metaData));
-            await this._folder?.seal(
-                path.join(recording.directory, `${this._channel.name}_${Date.now()}`)
-            );
-        } else {
-            await this._folder?.delete();
-        }
+        const currentFolder = this._folder;
+        /**
+         * Not awaiting this._stopRecordingTasks() as FFMPEG can take arbitrarily long to complete (several seconds, or more),
+         * and we don't want to block the termination of the recorder as a new recording can be started
+         * straight away, independently of the saving process of the previous recording. And the input delay for the user
+         * would also be too long.
+         */
+        this._stopRecordingTasks()
+            .then((results) => {
+                const failed = results.some((result) => result.status === "rejected");
+                if (save && !failed) {
+                    currentFolder?.add("metadata.json", JSON.stringify(this._metaData));
+                    currentFolder?.seal(
+                        path.join(recording.directory, `${this._channel.name}_${Date.now()}`)
+                    );
+                } else {
+                    currentFolder?.delete();
+                }
+            })
+            .catch((error) => {
+                logger.error(
+                    `Failed to save recording for channel ${this._channel.name}: ${error}`
+                );
+            });
         this._folder = undefined;
         this._metaData.timeStamps = [];
         this.state = RECORDER_STATE.STOPPED;
@@ -208,11 +223,13 @@ export class Recorder extends EventEmitter {
         this._channel.on("sessionLeave", this._onSessionLeave);
     }
 
-    private _stopTasks() {
+    private async _stopRecordingTasks() {
+        const proms = [];
         for (const task of this._tasks.values()) {
-            task.stop();
+            proms.push(task.stop());
         }
         this._tasks.clear();
+        return Promise.allSettled(proms);
     }
 
     private _getRecordingStates(): RecordingStates {

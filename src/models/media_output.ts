@@ -59,9 +59,9 @@ export class MediaOutput extends EventEmitter {
         this._init();
     }
 
-    close() {
+    async close() {
         this._isClosed = true;
-        this._cleanup();
+        await this._cleanup();
     }
 
     private async _init() {
@@ -130,10 +130,11 @@ export class MediaOutput extends EventEmitter {
         }
     }
 
-    private _cleanup() {
-        this._ffmpeg?.close();
+    private async _cleanup() {
+        const prom = this._ffmpeg?.close();
         this._consumer?.close();
         this._transport?.close();
         this._port?.release();
+        await prom;
     }
 }
