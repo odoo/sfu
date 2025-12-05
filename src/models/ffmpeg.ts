@@ -22,7 +22,7 @@ export class FFMPEG {
         this._init();
     }
 
-    close() {
+    async close() {
         if (this._isClosed) {
             return;
         }
@@ -30,8 +30,13 @@ export class FFMPEG {
         this._logStream?.end();
         logger.verbose(`closing FFMPEG ${this._filename}`);
         if (this._process && !this._process.killed) {
+            const closed = new Promise((resolve) => {
+                this._process!.on("close", resolve);
+                logger.verbose(`FFMPEG ${this._filename} closed`);
+            });
             this._process!.kill("SIGINT");
             logger.verbose(`FFMPEG ${this._filename} SIGINT sent`);
+            await closed;
         }
     }
 
@@ -39,21 +44,12 @@ export class FFMPEG {
         try {
             const sdpString = this._createSdpText();
             logger.verbose(`FFMPEG ${this._filename} SDP:\n${sdpString}`);
-            
             const sdpStream = Readable.from([sdpString]);
             const args = this._getCommandArgs();
-            
-            logger.verbose(`spawning ffmpeg with args: ${args.join(" ")}`);
-            
-            /**
-             * while testing spawn should be mocked so that we don't make subprocesses and save files
-             * just test if the args are correct (ffmpeg / sdp compliant)
-             */
-
+            logger.debug(`spawning ffmpeg with args: ${args.join(" ")}`);
             this._process = spawn("ffmpeg", args);
 
             this._logStream = fs.createWriteStream(`${this._filename}.log`);
-
             this._process.stderr?.pipe(this._logStream, { end: false });
             this._process.stdout?.pipe(this._logStream, { end: false });
 
