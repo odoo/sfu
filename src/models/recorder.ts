@@ -166,9 +166,8 @@ export class Recorder extends EventEmitter {
         const currentFolder = this._folder;
         /**
          * Not awaiting this._stopRecordingTasks() as FFMPEG can take arbitrarily long to complete (several seconds, or more),
-         * and we don't want to block the termination of the recorder as a new recording can be started
-         * straight away, independently of the saving process of the previous recording. And the input delay for the user
-         * would also be too long.
+         * and we don't want to block the termination of the recorder as a new recording can be started straight away,
+         * independently of the saving process of the previous recording. The input delay for the user would also be too long.
          */
         this._stopRecordingTasks()
             .then((results) => {

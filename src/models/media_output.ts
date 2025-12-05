@@ -111,18 +111,15 @@ export class MediaOutput extends EventEmitter {
             return;
         }
         if (this._producer.paused) {
-            logger.debug(`pausing consumer ${this._consumer?.id}`);
             this._consumer?.pause();
             if (this._ffmpeg) {
                 this.emit("fileStateChange", { active: false, filename: this._ffmpeg.filename });
             }
         } else {
-            logger.debug(`resuming consumer ${this._consumer?.id}`);
             if (!this._ffmpeg) {
                 const fileName = `${this.name}-${Date.now()}`;
-                logger.verbose(`writing ${fileName} at ${this._directory}`);
+                logger.verbose(`new recording file${this._directory}/${fileName}`);
                 this._ffmpeg = new FFMPEG(this._rtpData, this._directory, fileName);
-                logger.verbose(`resuming consumer ${this._consumer?.id}`);
             }
             this._consumer?.resume();
             this.emit("fileStateChange", { active: true, filename: this._ffmpeg.filename });
