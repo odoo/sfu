@@ -7,6 +7,7 @@ import { Session } from "#src/models/session.ts";
 import { Logger } from "#src/utils/utils.ts";
 import { TIME_TAG, type Recorder } from "#src/models/recorder.ts";
 import { STREAM_TYPE } from "#src/shared/enums.ts";
+import { PortLimitReachedError } from "#src/utils/errors.ts";
 
 export type RecordingStates = {
     audio: boolean;
@@ -125,10 +126,17 @@ export class RecordingTask extends EventEmitter {
                 if (data.active) {
                     return;
                 }
-            } catch {
-                logger.warn(
-                    `failed at starting the recording for ${this._session.name} ${data.type}`
-                );
+            } catch (error) {
+                if (error instanceof PortLimitReachedError) {
+                    logger.warn(
+                        `no port available for recording ${this._session.name} ${data.type}`
+                    );
+                    // TODO: accepting partial recoding, or the whole recording should be discarded?
+                } else {
+                    logger.error(
+                        `failed at starting the recording for ${this._session.name} ${data.type} - error: ${error}`
+                    );
+                }
             }
         }
         this._clearData(data.type);

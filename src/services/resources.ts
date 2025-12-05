@@ -39,7 +39,8 @@ export async function start(): Promise<void> {
         `transport(RTC) layer at ${config.PUBLIC_IP}:${config.RTC_MIN_PORT}-${config.RTC_MAX_PORT}`
     );
     /**
-     * Moving ports in steps of 2 because FFMPEG may use their allocated port + 1 for RTCP
+     * FIXME: Moving ports in steps of 2 because FFMPEG may use their allocated port + 1 for RTCP,
+     * need to verify if FFMPEG can be configured to use muxed ports
      */
     for (let i = config.dynamicPorts.min; i <= config.dynamicPorts.max; i += 2) {
         availablePorts.push(i);
@@ -158,11 +159,9 @@ export class DynamicPort {
             throw new PortLimitReachedError();
         }
         this.number = maybeNum;
-        logger.verbose(`Acquired port ${this.number}`);
     }
 
     release() {
         availablePorts.push(this.number);
-        logger.verbose(`Released port ${this.number}`);
     }
 }

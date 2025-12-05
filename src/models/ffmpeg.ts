@@ -21,7 +21,6 @@ export class FFMPEG {
         this._rtp = rtp;
         this.filename = filename;
         this._directory = directory;
-        logger.verbose(`creating FFMPEG for ${this.filename}`);
         this._init();
     }
 
@@ -31,14 +30,11 @@ export class FFMPEG {
         }
         this._isClosed = true;
         this._logStream?.end();
-        logger.verbose(`closing FFMPEG ${this.filename}`);
         if (this._process && !this._process.killed) {
             const closed = new Promise((resolve) => {
                 this._process!.on("close", resolve);
-                logger.verbose(`FFMPEG ${this.filename} closed`);
             });
             this._process!.kill("SIGINT");
-            logger.verbose(`FFMPEG ${this.filename} SIGINT sent`);
             await closed;
         }
     }
@@ -46,7 +42,7 @@ export class FFMPEG {
     private _init() {
         try {
             const sdpString = this._createSdpText();
-            logger.verbose(`FFMPEG ${this.filename} SDP:\n${sdpString}`);
+            logger.debug(`FFMPEG ${this.filename} SDP:\n${sdpString}`);
             const sdpStream = Readable.from([sdpString]);
             const args = this._getCommandArgs();
             logger.debug(`spawning ffmpeg with args: ${args.join(" ")}`);
