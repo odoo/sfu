@@ -205,4 +205,78 @@ describe("Recording & Transcription", () => {
             restore();
         }
     });
+
+    test("Does not spawn FFMPEG for paused producers when recording starts", async () => {
+        mockSpawn.mockClear();
+        mockSpawn.mockImplementation(() => {
+            const mp = new EventEmitter() as ChildProcessLike;
+            mp.stdin = new PassThrough();
+            mp.stdout = new PassThrough();
+            mp.stderr = new PassThrough();
+            mp.kill = jest.fn() as (signal?: number | string) => boolean;
+            mp.killed = false;
+            return mp;
+        });
+
+        const { restore, network } = await recordingSetup({ RECORDING: "true" });
+
+        try {
+            const channelUUID = await network.getChannelUUID();
+            const user = await network.connect(channelUUID, 1);
+            await user.isConnected;
+
+            const audioTrack = new FakeMediaStreamTrack({ kind: "audio" });
+            await user.sfuClient.updateUpload(STREAM_TYPE.AUDIO, audioTrack);
+
+            const videoTrack = new FakeMediaStreamTrack({ kind: "video" });
+            await user.sfuClient.updateUpload(STREAM_TYPE.SCREEN, videoTrack);
+            await user.sfuClient.updateUpload(STREAM_TYPE.SCREEN, null);
+
+            await user.sfuClient.startRecording();
+
+            await new Promise<void>((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    clearInterval(interval);
+                    reject(new Error("Timeout waiting for audio spawn"));
+                }, 2000);
+                const interval = setInterval(() => {
+                    const calls = mockSpawn.mock.calls;
+                    const hasAudio = calls.some((c) => (c[1] as string[]).includes("-c:a"));
+                    if (hasAudio) {
+                        clearInterval(interval);
+                        clearTimeout(timeout);
+                        resolve();
+                    }
+                }, 100);
+            });
+
+            expect(mockSpawn).toHaveBeenCalledTimes(1);
+            const args = mockSpawn.mock.calls[0][1] as string[];
+            expect(args.join(" ")).toContain("-c:a");
+            expect(args.join(" ")).not.toContain("-c:v");
+
+            await user.sfuClient.updateUpload(STREAM_TYPE.SCREEN, videoTrack);
+
+            await new Promise<void>((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    clearInterval(interval);
+                    reject(new Error("Timeout waiting for video spawn"));
+                }, 2000);
+                const interval = setInterval(() => {
+                    if (mockSpawn.mock.calls.length >= 2) {
+                        clearInterval(interval);
+                        clearTimeout(timeout);
+                        resolve();
+                    }
+                }, 100);
+            });
+
+            expect(mockSpawn).toHaveBeenCalledTimes(2);
+            const calls = mockSpawn.mock.calls;
+            const secondCallArgs = calls[1][1] as string[];
+            expect(secondCallArgs.join(" ")).toContain("-c:v");
+        } finally {
+            restore();
+        }
+    });
 });
