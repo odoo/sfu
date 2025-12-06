@@ -6,7 +6,7 @@ import { getFolder, type Folder } from "#src/services/resources.ts";
 import { RecordingTask, type RecordingStates } from "#src/models/recording_task.ts";
 import { Logger } from "#src/utils/utils.ts";
 
-import type { Channel } from "#src/models/channel.ts";
+import { Channel } from "#src/models/channel.ts";
 import type { SessionId } from "#src/models/session.ts";
 import { STREAM_TYPE } from "#src/shared/enums.ts";
 
@@ -48,11 +48,14 @@ const logger = new Logger("RECORDER");
  *
  * These raw recordings can then be used for further processing (transcription, compilation,...).
  *
- * Recorder acts at the channel level, managing the creation and closure of sessions in that channel,
- * whereas the recording_task acts at the session level, managing the recording of an individual session
+ * {@link Recorder} acts at the channel level, managing the creation and closure of sessions in that channel,
+ * whereas the {@link RecordingTask} acts at the session level, managing the recording of an individual session
  * and following its producer lifecycle.
  */
 export class Recorder extends EventEmitter {
+    static Events = {
+        UPDATE: "update"
+    };
     /**
      * Plain recording means that we mark the recording to be saved as a audio/video file
      **/
@@ -93,7 +96,6 @@ export class Recorder extends EventEmitter {
     }
 
     async start() {
-        // TODO: for the transcription, we should play with isRecording / isTranscribing to see whether to stop or start or just disabled one of the features
         if (!this.isRecording) {
             this.isRecording = true;
             this.mark(TIME_TAG.RECORDING_STARTED);
@@ -158,15 +160,15 @@ export class Recorder extends EventEmitter {
             return;
         }
         logger.verbose(`terminating recorder for channel ${this._channel.name}`);
-        this._channel.off("sessionJoin", this._onSessionJoin);
-        this._channel.off("sessionLeave", this._onSessionLeave);
+        this._channel.off(Channel.Events.SESSION_JOIN, this._onSessionJoin);
+        this._channel.off(Channel.Events.SESSION_LEAVE, this._onSessionLeave);
         this.isRecording = false;
         this.isTranscribing = false;
         this.state = RECORDER_STATE.STOPPING;
         const currentFolder = this._folder;
         const metadata = JSON.stringify(this._metaData);
         /**
-         * Not awaiting this._stopRecordingTasks() as FFMPEG can take arbitrarily long to complete (several seconds, or more),
+         * Not awaiting as FFMPEG can take arbitrarily long to complete (several seconds, or more),
          * and we don't want to block the termination of the recorder as a new recording can be started straight away,
          * independently of the saving process of the previous recording. The input delay for the user would also be too long.
          */
@@ -244,8 +246,8 @@ export class Recorder extends EventEmitter {
                 new RecordingTask(this, session, this._getRecordingStates())
             );
         }
-        this._channel.on("sessionJoin", this._onSessionJoin);
-        this._channel.on("sessionLeave", this._onSessionLeave);
+        this._channel.on(Channel.Events.SESSION_JOIN, this._onSessionJoin);
+        this._channel.on(Channel.Events.SESSION_LEAVE, this._onSessionLeave);
     }
 
     private async _stopRecordingTasks() {

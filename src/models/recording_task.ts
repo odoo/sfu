@@ -20,7 +20,7 @@ export enum RECORDING_TASK_EVENT {
 }
 
 type RecordingData = {
-    active: boolean; // active is different from boolean(ffmpeg) so we can flag synchronously and avoid race conditions
+    active: boolean;
     type: STREAM_TYPE;
     mediaOutput?: MediaOutput;
 };
@@ -67,7 +67,7 @@ export class RecordingTask extends EventEmitter {
         this._onSessionProducer = this._onSessionProducer.bind(this);
         this._session = session;
         this._recorder = recorder;
-        this._session.on("producer", this._onSessionProducer);
+        this._session.on(Session.Events.PRODUCER, this._onSessionProducer);
         this.audio = audio;
         this.camera = camera;
         this.screen = screen;
@@ -114,7 +114,7 @@ export class RecordingTask extends EventEmitter {
                     directory: this._recorder.path!
                 });
                 data.mediaOutput.on(
-                    "fileStateChange",
+                    MediaOutput.Events.FILE_STATE_CHANGE,
                     ({ active, filename }: { active: boolean; filename: string }) => {
                         this._recorder.mark(TIME_TAG.FILE_STATE_CHANGE, {
                             active,
