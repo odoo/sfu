@@ -121,7 +121,22 @@ export const RTC_MIN_PORT: number =
  */
 export const RTC_MAX_PORT: number =
     (process.env.RTC_MAX_PORT && Number(process.env.RTC_MAX_PORT)) || 49999;
+/**
+ * Lower bound for the range of ports that the SFU server can use for dynamic ports, used for
+ * routing streams to internal processes (recording).
+ */
+export const DYNAMIC_MIN_PORT: number =
+    (process.env.DYNAMIC_MIN_PORT && Number(process.env.DYNAMIC_MIN_PORT)) || 50000;
+/**
+ * Upper bound for the range of ports that the SFU server can use for dynamic ports
+ */
+export const DYNAMIC_MAX_PORT: number =
+    (process.env.DYNAMIC_MAX_PORT && Number(process.env.DYNAMIC_MAX_PORT)) || 59999;
 
+// check for overlap in ports
+if (RECORDING && !(DYNAMIC_MAX_PORT < RTC_MIN_PORT || DYNAMIC_MIN_PORT > RTC_MAX_PORT)) {
+    throw new Error("Dynamic ports overlap with RTC ports");
+}
 /**
  * The maximum size of the buffer in byes for incoming messages per session
  */
@@ -234,12 +249,6 @@ export const recording = Object.freeze({
     audioLimit: 20,
     cameraLimit: 4, // how many camera can be merged into one recording
     screenLimit: 1
-});
-
-// TODO: This should probably be env variable, and at least documented so that deployment can open these ports.
-export const dynamicPorts = Object.freeze({
-    min: 50000,
-    max: 59999
 });
 
 // how many errors can occur before the session is closed, recovery attempts will be made until this limit is reached

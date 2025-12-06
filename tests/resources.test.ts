@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect } from "@jest/globals";
 import * as resources from "#src/services/resources";
 import * as config from "#src/config";
 
-describe("rtc service", () => {
+describe("resources service", () => {
     beforeEach(async () => {
         await resources.start();
     });
@@ -52,7 +52,6 @@ describe("rtc service", () => {
         expect(newWorker.pid).not.toBe(pid);
         expect(resources.workers.size).toBe(config.NUM_WORKERS);
     });
-
     test("getAllowedCodecs should respect environment variables", async () => {
         const { withMockEnv } = await import("./utils/utils");
         const restore = withMockEnv({
