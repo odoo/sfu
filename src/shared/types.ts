@@ -10,10 +10,14 @@ export type StreamType = "audio" | "camera" | "screen";
 
 export type StringLike = Buffer | string;
 
-export type StartupData = {
-    availableFeatures: AvailableFeatures;
+export type ChannelInfo = {
     isRecording: boolean;
     isTranscribing: boolean;
+};
+
+export type StartupData = {
+    availableFeatures: AvailableFeatures;
+    channelInfo: ChannelInfo;
 };
 export type AvailableFeatures = {
     rtc: boolean;

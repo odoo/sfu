@@ -15,6 +15,7 @@ import {
 import { Recorder } from "#src/models/recorder.ts";
 import { getWorker, type RtcWorker } from "#src/services/resources.ts";
 import { SERVER_MESSAGE } from "#src/shared/enums.ts";
+import type { ChannelInfo } from "#src/shared/types.ts";
 
 const logger = new Logger("CHANNEL");
 
@@ -215,6 +216,13 @@ export class Channel extends EventEmitter {
             remoteAddress: this.remoteAddress,
             sessionsStats: await this.getSessionsStats(),
             webRtcEnabled: Boolean(this.router)
+        };
+    }
+
+    get info(): ChannelInfo {
+        return {
+            isRecording: Boolean(this.recorder?.isRecording),
+            isTranscribing: Boolean(this.recorder?.isTranscribing)
         };
     }
 
