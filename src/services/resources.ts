@@ -10,12 +10,10 @@ import { PortLimitReachedError } from "#src/utils/errors.ts";
 const availablePorts: number[] = [];
 let unique = 1;
 
-// TODO instead of RtcWorker, try Worker<RtcAppData>
-export interface RtcWorker extends mediasoup.types.Worker {
-    appData: {
-        webRtcServer?: mediasoup.types.WebRtcServer;
-    };
-}
+type RtcAppData = mediasoup.types.AppData & {
+    webRtcServer?: mediasoup.types.WebRtcServer;
+};
+export type RtcWorker = mediasoup.types.Worker<RtcAppData>;
 
 // TODO maybe write some docstring, file used to manage resources such as folders, workers, ports
 
@@ -66,9 +64,9 @@ export function close(): void {
 }
 
 async function makeWorker(): Promise<void> {
-    const worker = await mediasoup.createWorker(config.rtc.workerSettings);
+    const worker: RtcWorker = await mediasoup.createWorker<RtcAppData>(config.rtc.workerSettings);
     worker.appData.webRtcServer = await worker.createWebRtcServer(config.rtc.rtcServerOptions);
-    workers.add(worker as RtcWorker);
+    workers.add(worker);
     worker.once("died", (error: Error) => {
         logger.error(`worker died: ${error.message} ${error.stack ?? ""}`);
         workers.delete(worker);
@@ -85,9 +83,9 @@ async function makeWorker(): Promise<void> {
 /**
  * @throws {Error} If no workers are available
  */
-export async function getWorker(): Promise<mediasoup.types.Worker> {
+export async function getWorker(): Promise<RtcWorker> {
     const proms = [];
-    let leastUsedWorker: mediasoup.types.Worker | undefined;
+    let leastUsedWorker: RtcWorker | undefined;
     let lowestUsage = Infinity;
     for (const worker of workers) {
         proms.push(
