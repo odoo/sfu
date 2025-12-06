@@ -520,18 +520,19 @@ export class SfuClient extends EventTarget {
                 { once: true }
             );
             /**
-             * Receiving a message means that the server has authenticated the client and is ready to receive messages.
+             * Receiving a message means that the server has authenticated the client and is ready to receive messages,
+             * this contains initialization data.
              */
             webSocket.addEventListener(
                 "message",
                 (message) => {
                     if (message.data) {
-                        const { availableFeatures, isRecording, isTranscribing } = JSON.parse(
+                        const { availableFeatures, channelInfo } = JSON.parse(
                             message.data
                         ) as StartupData;
                         this.availableFeatures = availableFeatures;
-                        this.isRecording = isRecording;
-                        this.isTranscribing = isTranscribing;
+                        this.isRecording = channelInfo.isRecording;
+                        this.isTranscribing = channelInfo.isTranscribing;
                     }
                     resolve(new Bus(webSocket));
                 },

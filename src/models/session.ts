@@ -190,9 +190,7 @@ export class Session extends EventEmitter {
                 recording: Boolean(this._channel.recorder && this.permissions.recording),
                 transcription: Boolean(this._channel.recorder && this.permissions.transcription)
             },
-            // TODO could be a channelState type
-            isRecording: this._channel.recorder?.isRecording || false,
-            isTranscribing: this._channel.recorder?.isTranscribing || false
+            channelInfo: this._channel.info
         };
     }
 
