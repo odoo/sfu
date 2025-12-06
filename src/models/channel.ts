@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import crypto from "node:crypto";
 
-import type { Router, Worker, WebRtcServer } from "mediasoup/node/lib/types";
+import type { Router, WebRtcServer } from "mediasoup/node/lib/types";
 
 import * as config from "#src/config.ts";
 import { getAllowedCodecs, Logger } from "#src/utils/utils.ts";
@@ -115,7 +115,7 @@ export class Channel extends EventEmitter {
             return oldChannel;
         }
         const channelOptions: ChannelCreateOptions & {
-            worker?: Worker;
+            worker?: RtcWorker;
             router?: Router;
         } = { key, recordingAddress: useWebRtc ? recordingAddress : null };
         if (useWebRtc) {
@@ -181,7 +181,7 @@ export class Channel extends EventEmitter {
     constructor(
         remoteAddress: string,
         options: ChannelCreateOptions & {
-            worker?: Worker;
+            worker?: RtcWorker;
             router?: Router;
         } = {}
     ) {
