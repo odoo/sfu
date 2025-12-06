@@ -7,7 +7,7 @@ import { Channel } from "#src/models/channel";
 import { WS_CLOSE_CODE } from "#src/shared/enums";
 import { timeouts } from "#src/config";
 
-import { LocalNetwork } from "#tests/utils/network";
+import { LocalNetwork, makeJwt } from "#tests/utils/network";
 
 const HTTP_INTERFACE = "0.0.0.0";
 const PORT = 62348;
@@ -54,5 +54,24 @@ describe("Security", () => {
         const channel = Channel.records.get(channelUUID);
         await network.connect(channelUUID, 4, { key });
         expect(channel!.sessions.size).toBe(1);
+    });
+    test("Legacy Auth: Succeeds if channel has NO key and channelUUID not provided", async () => {
+        const channelUUID = await network.getChannelUUID({ key: "" });
+        const ws = new WebSocket(`ws://localhost:${PORT}`);
+        await once(ws, "open");
+
+        const jwt = makeJwt({
+            sfu_channel_uuid: channelUUID,
+            session_id: 1,
+            permissions: {}
+        });
+
+        ws.send(JSON.stringify({ jwt }));
+
+        const [message] = await once(ws, "message");
+        const data = JSON.parse(message.toString());
+        expect(data).toHaveProperty("availableFeatures");
+
+        ws.close();
     });
 });
