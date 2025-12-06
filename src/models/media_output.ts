@@ -23,7 +23,23 @@ export type rtpData = {
     channels?: number;
     port: number;
 };
+
+/**
+ * Bridges a mediasoup producer to an FFMPEG recording process.
+ *
+ * The class opens a plain transport/consumer pair on a dynamic port, extracts the
+ * RTP parameters, and spawns FFMPEG when the producer is active. Construction calls
+ * {@link MediaOutput._init()}, which provisions the mediasoup transport/consumer, caches RTP metadata,
+ * and subscribes to producer pause/resume events to drive {@link MediaOutput._refreshProcess()}.
+ * `_refreshProcess` mirrors the producer state: pausing the consumer and emitting
+ * an inactive {@link FILE_STATE_CHANGE_EVENT}, or resuming the consumer and lazily creating the
+ * FFMPEG process before emitting an active {@link FILE_STATE_CHANGE_EVENT}. {@link MediaOutput.close()}
+ * stops any running process and releases mediasoup and networking resources.
+ */
 export class MediaOutput extends EventEmitter {
+    static Events = {
+        FILE_STATE_CHANGE: "fileStateChange"
+    };
     name: string;
     private _router: Router;
     private _producer: Producer;
@@ -113,7 +129,10 @@ export class MediaOutput extends EventEmitter {
         if (this._producer.paused) {
             this._consumer?.pause();
             if (this._ffmpeg) {
-                this.emit("fileStateChange", { active: false, filename: this._ffmpeg.filename });
+                this.emit(MediaOutput.Events.FILE_STATE_CHANGE, {
+                    active: false,
+                    filename: this._ffmpeg.filename
+                });
             }
         } else {
             if (!this._ffmpeg) {
@@ -122,13 +141,19 @@ export class MediaOutput extends EventEmitter {
                 this._ffmpeg = new FFMPEG(this._rtpData, this._directory, fileName);
             }
             this._consumer?.resume();
-            this.emit("fileStateChange", { active: true, filename: this._ffmpeg.filename });
+            this.emit(MediaOutput.Events.FILE_STATE_CHANGE, {
+                active: true,
+                filename: this._ffmpeg.filename
+            });
         }
     }
 
     private async _cleanup() {
         if (this._ffmpeg) {
-            this.emit("fileStateChange", { active: false, filename: this._ffmpeg.filename });
+            this.emit(MediaOutput.Events.FILE_STATE_CHANGE, {
+                active: false,
+                filename: this._ffmpeg.filename
+            });
         }
         const prom = this._ffmpeg?.close();
         this._consumer?.close();

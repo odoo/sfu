@@ -70,6 +70,11 @@ interface JoinResult {
  * @fires Channel#close
  */
 export class Channel extends EventEmitter {
+    static Events = {
+        SESSION_JOIN: "sessionJoin",
+        SESSION_LEAVE: "sessionLeave",
+        CLOSE: "close"
+    };
     /** Global registry of all active channels by UUID */
     static records = new Map<string, Channel>();
     /** Global registry of channels by issuer for reuse */
@@ -137,7 +142,7 @@ export class Channel extends EventEmitter {
             channel.close();
         };
         channelOptions.worker?.once("died", onWorkerDeath);
-        channel.once("close", () => {
+        channel.once(Channel.Events.CLOSE, () => {
             channelOptions.worker?.off("died", onWorkerDeath);
             Channel.recordsByIssuer.delete(safeIssuer);
             Channel.records.delete(channel.uuid);
@@ -196,7 +201,7 @@ export class Channel extends EventEmitter {
             this.router && config.recording.enabled && options.recordingAddress
                 ? new Recorder(this, options.recordingAddress)
                 : undefined;
-        this.recorder?.on("update", () => this._broadcastState());
+        this.recorder?.on(Recorder.Events.UPDATE, () => this._broadcastState());
         this.key = key ? Buffer.from(key, "base64") : undefined;
         this.uuid = crypto.randomUUID();
         this.name = `${remoteAddress}*${this.uuid.slice(-5)}`;
@@ -283,7 +288,7 @@ export class Channel extends EventEmitter {
          * @event Channel#sessionJoin
          * @type {SessionId} sessionId - ID of the joining session
          */
-        this.emit("sessionJoin", session.id);
+        this.emit(Channel.Events.SESSION_JOIN, session.id);
         return session;
     }
 
@@ -317,7 +322,7 @@ export class Channel extends EventEmitter {
          * @event Channel#close
          * @type {string} channelId - UUID of the closed channel
          */
-        this.emit("close", this.uuid);
+        this.emit(Channel.Events.CLOSE, this.uuid);
     }
 
     /**
@@ -353,7 +358,7 @@ export class Channel extends EventEmitter {
          * @event Channel#sessionLeave
          * @type {SessionId} sessionId
          */
-        this.emit("sessionLeave", id);
+        this.emit(Channel.Events.SESSION_LEAVE, id);
         if (this.sessions.size <= 1) {
             /**
              * If there is only one person left in the call, we already start the timeout as

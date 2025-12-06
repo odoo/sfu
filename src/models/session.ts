@@ -121,6 +121,12 @@ const logger = new Logger("SESSION");
  * @fires Session#handledError - Emitted when an error is handled
  */
 export class Session extends EventEmitter {
+    static Events = {
+        STATE_CHANGE: "stateChange",
+        CLOSE: "close",
+        HANDLED_ERROR: "handledError",
+        PRODUCER: "producer"
+    };
     /** Communication bus for WebSocket messaging */
     public bus?: Bus;
     /** Unique session identifier */
@@ -208,7 +214,7 @@ export class Session extends EventEmitter {
          * @event Session#stateChange
          * @type {{ state: SESSION_STATE }}
          */
-        this.emit("stateChange", state);
+        this.emit(Session.Events.STATE_CHANGE, state);
     }
 
     updatePermissions(permissions: SessionPermissions | undefined): void {
@@ -305,7 +311,7 @@ export class Session extends EventEmitter {
          * @event Session#close
          * @type {{ id: SessionId, code: number }}
          */
-        this.emit("close", { id: this.id, code });
+        this.emit(Session.Events.CLOSE, { id: this.id, code });
     }
 
     async connect(bus: Bus): Promise<void> {
@@ -411,7 +417,7 @@ export class Session extends EventEmitter {
     }
 
     /**
-     * Creates missing consumers for each producer of `params.session` and sets their appropriate `paused` state.
+     * Creates missing consumers for each producer of {@link session} and sets their appropriate `paused` state.
      * This batches the consumption of all streams.
      */
     async consume(session: Session): Promise<void> {
@@ -538,7 +544,7 @@ export class Session extends EventEmitter {
      */
     private _handleError(error: Error): void {
         this.errors.push(error);
-        this.emit("handledError", error);
+        this.emit(Session.Events.HANDLED_ERROR, error);
         logger.error(
             `[${this.name}] handling error (${this.errors.length}): ${error.message} : ${error.stack}`
         );
@@ -672,7 +678,7 @@ export class Session extends EventEmitter {
                     throw error;
                 }
                 this.producers[type] = producer;
-                this.on("close", () => {
+                this.on(Session.Events.CLOSE, () => {
                     producer.close();
                     this.producers[type] = null;
                 });
@@ -689,7 +695,7 @@ export class Session extends EventEmitter {
                  * @event Session#producer
                  * @type {{ type: StreamType, producer: Producer }}
                  */
-                this.emit("producer", { type, producer });
+                this.emit(Session.Events.PRODUCER, { type, producer });
                 return { id: producer.id };
             }
             case CLIENT_REQUEST.START_RECORDING: {

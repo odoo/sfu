@@ -74,8 +74,15 @@ export class FFMPEG {
         }
     }
 
+    /**
+     * Build a Session Description Protocol (SDP) payload describing the incoming RTP stream.
+     * SDP informs ffmpeg about the media session negotiated elsewhere (port, codec, clock rate,
+     * payload type, channels, and whether the track is audio or video) so ffmpeg can attach to
+     * the RTP source. These lines are piped to ffmpeg stdin as a virtual `.sdp` file; they are
+     * separate from the spawn arguments, which configure the ffmpeg process itself (loglevel,
+     * input pipe, mapping, container, etc.).
+     */
     private _createSdpText(): string {
-        // TODO docstring on sdp text
         const { port, payloadType, codec, clockRate, channels, kind } = this._rtp;
 
         if (!port || !payloadType || !codec || !clockRate || !kind) {
@@ -124,8 +131,15 @@ export class FFMPEG {
         }
     }
 
+    /**
+     * Build the ffmpeg CLI arguments used to consume the SDP from stdin and remux the
+     * incoming RTP stream to disk. The arguments:
+     * - allow reading SDP over stdin (`pipe`) and RTP/UDP packets
+     * - preserve packet timestamps for deterministic output (`+genpts`)
+     * - select the first audio or video track and copy the payload without re-encoding
+     * - write to the codec-appropriate container in the target directory.
+     */
     private _getCommandArgs(): string[] {
-        // TODO docstring on command args
         let args = [
             "-loglevel", "debug", // TODO remove
             "-protocol_whitelist", "pipe,udp,rtp",
