@@ -9,11 +9,9 @@ import { AuthenticationError, OvercrowdedError } from "#src/utils/errors.ts";
 import { Session, SESSION_CLOSE_CODE } from "#src/models/session.ts";
 import { Channel } from "#src/models/channel.ts";
 import { verify } from "#src/services/auth.ts";
+import type { WebSocketCredentials } from "#src/shared/types.ts";
 
-interface Credentials {
-    channelUUID?: string;
-    jwt: string;
-}
+type AuthenticationPayload = WebSocketCredentials | string;
 
 const logger = new Logger("WS");
 const unauthenticatedWebSockets = new Map<number, WebSocket>();
@@ -52,11 +50,11 @@ export async function start(
         // Handle first message (authentication)
         webSocket.once("message", (message: string) => {
             try {
-                const credentials = JSON.parse(message);
-                const session = connect(webSocket, {
-                    channelUUID: credentials?.channelUUID,
-                    jwt: credentials.jwt || credentials
-                });
+                const payload = JSON.parse(message) as AuthenticationPayload;
+                const credentials: WebSocketCredentials =
+                    typeof payload === "string" ? { jwt: payload } : payload;
+
+                const session = connect(webSocket, credentials);
                 session.remote = remoteAddress;
                 logger.info(`session [${session.name}] authenticated and created`);
             } catch (error) {
@@ -108,7 +106,7 @@ export function close(): void {
  * @returns Created session
  * @throws {AuthenticationError} If authentication fails
  */
-function connect(webSocket: WebSocket, credentials: Credentials): Session {
+function connect(webSocket: WebSocket, credentials: WebSocketCredentials): Session {
     const { channelUUID, jwt } = credentials;
     let channel = channelUUID ? Channel.records.get(channelUUID) : undefined;
     const authResult = verify(jwt, channel?.key);

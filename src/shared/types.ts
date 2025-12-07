@@ -10,6 +10,11 @@ export type StreamType = "audio" | "camera" | "screen";
 
 export type StringLike = Buffer | string;
 
+export type WebSocketCredentials = {
+    channelUUID?: string;
+    jwt: string;
+};
+
 export type ChannelInfo = {
     isRecording: boolean;
     isTranscribing: boolean;
