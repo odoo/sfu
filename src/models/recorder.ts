@@ -32,12 +32,15 @@ export type TimeTagInfo = {
      */
     active: boolean;
 };
+
+type TimeStampData = {
+    tag: TIME_TAG;
+    timestamp: number;
+    info?: TimeTagInfo;
+};
 export type Metadata = {
     forwardAddress: string;
-    timeStamps: Array<
-        | { tag: TIME_TAG.FILE_STATE_CHANGE; timestamp: number; info: TimeTagInfo }
-        | { tag: Exclude<TIME_TAG, TIME_TAG.FILE_STATE_CHANGE>; timestamp: number }
-    >;
+    timeStamps: Array<TimeStampData>;
 };
 
 const logger = new Logger("RECORDER");
@@ -134,21 +137,11 @@ export class Recorder extends EventEmitter {
     mark(tag: TIME_TAG.FILE_STATE_CHANGE, info: TimeTagInfo): void;
     mark(tag: Exclude<TIME_TAG, TIME_TAG.FILE_STATE_CHANGE>): void;
     mark(tag: TIME_TAG, info?: TimeTagInfo) {
-        if (tag === TIME_TAG.FILE_STATE_CHANGE) {
-            if (!info) {
-                throw new Error("Info is required for FILE_STATE_CHANGE");
-            }
-            this._metaData.timeStamps.push({
-                tag,
-                timestamp: Date.now(),
-                info
-            });
-        } else {
-            this._metaData.timeStamps.push({
-                tag: tag as Exclude<TIME_TAG, TIME_TAG.FILE_STATE_CHANGE>,
-                timestamp: Date.now()
-            });
-        }
+        this._metaData.timeStamps.push({
+            tag,
+            timestamp: Date.now(),
+            info
+        } as TimeStampData);
     }
 
     /**
