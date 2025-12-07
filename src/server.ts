@@ -13,6 +13,7 @@ async function run(): Promise<void> {
     logger.info(`ready - PID: ${process.pid}`);
     logger.debug(`TO IMPLEMENT: `);
     logger.debug(`* get session labels from the odoo server`);
+    logger.debug(`* zip the recording files`);
 }
 
 function cleanup(): void {

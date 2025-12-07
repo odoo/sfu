@@ -26,13 +26,13 @@ export type TimeTagInfo = {
     filename: string;
     type: STREAM_TYPE;
     /**
-     * The file lasts for the whole duration of the client producer, which means that it can represent a sequence of streams,
-     * with periods of inactivity (no packets). active is set to true when the stream is active, which means that the producer is
+     * The file lasts for the whole duration of the client producer, which means that
+     * it can represent a sequence of streams, with periods of inactivity (no packets).
+     * active is set to true when the stream is active, which means that the producer is
      * actively broadcasting data, and false when it is not.
      */
     active: boolean;
 };
-
 type TimeStampData = {
     tag: TIME_TAG;
     timestamp: number;
@@ -46,14 +46,16 @@ export type Metadata = {
 const logger = new Logger("RECORDER");
 
 /**
- * The recorder generates a "raw" file bundle, of recordings of individual audio and video streams,
- * accompanied with a metadata file describing the recording (timestamps, ids,...).
+ * The recorder generates a "raw" file bundle, of recordings of individual
+ * audio and video streams, accompanied with a metadata file describing the
+ * recording (timestamps, ids,...).
  *
  * These raw recordings can then be used for further processing (transcription, compilation,...).
  *
- * {@link Recorder} acts at the channel level, managing the creation and closure of sessions in that channel,
- * whereas the {@link RecordingTask} acts at the session level, managing the recording of an individual session
- * and following its producer lifecycle.
+ * {@link Recorder} acts at the channel level, managing the creation and closure
+ * of sessions in that channel, whereas the {@link RecordingTask} acts at the
+ * session level, managing the recording of an individual session and following
+ * its producer lifecycle.
  */
 export class Recorder extends EventEmitter {
     static Events = {
@@ -161,9 +163,11 @@ export class Recorder extends EventEmitter {
         const currentFolder = this._folder;
         const metadata = JSON.stringify(this._metaData);
         /**
-         * Not awaiting as FFMPEG can take arbitrarily long to complete (several seconds, or more),
-         * and we don't want to block the termination of the recorder as a new recording can be started straight away,
-         * independently of the saving process of the previous recording. The input delay for the user would also be too long.
+         * Not awaiting as FFMPEG can take arbitrarily long to complete
+         * (several seconds, or more), and we don't want to block the
+         * termination of the recorder as a new recording can be started
+         * straight away, independently of the saving process of the
+         * previous recording. The input delay for the user would also be too long.
          */
         this._stopRecordingTasks()
             .then((results) => {

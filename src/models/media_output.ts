@@ -27,14 +27,11 @@ export type rtpData = {
 /**
  * Bridges a mediasoup producer to an FFMPEG recording process.
  *
- * The class opens a plain transport/consumer pair on a dynamic port, extracts the
- * RTP parameters, and spawns FFMPEG when the producer is active. Construction calls
- * {@link MediaOutput._init()}, which provisions the mediasoup transport/consumer, caches RTP metadata,
- * and subscribes to producer pause/resume events to drive {@link MediaOutput._refreshProcess()}.
- * `_refreshProcess` mirrors the producer state: pausing the consumer and emitting
- * an inactive {@link FILE_STATE_CHANGE_EVENT}, or resuming the consumer and lazily creating the
- * FFMPEG process before emitting an active {@link FILE_STATE_CHANGE_EVENT}. {@link MediaOutput.close()}
- * stops any running process and releases mediasoup and networking resources.
+ * The class opens a plain transport/consumer pair on a dynamic port,
+ * extracts the RTP parameters, and spawns FFMPEG when the producer is active.
+ * Construction calls {@link _init}, which provisions the mediasoup
+ * transport/consumer, caches RTP metadata, and subscribes to producer pause/resume
+ * events to drive {@link _refreshProcess}.
  */
 export class MediaOutput extends EventEmitter {
     static Events = {
@@ -122,6 +119,9 @@ export class MediaOutput extends EventEmitter {
         }
     }
 
+    /**
+     * Refreshes the FFMPEG process based on the producer state.
+     */
     private async _refreshProcess() {
         if (this._isClosed || !this._rtpData) {
             return;

@@ -41,6 +41,11 @@ export class FFMPEG {
 
     private _init() {
         try {
+            /**
+             * FFMPEG does not create the directory if it doesn't exist,
+             * so it needs to be created before spawning the process.
+             */
+            fs.mkdirSync(this._directory, { recursive: true });
             const sdpString = this._createSdpText();
             logger.debug(`FFMPEG ${this.filename} SDP:\n${sdpString}`);
             const sdpStream = Readable.from([sdpString]);
