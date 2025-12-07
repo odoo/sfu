@@ -24,7 +24,8 @@ import type {
     StreamType,
     BusMessage,
     RequestMessage,
-    StartupData
+    StartupData,
+    WebSocketCredentials
 } from "#src/shared/types";
 import type { TransportConfig, SessionId, SessionInfo } from "#src/models/session";
 
@@ -514,7 +515,7 @@ export class SfuClient extends EventTarget {
                         JSON.stringify({
                             channelUUID: this._channelUUID,
                             jwt: this._jsonWebToken
-                        })
+                        } as WebSocketCredentials)
                     );
                 },
                 { once: true }
