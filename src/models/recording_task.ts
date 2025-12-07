@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import path from "node:path";
 
 import type { Producer } from "mediasoup/node/lib/types";
 
@@ -111,7 +112,7 @@ export class RecordingTask extends EventEmitter {
                     producer,
                     router: this._session.router!,
                     name: `${this._session.id}-${type}`,
-                    directory: this._recorder.path!
+                    directory: path.join(this._recorder.path!, type)
                 });
                 data.mediaOutput.on(
                     MediaOutput.Events.FILE_STATE_CHANGE,
