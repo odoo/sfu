@@ -75,12 +75,24 @@ The recording feature is configured via environment variables in `src/config.ts`
 
 Recordings are saved in a directory named `{channelName}_{timestamp}` inside `RECORDING_PATH`.
 
-**Contents:**
-*   **Media Files:** Raw audio/video files (e.g., `session-id-audio-timestamp.webm`, `session-id-camera-timestamp.mp4`).
-*   **Logs:** FFMPEG logs for each recording process (e.g., `...log`).
-*   **Metadata:** A `metadata.json` file is generated upon termination.
+```text
+{channelName}_{timestamp}/
+├── metadata.json
+├── audio/
+│   └── ...
+├── video/
+│   └── ...
+└── screen/
+    └── ...
+```
 
-### Metadata File (`metadata.json`)
+#### Contents:
+*   **metadata.json:** Top-level metadata file containing timestamps and upload info.
+*   **audio/:** Folder containing all audio stream recordings.
+*   **video/:** Folder containing all camera stream recordings.
+*   **screen/:** Folder containing all screen sharing stream recordings.
+
+#### Metadata File (`metadata.json`)
 
 Contains the timestamps of the recording, and the address to which the file should be uploaded to.
 
