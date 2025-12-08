@@ -5,7 +5,7 @@ import { Readable } from "node:stream";
 
 import { Logger } from "#src/utils/utils.ts";
 import { recording } from "#src/config.ts";
-import type { rtpData } from "#src/models/recording/media_output";
+import type { rtpData } from "#src/models/recording/media_output.ts";
 
 const logger = new Logger("FFMPEG");
 
