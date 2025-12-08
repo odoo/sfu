@@ -37,6 +37,7 @@ export class MediaOutput extends EventEmitter {
     static Events = {
         FILE_STATE_CHANGE: "fileStateChange"
     };
+
     name: string;
     private _router: Router;
     private _producer: Producer;

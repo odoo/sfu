@@ -1,5 +1,5 @@
-import { EventEmitter } from "node:events";
 import path from "node:path";
+import { EventEmitter } from "node:events";
 
 import { recording } from "#src/config.ts";
 import { getFolder, type Folder } from "#src/services/resources.ts";
@@ -7,8 +7,8 @@ import { RecordingTask, type RecordingStates } from "#src/models/recording_task.
 import { Logger } from "#src/utils/utils.ts";
 
 import { Channel } from "#src/models/channel.ts";
-import type { SessionId } from "#src/models/session.ts";
 import { STREAM_TYPE } from "#src/shared/enums.ts";
+import type { SessionId } from "#src/models/session.ts";
 
 export enum TIME_TAG {
     RECORDING_STARTED = "recording_started",
@@ -61,6 +61,7 @@ export class Recorder extends EventEmitter {
     static Events = {
         UPDATE: "update"
     };
+
     /**
      * Plain recording means that we mark the recording to be saved as a audio/video file
      **/

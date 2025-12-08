@@ -127,6 +127,7 @@ export class Session extends EventEmitter {
         HANDLED_ERROR: "handledError",
         PRODUCER: "producer"
     };
+
     /** Communication bus for WebSocket messaging */
     public bus?: Bus;
     /** Unique session identifier */
