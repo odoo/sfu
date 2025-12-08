@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 
 import { recording } from "#src/config.ts";
 import { getFolder, type Folder } from "#src/services/resources.ts";
-import { RecordingTask, type RecordingStates } from "#src/models/recording/recording_task";
+import { RecordingTask, type RecordingStates } from "#src/models/recording/recording_task.ts";
 import { Logger } from "#src/utils/utils.ts";
 
 import { Channel } from "#src/models/channel.ts";

@@ -10,7 +10,7 @@ import type {
 
 import { DynamicPort } from "#src/services/resources.ts";
 import { recording, rtc } from "#src/config.ts";
-import { FFMPEG } from "#src/models/recording/ffmpeg";
+import { FFMPEG } from "#src/models/recording/ffmpeg.ts";
 import { Logger } from "#src/utils/utils.ts";
 
 const logger = new Logger("MEDIA_OUTPUT");
