@@ -264,5 +264,6 @@ const sfu = new SfuClient();
     ```
 
 ## Architecture
+see [services](./src/services/README.md)
 
 ![](./data/architecture.svg)
