@@ -339,7 +339,6 @@ export class Channel extends EventEmitter {
      */
     private _broadcastState() {
         for (const session of this.sessions.values()) {
-            // TODO maybe the following should be on session and some can be made in common with the startupData getter.
             if (!session.bus) {
                 logger.warn(`tried to broadcast state to session ${session.id}, but had no Bus`);
                 continue;
@@ -347,10 +346,7 @@ export class Channel extends EventEmitter {
             session.bus.send(
                 {
                     name: SERVER_MESSAGE.CHANNEL_INFO_CHANGE,
-                    payload: {
-                        isRecording: Boolean(this.recorder?.isRecording),
-                        isTranscribing: Boolean(this.recorder?.isTranscribing)
-                    }
+                    payload: this.info
                 },
                 { batch: true }
             );

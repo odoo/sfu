@@ -81,7 +81,7 @@ export type BusMessage =
     | { name: typeof SERVER_MESSAGE.INFO_CHANGE; payload: Record<SessionId, SessionInfo> }
     | {
           name: typeof SERVER_MESSAGE.CHANNEL_INFO_CHANGE;
-          payload: { isRecording: boolean; isTranscribing: boolean };
+          payload: ChannelInfo;
       }
     | {
           name: typeof SERVER_REQUEST.INIT_CONSUMER;

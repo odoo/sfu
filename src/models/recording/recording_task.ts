@@ -34,7 +34,10 @@ type RecordingDataByStreamType = {
 
 const logger = new Logger("RECORDING_TASK");
 
-// TODO docstring
+/**
+ * Tracks recording state per stream type and starts MediaOutput instances
+ * when producers become available for the current session.
+ */
 export class RecordingTask extends EventEmitter {
     private _session: Session;
     private _recorder: Recorder;

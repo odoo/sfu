@@ -95,7 +95,7 @@ export class Recorder extends EventEmitter {
     isTranscribing: boolean = false;
     state: RECORDER_STATE = RECORDER_STATE.STOPPED;
     private _folder?: Folder;
-    private readonly _channel: Channel; // TODO rename with private prefix
+    private readonly _channel: Channel;
     private readonly _tasks = new Map<SessionId, RecordingTask>();
     /** Path to which the final recording will be uploaded to */
     private readonly _metaData: Metadata = {

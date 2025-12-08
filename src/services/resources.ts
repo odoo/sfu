@@ -15,7 +15,11 @@ type RtcAppData = mediasoup.types.AppData & {
 };
 export type RtcWorker = mediasoup.types.Worker<RtcAppData>;
 
-// TODO maybe write some docstring, file used to manage resources such as folders, workers, ports
+/**
+ * Manages SFU resources such as mediasoup workers, resource folders, and dynamic ports.
+ * Provides lifecycle utilities to start/clean workers, allocate folders, and hand
+ * out/release transient ports.
+ */
 
 const logger = new Logger("RESOURCES");
 /**
