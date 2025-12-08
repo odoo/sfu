@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 
 import { recording } from "#src/config.ts";
 import { getFolder, type Folder } from "#src/services/resources.ts";
-import { RecordingTask, type RecordingStates } from "#src/models/recording_task.ts";
+import { RecordingTask, type RecordingStates } from "#src/models/recording/recording_task";
 import { Logger } from "#src/utils/utils.ts";
 
 import { Channel } from "#src/models/channel.ts";
@@ -56,6 +56,28 @@ const logger = new Logger("RECORDER");
  * of sessions in that channel, whereas the {@link RecordingTask} acts at the
  * session level, managing the recording of an individual session and following
  * its producer lifecycle.
+ *
+ * Architecture Schematic:
+ *
+ * Recorder (Channel Level)
+ *   |
+ *   +-- RecordingTask (Session Level) [1 per Session]
+ *         |
+ *         +-- MediaOutput (Stream Level) [1 per Stream type: AUDIO, CAMERA, SCREEN]
+ *               |
+ *               +-- FFMPEG (Process Level) [1 per Active Stream Segment]
+ *
+ * - **Recorder**: Orchestrates the recording for a whole channel. It manages
+ *   the lifecycle of `RecordingTask`s as users join or leave the channel.
+ *
+ * - **RecordingTask**: Bound to a specific `Session` (user). It monitors the
+ *   user's streams (audio, camera, screen) and manages `MediaOutput` instances for each type.
+ *
+ * - **MediaOutput**: Handles a single media stream type for a session. It sets
+ *   up the transport/consumer to receive RTP data and manages the `FFMPEG` wrapper.
+ *
+ * - **FFMPEG**: Represents the actual ffmpeg process that writes the RTP stream
+ *   to a file. It is created when valid RTP data is available and the producer is active.
  */
 export class Recorder extends EventEmitter {
     static Events = {

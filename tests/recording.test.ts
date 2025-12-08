@@ -8,7 +8,7 @@ import { EventEmitter } from "node:events";
 import { describe, expect, jest, test } from "@jest/globals";
 import { FakeMediaStreamTrack } from "fake-mediastreamtrack";
 
-import { RECORDER_STATE } from "#src/models/recorder.ts";
+import { RECORDER_STATE } from "#src/models/recording/recorder";
 import { STREAM_TYPE } from "#src/shared/enums.ts";
 
 import { withMockEnv } from "#tests/utils/utils";

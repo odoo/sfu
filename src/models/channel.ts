@@ -12,7 +12,7 @@ import {
     type SessionId,
     type SessionInfo
 } from "#src/models/session.ts";
-import { Recorder } from "#src/models/recorder.ts";
+import { Recorder } from "#src/models/recording/recorder";
 import { getWorker, type RtcWorker } from "#src/services/resources.ts";
 import { SERVER_MESSAGE } from "#src/shared/enums.ts";
 import type { ChannelInfo } from "#src/shared/types.ts";
