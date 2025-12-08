@@ -65,7 +65,7 @@ The recording feature is configured via environment variables in `src/config.ts`
 | Variable           | Type    | Description                                                               | Default                    |
 | :----------------- | :------ | :------------------------------------------------------------------------ | :------------------------- |
 | `RECORDING`        | boolean | Master switch to enable/disable the recording feature.                    | `false`                    |
-| `RECORDING_PATH`   | string  | Directory where recordings are saved.                                     | `/tmp/odoo_sfu/recordings` |
+| `RECORDING_PATH`   | string  | Directory where the raw recordings are saved.                             | `/tmp/odoo_sfu/recordings` |
 | `DYNAMIC_MIN_PORT` | number  | Start of the port range for internal RTP routing (MediaOutput -> FFMPEG). | `50000`                    |
 | `DYNAMIC_MAX_PORT` | number  | End of the port range for internal RTP routing.                           | `59999`                    |
 
