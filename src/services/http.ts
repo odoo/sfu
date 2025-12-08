@@ -82,11 +82,13 @@ function setupRoutes(routeListener: RouteListener): void {
     /**
      * GET /v1/channel
      *
-     * Creates (or reuses) a media channel for the authenticated client.
+     * Provides a channel to host a rtc conference between user sessions.
      *
      * ### Headers
      * - `Authorization: Bearer <JWT>` — required.
      *   The JWT must include the `iss` (issuer) claim identifying the caller.
+     *   This claim ensures idempotency: only one channel is created per unique issuer.
+     *   To create multiple channels, the caller must provide a distinct `iss` for each request.
      *
      * ### Query Parameters
      * - `webRTC` — optional, defaults to `"true"`.
