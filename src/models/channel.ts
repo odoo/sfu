@@ -319,7 +319,7 @@ export class Channel extends EventEmitter {
      * @fires Channel#close
      */
     close(): void {
-        this.recorder?.terminate();
+        this.recorder?.terminate({ save: true });
         for (const session of this.sessions.values()) {
             session.off("close", this._onSessionClose);
             session.close({ code: SESSION_CLOSE_CODE.CHANNEL_CLOSED });
@@ -374,6 +374,7 @@ export class Channel extends EventEmitter {
              * a single person should not keep a channel alive forever.
              */
             this.setCloseTimeout(true);
+            this.recorder?.terminate({ save: true });
         }
     }
 }
