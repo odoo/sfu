@@ -1,5 +1,5 @@
-import { EventEmitter } from "node:events";
 import path from "node:path";
+import { EventEmitter } from "node:events";
 
 import type { Producer } from "mediasoup/node/lib/types";
 

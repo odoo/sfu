@@ -1,12 +1,11 @@
-/* eslint-disable prettier/prettier */
-import { spawn, ChildProcess } from "node:child_process";
 import fs from "node:fs";
-import { Readable } from "node:stream";
 import path from "node:path";
+import { spawn, ChildProcess } from "node:child_process";
+import { Readable } from "node:stream";
 
 import { Logger } from "#src/utils/utils.ts";
-import type { rtpData } from "#src/models/media_output";
 import { recording } from "#src/config.ts";
+import type { rtpData } from "#src/models/media_output";
 
 const logger = new Logger("FFMPEG");
 export class FFMPEG {
@@ -53,7 +52,9 @@ export class FFMPEG {
             logger.debug(`spawning ffmpeg with args: ${args.join(" ")}`);
             this._process = spawn("ffmpeg", args);
 
-            this._logStream = fs.createWriteStream(`${path.join(this._directory, this.filename)}.log`);
+            this._logStream = fs.createWriteStream(
+                `${path.join(this._directory, this.filename)}.log`
+            );
             this._process.stderr?.pipe(this._logStream, { end: false });
             this._process.stdout?.pipe(this._logStream, { end: false });
 
@@ -91,9 +92,9 @@ export class FFMPEG {
         const { port, payloadType, codec, clockRate, channels, kind } = this._rtp;
 
         if (!port || !payloadType || !codec || !clockRate || !kind) {
-             throw new Error("RTP missing required properties for SDP generation");
+            throw new Error("RTP missing required properties for SDP generation");
         }
-        
+
         let sdp = `v=0\n`;
         sdp += `o=- 0 0 IN IP4 ${recording.routingInterface}\n`;
         sdp += `s=FFmpeg\n`;
@@ -112,24 +113,24 @@ export class FFMPEG {
 
     private _getContainerExtension(): string {
         const codec = this._rtp.codec?.toLowerCase();
-        
+
         switch (codec) {
             case "h264":
             case "h265":
                 return "mp4";
-            
+
             case "vp8":
             case "vp9":
             case "av1":
             case "opus":
             case "vorbis":
                 return "webm";
-            
+
             case "pcmu":
             case "pcma":
                 // G.711 codecs - use WAV container for raw PCM audio
                 return "wav";
-            
+
             default:
                 logger.warn(`Unknown codec "${codec}", using .mkv container as fallback`);
                 return "mkv";
@@ -138,30 +139,25 @@ export class FFMPEG {
 
     /**
      * Build the ffmpeg CLI arguments used to consume the SDP from stdin and remux the
-     * incoming RTP stream to disk. The arguments:
-     * - allow reading SDP over stdin (`pipe`) and RTP/UDP packets
-     * - preserve packet timestamps for deterministic output (`+genpts`)
-     * - select the first audio or video track and copy the payload without re-encoding
-     * - write to the codec-appropriate container in the target directory.
+     * incoming RTP stream to disk.
      */
     private _getCommandArgs(): string[] {
         let args = [
-            "-loglevel", "debug", // TODO remove
-            "-protocol_whitelist", "pipe,udp,rtp",
-            "-fflags", "+genpts",
-            "-f", "sdp",
-            "-i", "pipe:0"
+            "-loglevel",
+            "error",
+            "-protocol_whitelist",
+            "pipe,udp,rtp",
+            "-fflags",
+            "+genpts", // preserve packet timestamps for deterministic output
+            "-f",
+            "sdp", // Force format to SDP (Session Description Protocol)
+            "-i",
+            "pipe:0" // Read SDP from stdin
         ];
         if (this._rtp.kind === "audio") {
-             args = args.concat([
-                 "-map", "0:a:0",
-                 "-c:a", "copy"
-             ]);
+            args = args.concat(["-map", "0:a:0", "-c:a", "copy"]);
         } else {
-             args = args.concat([
-                 "-map", "0:v:0",
-                 "-c:v", "copy"
-             ]);
+            args = args.concat(["-map", "0:v:0", "-c:v", "copy"]);
         }
         const extension = this._getContainerExtension();
         args.push(`${path.join(this._directory, this.filename)}.${extension}`);

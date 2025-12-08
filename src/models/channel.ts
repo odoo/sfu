@@ -76,6 +76,7 @@ export class Channel extends EventEmitter {
         SESSION_LEAVE: "sessionLeave",
         CLOSE: "close"
     };
+
     /** Global registry of all active channels by UUID */
     static records = new Map<string, Channel>();
     /** Global registry of channels by issuer for reuse */
