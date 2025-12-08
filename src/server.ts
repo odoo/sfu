@@ -14,6 +14,8 @@ async function run(): Promise<void> {
     logger.debug(`TO IMPLEMENT: `);
     logger.debug(`* get session labels from the odoo server`);
     logger.debug(`* zip the recording files`);
+    logger.debug(`* should recording when alone be disallowed?`);
+    logger.debug(`* Recording compiler (also manages the folder cleanup)`);
 }
 
 function cleanup(): void {

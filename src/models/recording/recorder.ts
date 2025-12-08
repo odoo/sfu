@@ -173,16 +173,16 @@ export class Recorder extends EventEmitter {
      * @param param0
      * @param param0.save - whether to save the recording
      */
-    async terminate({ save = false }: { save?: boolean } = {}) {
+    terminate({ save = true }: { save?: boolean } = {}) {
         if (!this.isActive) {
             return;
         }
+        this.state = RECORDER_STATE.STOPPING;
         logger.verbose(`terminating recorder for channel ${this._channel.name}`);
         this._channel.off(Channel.Events.SESSION_JOIN, this._onSessionJoin);
         this._channel.off(Channel.Events.SESSION_LEAVE, this._onSessionLeave);
         this.isRecording = false;
         this.isTranscribing = false;
-        this.state = RECORDER_STATE.STOPPING;
         const currentFolder = this._folder;
         const metadata = JSON.stringify(this._metaData);
         /**
@@ -196,12 +196,12 @@ export class Recorder extends EventEmitter {
             .then((results) => {
                 const failed = results.some((result) => result.status === "rejected");
                 if (save && !failed) {
-                    currentFolder?.add("metadata.json", metadata);
-                    currentFolder?.seal(
+                    currentFolder!.add("metadata.json", metadata);
+                    currentFolder!.seal(
                         path.join(recording.directory, `${this._channel.name}_${Date.now()}`)
                     );
                 } else {
-                    currentFolder?.delete();
+                    currentFolder!.delete();
                 }
             })
             .catch((error) => {
@@ -235,16 +235,16 @@ export class Recorder extends EventEmitter {
             if (this.isActive) {
                 await this._update().catch(async () => {
                     logger.warn(`Failed to update recording or ${this._channel.name}`);
-                    await this.terminate();
+                    this.terminate({ save: false });
                 });
             } else {
                 await this._init().catch(async () => {
                     logger.error(`Failed to start recording or ${this._channel.name}`);
-                    await this.terminate();
+                    this.terminate({ save: false });
                 });
             }
         } else {
-            await this.terminate({ save: true }); // todo check if we always want to save here
+            this.terminate();
         }
         this.emit("update", { isRecording: this.isRecording, isTranscribing: this.isTranscribing });
     }
