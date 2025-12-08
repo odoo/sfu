@@ -9,6 +9,8 @@ between users and providing channels to coordinate these connections.
 The server is not stand-alone, it does not serve any HTML or any interface code for calls. It only contains
 the SFU and a [client bundle/library](#client-api-bundle) to connect to it.
 
+The SFU is powered by the [Mediasoup](https://mediasoup.org/) WebRTC library.
+
 ## Prerequisites
 - [Node.js 22.16.0 (LTS)](https://nodejs.org/en/download)
 - [FFmpeg 8](https://ffmpeg.org/download.html) (if using the recording feature)
@@ -131,6 +133,7 @@ See [server.js](./src/server.js) for more details.
 See [http.js](./src/services/http.js) for more details.
 
 ## Client API (bundle)
+see [client.js](./src/client.js) for more details.
 
 The bundle built with the `build` script in [package.json](./package.json) can be imported
 in the client(js) code that implements the call feature like this:
@@ -200,6 +203,30 @@ const sfu = new SfuClient();
     typeof producerStats["camera"] === "RTCStatsReport"; // true
     // see https://w3c.github.io/webrtc-pc/#rtcstatsreport-object
     ```
+- startRecording() / stopRecording()
+    ```js
+    let isRecording = false;
+    async function toggleRecording() {
+        if (isRecording) {
+            isRecording = await sfuClient.stopRecording();
+        } else {
+            isRecording = await sfuClient.startRecording();
+        }
+    }
+    ```
+- startTranscription() / stopTranscription()
+    ```js
+    let isTranscribing = false;
+    async function toggleTranscription() {
+        if (isTranscribing) {
+            isTranscribing = await sfuClient.stopTranscription();
+        } else {
+            isTranscribing = await sfuClient.startTranscription();
+        }
+    }
+    ```
+ see [Recording](./src/models/recording/README.md) for more details.
+
 - @fires "update"
     ```js
     sfu.addEventListener("update", ({ detail: { name, payload } }) => {
@@ -235,8 +262,6 @@ const sfu = new SfuClient();
         }
     });
     ```
-
-see [client.js](./src/client.js) for more details.
 
 ## Architecture
 
