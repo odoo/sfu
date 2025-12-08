@@ -24,7 +24,7 @@ graph TD
     WS -->|Join| Channel
     Channel --> Session
 
-    classDef service fill:#f96,stroke:#333,stroke-width:2px;
+    classDef service fill:#f96,stroke:#333,stroke-width:2px,color:#000;
     class HTTP,WS,Auth,Resources service;
 ```
 
