@@ -34,18 +34,6 @@ graph TD
 
 The Authentication service is responsible for the security of the application. It handles the signing and verification of JSON Web Tokens (JWT).
 
-**API Snippet:**
-
-```typescript
-// verifying a token
-try {
-    const claims = auth.verify(token);
-    console.log(`User ${claims.sessionId} is authorized to access ${claims.channelUUID}`);
-} catch (error) {
-    console.error("Authentication failed", error);
-}
-```
-
 ### 2. HTTP Service (`http.ts`)
 
 The HTTP service provides the REST API for the SFU. It handles channel creation, status checks, and session management.
@@ -76,7 +64,7 @@ sequenceDiagram
     WS->>A: Verify JWT
     WS->>S: Create & Join Session
     WS-->>C: Send Startup Data
-    loop Signaling
+    loop Traffic
         C->>S: Bus Message
         S-->>C: Bus Message
         C->>S: UDP streaming
