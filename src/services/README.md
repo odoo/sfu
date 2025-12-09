@@ -5,27 +5,44 @@ This directory contains the core infrastructure services that power the SFU. The
 ## Overview
 
 ```mermaid
-graph TD
-    Client[Browser Client]
-    Server[Odoo Server]
-    HTTP[HTTP Service]
-    WS[WebSocket Service]
-    Auth[Auth Service]
-    Channel[Channel Model]
-    Resources[Resources Service]
-    Session[Session Model]
+---
+config:
+  layout: elk
+---
+flowchart TB
+ subgraph s1["SFU"]
+        HTTP["HTTP Service"]
+        WS["WebSocket Service"]
+        Auth["Auth Service"]
+        Bus["Bus"]
+        Channel["Channel"]
+        Resources["Resources Service"]
+        Recorder["Recorder"]
+        Session["Session"]
+  end
+    Server(["🏢 Odoo Server"]) <-. REST API ...-> HTTP
+    Client(["💻 Browser Client"]) <-. WebSocket ...-> WS
+    Auth -- verify --> HTTP & WS
+    WS <--> Bus
+    Bus <--> Session
+    Resources -- Get Worker ---> Channel
+    Resources -- Get Folder/Port ---> Recorder
+    HTTP -- create/get ---- Channel
+    WS <-- Join ---> Channel
+    Channel --- Session
+    Channel ---> Recorder
+    Recorder ---> Disk
 
-    Server ---->|REST API| HTTP
-    Auth ---|verify| HTTP
-    Auth ---|verify| WS
-    Client ---->|WebSocket| WS
-    Resources -->|Get Worker| Channel
-    HTTP -->|Create/Get| Channel
-    WS -->|Join| Channel
-    Channel --> Session
-
-    classDef service fill:#f96,stroke:#333,stroke-width:2px,color:#000;
-    class HTTP,WS,Auth,Resources service;
+    Bus@{ shape: procs}
+    Channel@{ shape: procs}
+    Recorder@{ shape: procs}
+    Session@{ shape: procs}
+    Disk@{ shape: cyl}
+    HTTP:::service
+    WS:::service
+    Auth:::service
+    Resources:::service
+    classDef service fill:#f96,stroke:#333,stroke-width:2px,color:#000
 ```
 
 ## Service Modules
