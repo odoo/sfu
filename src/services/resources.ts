@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { rmSync } from "node:fs";
 import path from "node:path";
 
 import * as mediasoup from "mediasoup";
@@ -22,6 +23,14 @@ export type RtcWorker = mediasoup.types.Worker<RtcAppData>;
  */
 
 const logger = new Logger("RESOURCES");
+
+function clearResourcesDir() {
+    try {
+        rmSync(config.RESOURCES_PATH, { recursive: true });
+    } catch (error) {
+        logger.error(`Failed to delete resources folder ${config.RESOURCES_PATH}: ${error}`);
+    }
+}
 /**
  * Exported for testing purposes
  */
@@ -30,9 +39,7 @@ export const workers = new Set<RtcWorker>();
 export async function start(): Promise<void> {
     logger.info("starting...");
     logger.info(`cleaning resources folder (${config.RESOURCES_PATH})...`);
-    await fs.rm(config.RESOURCES_PATH, { recursive: true }).catch((error) => {
-        logger.verbose(`Nothing to remove at ${config.RESOURCES_PATH}: ${error}`);
-    });
+    clearResourcesDir();
     for (let i = 0; i < config.NUM_WORKERS; ++i) {
         await makeWorker();
     }
@@ -52,17 +59,12 @@ export async function start(): Promise<void> {
     );
 }
 
-export function close(): void {
+export function close() {
     for (const worker of workers) {
         worker.appData.webRtcServer?.close();
         worker.close();
     }
-    for (const dir of Folder.usedDirs) {
-        fs.rm(dir, { recursive: true }).catch((error) => {
-            logger.error(`Failed to delete folder ${dir}: ${error}`);
-        });
-    }
-    Folder.usedDirs.clear();
+    clearResourcesDir();
     workers.clear();
     availablePorts.length = 0;
 }
@@ -111,7 +113,6 @@ export async function getWorker(): Promise<RtcWorker> {
 }
 
 export class Folder {
-    static usedDirs: Set<string> = new Set();
     path: string;
 
     static async create(name: string) {
@@ -122,7 +123,6 @@ export class Folder {
 
     constructor(path: string) {
         this.path = path;
-        Folder.usedDirs.add(path);
     }
 
     async add(name: string, content: string) {
@@ -134,7 +134,6 @@ export class Folder {
         try {
             await fs.rename(this.path, destinationPath);
             logger.verbose(`Moved folder from ${this.path} to ${destinationPath}`);
-            Folder.usedDirs.delete(this.path);
             this.path = destinationPath;
         } catch (error) {
             logger.error(`Failed to move folder from ${this.path} to ${destinationPath}: ${error}`);
