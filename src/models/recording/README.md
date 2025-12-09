@@ -7,31 +7,25 @@ The recording feature in the SFU allows for capturing audio, video from camera, 
 The recording architecture follows a hierarchical structure, managing resources from the channel level down to individual system processes.
 
 ```mermaid
-graph TD
-    R -.-> RTN[RecordingTask <br/> Session N...]
-    R -.-> RTN1[RecordingTask <br/> Session N+1]
-    R -.-> RTN0[RecordingTask <br/> Session N]
-    R[Recorder <br/> Channel Level] --> RT1[RecordingTask <br/> Session 1]
-    R --> RT2[RecordingTask <br/> Session 2]
-
-    RT1 --> |audio| MOA1[MediaOutput <br/> Audio]
-    RT1 --> |screen| MOS1[MediaOutput <br/> Screen]
-    
-
-    RT2 --> |screen| MOS2[MediaOutput <br/> Screen]
-    RT2 --> |camera| MOC2[MediaOutput <br/> Camera]
-    RT2 --> |audio| MOA2[MediaOutput <br/> Audio]
-
-    MOA1 --> FFA1[FFMPEG <br/> Audio Process]
-    MOS1 --> FFS1[FFMPEG <br/> Screen Process]
-    
-
-    MOA2 --> FFA2[FFMPEG <br/> Audio Process]
-    MOS2 --> FFS2[FFMPEG <br/> Screen Process]
-    MOC2 --> FFC2[FFMPEG <br/> Camera Process]
-
-
-    FFS1 --> DIR[(Recording Directory)]
+---
+config:
+  layout: elk
+---
+flowchart TB
+   
+    R["Recorder <br> Channel Level"] --> RT1["RecordingTask <br> Session 1"] & RT2["RecordingTask <br> Session 2"]
+    R ---> RTN["RecordingTask <br> Session N"] & RTN1["RecordingTask <br> Session N+1"] & RTN0["RecordingTask <br> Session N+X"]
+    RT1 -- audio --> MOA1["MediaOutput <br> Audio"]
+    RT1 -- screen --> MOS1["MediaOutput <br> Screen"]
+    RT2 -- screen --> MOS2["MediaOutput <br> Screen"]
+    RT2 -- camera --> MOC2["MediaOutput <br> Camera"]
+    RT2 -- audio --> MOA2["MediaOutput <br> Audio"]
+    MOA1 --> FFA1["FFMPEG <br> Audio Process"]
+    MOS1 --> FFS1["FFMPEG <br> Screen Process"]
+    MOA2 --> FFA2["FFMPEG <br> Audio Process"]
+    MOS2 --> FFS2["FFMPEG <br> Screen Process"]
+    MOC2 --> FFC2["FFMPEG <br> Camera Process"]
+    FFS1 --> DIR[("Recording Directory")]
     FFA1 --> DIR
     FFS2 --> DIR
     FFC2 --> DIR
@@ -42,19 +36,19 @@ graph TD
 
 1.  **Recorder (Channel Level)**
     *   **Scope:** Manages recording for an entire `Channel`.
-    *   **Responsibility:** Orchestrates the lifecycle of recording. It initializes `RecordingTask`s for current sessions and listens for new sessions joining the channel to create tasks for them dynamically, based on the transcription and recording settings.
+    *   **Responsibility:** Handles the lifecycle of recording and holds the  `RecordingTask`s for current sessions and listens for new sessions joining the channel to create tasks for them dynamically, based on the transcription and recording settings.
 
 2.  **RecordingTask (Session Level)**
-    *   **Scope:** Bound to a specific `Session` (a user connection).
+    *   **Scope:** Bound to a specific rtc `Session`.
     *   **Responsibility:** Monitors the user's producers (audio, camera, screen). When a user releases a stream (e.g., turns on camera), the `RecordingTask` detects it and delegates the recording logic to a `MediaOutput`.
     *   **Inputs:** `audio`, `camera`, `screen` flags determine which streams to record.
 
 3.  **MediaOutput (Stream Level / RTP)**
     *   **Scope:** Handles a single stream type (e.g., just the camera) for a session.
-    *   **Responsibility:** Bridges the Mediasoup `Producer` (source) to the `FFMPEG` process (sink), and manages the lifecycle of the port usage, transport, consumer, and ffmpeg process.
+    *   **Responsibility:** Bridges the Mediasoup `Producer` (source) to the `FFMPEG` process (sink), and manages the lifecycle of the port, transport, consumer, and ffmpeg process.
 
 4.  **FFMPEG (Process Level)**
-    *   **Scope:** Represents a single OS process writing to a file.
+    *   **Scope:** Represents a single child process writing to a file.
     *   **Responsibility:** Receives RTP packets on a specified port and writes them to a file container. Essentially a wrapper around the ffmpeg API.
 
 
@@ -79,11 +73,15 @@ Recordings are saved in a directory named `{channelName}_{timestamp}` inside `RE
 {channelName}_{timestamp}/
 ├── metadata.json
 ├── audio/
-│   └── ...
+│   └── {sessionID}-{streamType}-{timestamp}.webm
+│   └── 987-audio-1765292341216.webm
+│   └── 988-audio-1765292441216.webm
 ├── video/
-│   └── ...
+│   └── 989-video-1765492341216.mp4 // extension depends on codec
+│   └── 987-video-1765292341216.webm
+│   └── 987-video-1765292341216.log // if LOG_LEVEL=debug
 └── screen/
-    └── ...
+    └── 987-screen-1765592341216.webm
 ```
 
 #### Contents:

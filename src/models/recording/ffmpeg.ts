@@ -3,11 +3,12 @@ import path from "node:path";
 import { spawn, ChildProcess } from "node:child_process";
 import { Readable } from "node:stream";
 
-import { Logger } from "#src/utils/utils.ts";
-import { recording } from "#src/config.ts";
+import { Logger, LogLevel } from "#src/utils/utils.ts";
+import { recording, LOG_LEVEL } from "#src/config.ts";
 import type { rtpData } from "#src/models/recording/media_output.ts";
 
 const logger = new Logger("FFMPEG");
+const isDebug = LOG_LEVEL === LogLevel.DEBUG;
 
 /**
  * Abstraction for a FFMPEG child process
@@ -56,11 +57,13 @@ export class FFMPEG {
             logger.debug(`spawning ffmpeg with args: ${args.join(" ")}`);
             this._process = spawn("ffmpeg", args);
 
-            this._logStream = fs.createWriteStream(
-                `${path.join(this._directory, this.filename)}.log`
-            );
-            this._process.stderr?.pipe(this._logStream, { end: false });
-            this._process.stdout?.pipe(this._logStream, { end: false });
+            if (isDebug) {
+                this._logStream = fs.createWriteStream(
+                    `${path.join(this._directory, this.filename)}.log`
+                );
+                this._process.stderr?.pipe(this._logStream, { end: false });
+                this._process.stdout?.pipe(this._logStream, { end: false });
+            }
 
             this._process.on("error", (error) => {
                 logger.error(`ffmpeg ${this.filename} error: ${error.message}`);
@@ -148,7 +151,7 @@ export class FFMPEG {
     private _getCommandArgs(): string[] {
         let args = [
             "-loglevel",
-            "error",
+            isDebug ? "debug" : "error",
             "-protocol_whitelist",
             "pipe,udp,rtp",
             "-fflags",
