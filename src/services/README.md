@@ -39,12 +39,12 @@ flowchart TB
     Session -.->|WebRTC| Client
     
 
-    Bus@{ shape: procs}
-    Channel@{ shape: procs}
-    Recorder@{ shape: procs}
-    Session@{ shape: procs}
-    Disk@{ shape: cyl}
-    Cloud@{ shape: cyl}
+    Bus@{shape: procs}
+    Channel@{shape: procs}
+    Recorder@{shape: procs}
+    Session@{shape: procs}
+    Disk@{shape: cyl}
+    Cloud@{shape: cyl}
     HTTP:::service
     WS:::service
     Auth:::service
