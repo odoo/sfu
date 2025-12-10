@@ -96,7 +96,7 @@ Contains the timestamps of the recording, and the address to which the file shou
 
 ```json
 {
-  "routingAddress": "http://...",
+  "routingAddress": "http://www.oodo.com/discuss/recording/routing/1234",
   "timeStamps": [
     {
       "tag": "recording_started",
