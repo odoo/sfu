@@ -79,6 +79,7 @@ async function processRecording(folderName: string) {
         const content = await fs.readFile(metadataPath, "utf-8");
         const metadata: Metadata = JSON.parse(content);
         logger.debug(`Read metadata for recording ${folderName}: ${metadata.channelName}`);
+        logger.debug(`Expected to be delivered at ${metadata.forwardAddress}`);
         for (const timestamp of metadata.timeStamps) {
             logger.debug(
                 `Timestamp: ${timestamp.tag} at ${timestamp.timestamp} info: ${JSON.stringify(
