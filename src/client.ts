@@ -527,6 +527,10 @@ export class SfuClient extends EventTarget {
             webSocket.addEventListener(
                 "message",
                 (message) => {
+                    /**
+                     * the old API does not use the data of the first message,
+                     * so we check for backward compatibility.
+                     */
                     if (message.data) {
                         const { availableFeatures, channelInfo } = JSON.parse(
                             message.data
