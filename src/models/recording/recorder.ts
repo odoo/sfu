@@ -40,7 +40,7 @@ type TimeStampData = {
 };
 export type Metadata = {
     channelName: string;
-    forwardAddress: string;
+    routingAddress: string;
     timeStamps: Array<TimeStampData>;
 };
 
@@ -101,7 +101,7 @@ export class Recorder extends EventEmitter {
     /** Path to which the final recording will be uploaded to */
     private readonly _metaData: Metadata = {
         channelName: "",
-        forwardAddress: "",
+        routingAddress: "",
         timeStamps: []
     };
 
@@ -115,15 +115,15 @@ export class Recorder extends EventEmitter {
 
     /**
      * @param channel - the channel to record
-     * @param forwardAddress - the address to which the recording will be forwarded
+     * @param routingAddress - the address to which the recording will be forwarded
      */
-    constructor(channel: Channel, forwardAddress: string) {
+    constructor(channel: Channel, routingAddress: string) {
         super();
         this._onSessionJoin = this._onSessionJoin.bind(this);
         this._onSessionLeave = this._onSessionLeave.bind(this);
         this._channel = channel;
         this._metaData.channelName = channel.name;
-        this._metaData.forwardAddress = forwardAddress;
+        this._metaData.routingAddress = routingAddress;
     }
 
     async start() {

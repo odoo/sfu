@@ -96,7 +96,7 @@ Contains the timestamps of the recording, and the address to which the file shou
 
 ```json
 {
-  "forwardAddress": "http://...",
+  "routingAddress": "http://...",
   "timeStamps": [
     {
       "tag": "recording_started",
