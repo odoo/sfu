@@ -18,7 +18,9 @@ flowchart TB
         Channel["Channel"]
         Resources["Resources Service"]
         Recorder["Recorder"]
+        Media["Media Service"]
         Session["Session"]
+        Disk
   end
     Server(["🏢 Odoo Server"]) <-. REST API ...-> HTTP
     Client(["💻 Browser Client"]) <-. WebSocket ...-> WS
@@ -32,15 +34,20 @@ flowchart TB
     Channel --- Session
     Channel ---> Recorder
     Recorder ---> Disk
+    Media -.-> |upload| Cloud
+    Disk --->|processing| Media
+    
 
     Bus@{ shape: procs}
     Channel@{ shape: procs}
     Recorder@{ shape: procs}
     Session@{ shape: procs}
     Disk@{ shape: cyl}
+    Cloud@{ shape: cyl}
     HTTP:::service
     WS:::service
     Auth:::service
+    Media:::service
     Resources:::service
     classDef service fill:#f96,stroke:#333,stroke-width:2px,color:#000
 ```
@@ -98,3 +105,7 @@ The Resources service acts as the interface to the underlying system and Mediaso
 - **Load Balancing**: `getWorker()` returns the worker with the lowest memory usage (`ru_maxrss`).
 - **File System**: Manages temporary folders for recordings via the `Folder` class.
 - **Port Management**: Allocates dynamic ports for media transport using the `DynamicPort` class.
+
+### 5. Media Service (`media.ts`)
+
+The Media service is responsible for the processing and dispatching of media files and the scheduling of these tasks.

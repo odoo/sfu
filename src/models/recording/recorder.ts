@@ -39,6 +39,7 @@ type TimeStampData = {
     info?: TimeTagInfo;
 };
 export type Metadata = {
+    channelName: string;
     forwardAddress: string;
     timeStamps: Array<TimeStampData>;
 };
@@ -99,6 +100,7 @@ export class Recorder extends EventEmitter {
     private readonly _tasks = new Map<SessionId, RecordingTask>();
     /** Path to which the final recording will be uploaded to */
     private readonly _metaData: Metadata = {
+        channelName: "",
         forwardAddress: "",
         timeStamps: []
     };
@@ -120,6 +122,7 @@ export class Recorder extends EventEmitter {
         this._onSessionJoin = this._onSessionJoin.bind(this);
         this._onSessionLeave = this._onSessionLeave.bind(this);
         this._channel = channel;
+        this._metaData.channelName = channel.name;
         this._metaData.forwardAddress = forwardAddress;
     }
 
