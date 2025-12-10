@@ -19,6 +19,9 @@ export async function start(): Promise<void> {
     }
     logger.info("Starting media service");
     void checkSystemAndProcess();
+    // TODO maybe use fs.watch(dir)
+    // may need local knowledge of which files are being processed
+    // read folder at startup, then listen for change, build a queue of folders to process
     interval = setInterval(checkSystemAndProcess, CHECK_INTERVAL);
 }
 
