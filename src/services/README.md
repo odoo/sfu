@@ -18,12 +18,13 @@ flowchart TB
         Channel["Channel"]
         Resources["Resources Service"]
         Recorder["Recorder"]
-        Media["Media Service"]
+        Media["Media Service<br>(processing)"]
         Session["Session"]
-        Disk
+        Disk["Disk<br>(raw recordings)"]
   end
+    C1["Cloud"]
     Server(["🏢 Odoo Server"]) <-. REST API ...-> HTTP
-    Client(["💻 Browser Client"]) <-. WebSocket ...-> WS
+    Client(["💻 Odoo Client"]) <-. WebSocket ...-> WS
     Auth -- verify --> HTTP & WS
     WS <--> Bus
     Bus <--> Session
@@ -34,8 +35,9 @@ flowchart TB
     Channel --- Session
     Channel ---> Recorder
     Recorder ---> Disk
-    Media -.-> |upload| Cloud
-    Disk --->|processing| Media
+    Media -.->|recording| C1
+    Media -.->|transcript audio files| S2(["Odoo Server"])
+    Disk ---> Media
     Session -.->|WebRTC| Client
     
 
@@ -44,7 +46,7 @@ flowchart TB
     Recorder@{shape: procs}
     Session@{shape: procs}
     Disk@{shape: cyl}
-    Cloud@{shape: cyl}
+    C1@{shape: cyl}
     HTTP:::service
     WS:::service
     Auth:::service
