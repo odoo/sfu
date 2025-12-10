@@ -36,6 +36,7 @@ flowchart TB
     Recorder ---> Disk
     Media -.-> |upload| Cloud
     Disk --->|processing| Media
+    Session -.->|WebRTC| Client
     
 
     Bus@{ shape: procs}
