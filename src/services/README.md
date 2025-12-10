@@ -5,10 +5,6 @@ This directory contains the core infrastructure services that power the SFU. The
 ## Overview
 
 ```mermaid
----
-config:
-  layout: elk
----
 flowchart TB
  subgraph s1["SFU"]
         HTTP["HTTP Service"]
@@ -23,28 +19,32 @@ flowchart TB
         Disk["Disk<br>(raw recordings)"]
   end
     C1["Cloud"]
+    Auth -- verify --> WS
     Server(["🏢 Odoo Server"]) <-. REST API ...-> HTTP
     Client(["💻 Odoo Client"]) <-. WebSocket ...-> WS
-    Auth -- verify --> HTTP & WS
+    Auth -- verify --> HTTP
     WS <--> Bus
-    Bus <--> Session
+    Channel --- Session
+    Bus <----> Session
     Resources -- Get Worker ---> Channel
     Resources -- Get Folder/Port ---> Recorder
     HTTP -- create/get ---- Channel
     WS <-- Join ---> Channel
-    Channel --- Session
+    
     Channel ---> Recorder
-    Recorder ---> Disk
+    Recorder --> Disk
     Media -.->|recording| C1
-    Media -.->|transcript audio files| S2(["Odoo Server"])
-    Disk ---> Media
-    Session -.->|WebRTC| Client
+    Media <-.-> R1(["routing"])
+    Media -.-> O2["Odoo server"]
+    Disk --> Media
     
 
     Bus@{shape: procs}
     Channel@{shape: procs}
     Recorder@{shape: procs}
     Session@{shape: procs}
+    R1@{shape: diamond}
+    O2@{shape: cyl}
     Disk@{shape: cyl}
     C1@{shape: cyl}
     HTTP:::service
