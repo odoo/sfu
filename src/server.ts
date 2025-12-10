@@ -1,6 +1,7 @@
 import * as resources from "#src/services/resources.ts";
 import * as http from "#src/services/http.ts";
 import * as auth from "#src/services/auth.ts";
+import * as media from "#src/services/media.ts";
 import { Logger } from "#src/utils/utils.ts";
 import { Channel } from "#src/models/channel.ts";
 
@@ -10,18 +11,21 @@ async function run(): Promise<void> {
     auth.start();
     await resources.start();
     await http.start();
+    await media.start();
     logger.info(`ready - PID: ${process.pid}`);
     logger.debug(`TO IMPLEMENT: `);
     logger.debug(`* get session labels from the odoo server`);
     logger.debug(`* zip the recording files`);
     logger.debug(`* should recording when alone be disallowed?`);
-    logger.debug(`* Recording compiler (also manages the folder cleanup)`);
+    logger.debug(`* Media service / Recording compiler (also manages the folder cleanup)`);
+    logger.debug(`* Media service write tests`);
 }
 
 function cleanup(): void {
     Channel.closeAll();
     http.close();
     resources.close();
+    media.close();
     logger.info("cleanup complete");
 }
 
