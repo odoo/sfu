@@ -66,7 +66,10 @@ async function recordingSetup(env: Record<string, string | undefined>) {
 
 describe("Recording & Transcription", () => {
     test("Does not record when the feature is disabled", async () => {
-        const { restore } = await recordingSetup({ RECORDING: undefined });
+        const { restore } = await recordingSetup({
+            RECORDING: undefined,
+            TRANSCRIPTION: undefined
+        });
         const config = await import("#src/config");
         expect(config.recording.enabled).toBe(false);
         restore();
@@ -95,7 +98,7 @@ describe("Recording & Transcription", () => {
         restore();
     });
     test("can transcribe", async () => {
-        const { restore, network } = await recordingSetup({ RECORDING: "enabled" });
+        const { restore, network } = await recordingSetup({ TRANSCRIPTION: "enabled" });
         const channelUUID = await network.getChannelUUID();
         const user1 = await network.connect(channelUUID, 1);
         await user1.isConnected;
@@ -109,7 +112,10 @@ describe("Recording & Transcription", () => {
         restore();
     });
     test("can record and transcribe simultaneously", async () => {
-        const { restore, network, getChannel } = await recordingSetup({ RECORDING: "true" });
+        const { restore, network, getChannel } = await recordingSetup({
+            RECORDING: "true",
+            TRANSCRIPTION: "enabled"
+        });
         const channelUUID = await network.getChannelUUID();
         const channel = getChannel(channelUUID);
         const user1 = await network.connect(channelUUID, 1);

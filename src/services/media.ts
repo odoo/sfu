@@ -3,6 +3,7 @@ import path from "node:path";
 import os from "node:os";
 
 import { RECORDING, RECORDING_PATH } from "#src/config.ts";
+import { MediaCompiler } from "#src/models/recording/media_compiler.ts";
 import type { Metadata } from "#src/models/recording/recorder.ts";
 import { Logger } from "#src/utils/utils.ts";
 
@@ -77,19 +78,15 @@ async function processRecordings() {
  * TODO: when using ffmpeg for compilation, give lower priority to the process
  */
 async function processRecording(folderName: string) {
-    const metadataPath = path.join(RECORDING_PATH, folderName, "metadata.json");
+    const dir = path.join(RECORDING_PATH, folderName);
+    const metadataPath = path.join(dir, "metadata.json");
     try {
         const content = await fs.readFile(metadataPath, "utf-8");
         const metadata: Metadata = JSON.parse(content);
         logger.debug(`Read metadata for recording ${folderName}: ${metadata.channelName}`);
         logger.debug(`Expected to be delivered at ${metadata.routingAddress}`);
-        for (const timestamp of metadata.timeStamps) {
-            logger.debug(
-                `Timestamp: ${timestamp.tag} at ${timestamp.timestamp} info: ${JSON.stringify(
-                    timestamp.info
-                )}`
-            );
-        }
+        const comp = new MediaCompiler(dir, metadata.timeStamps);
+        comp.compile();
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
             logger.debug(`No metadata.json found in ${folderName}, skipping`);

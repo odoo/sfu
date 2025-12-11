@@ -20,6 +20,10 @@ export type ChannelInfo = {
     isTranscribing: boolean;
 };
 
+type ChannelInfoUpdate = ChannelInfo & {
+    cause?: string;
+};
+
 export type StartupData = {
     availableFeatures: AvailableFeatures;
     channelInfo: ChannelInfo;
@@ -81,7 +85,7 @@ export type BusMessage =
     | { name: typeof SERVER_MESSAGE.INFO_CHANGE; payload: Record<SessionId, SessionInfo> }
     | {
           name: typeof SERVER_MESSAGE.CHANNEL_INFO_CHANGE;
-          payload: ChannelInfo;
+          payload: ChannelInfoUpdate;
       }
     | {
           name: typeof SERVER_REQUEST.INIT_CONSUMER;
