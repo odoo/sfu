@@ -203,7 +203,7 @@ export class Channel extends EventEmitter {
             this.router && config.recording.enabled && options.recordingAddress
                 ? new Recorder(this, options.recordingAddress)
                 : undefined;
-        this.recorder?.on(Recorder.Events.UPDATE, () => this._broadcastState());
+        this.recorder?.on(Recorder.Events.UPDATE, (data) => this._broadcastState(data));
         this.key = key ? Buffer.from(key, "base64") : undefined;
         this.uuid = crypto.randomUUID();
         this.name = `${remoteAddress}*${this.uuid.slice(-5)}`;
@@ -337,7 +337,7 @@ export class Channel extends EventEmitter {
     /**
      * Broadcast the state of this channel to all its participants
      */
-    private _broadcastState() {
+    private _broadcastState({ cause }: { cause?: string }) {
         for (const session of this.sessions.values()) {
             if (!session.bus) {
                 logger.warn(`tried to broadcast state to session ${session.id}, but had no Bus`);
@@ -346,7 +346,7 @@ export class Channel extends EventEmitter {
             session.bus.send(
                 {
                     name: SERVER_MESSAGE.CHANNEL_INFO_CHANGE,
-                    payload: this.info
+                    payload: { ...this.info, cause }
                 },
                 { batch: true }
             );

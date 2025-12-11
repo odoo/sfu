@@ -73,22 +73,21 @@ export const PORT: number = Number(process.env.PORT) || 8070;
  * Whether the recording feature is enabled, false by default.
  */
 export const RECORDING: boolean = Boolean(process.env.RECORDING);
+
+/**
+ * Whether the transcription feature is enabled, false by default.
+ */
+export const TRANSCRIPTION: boolean = Boolean(process.env.TRANSCRIPTION);
 /**
  * The path where the recordings will be saved, defaults to `${tmpDir}/recordings`.
  */
 export const RECORDING_PATH: string = process.env.RECORDING_PATH || path.join(tmpDir, "recordings");
-if (RECORDING) {
-    fs.mkdirSync(RECORDING_PATH, { recursive: true });
-}
 /**
  * The path use by the resources service for temporary files, defaults to `${tmpDir}/resources`,
  * Keeping the default is fine as this is only used for temporary files used for internal process, but it can
  * be changed for debugging.
  */
 export const RESOURCES_PATH: string = process.env.RESOURCES_PATH || path.join(tmpDir, "resources");
-if (RECORDING) {
-    fs.mkdirSync(RESOURCES_PATH, { recursive: true });
-}
 /**
  * The number of workers to spawn (up to core limits) to manage RTC servers.
  * 0 < NUM_WORKERS <= os.availableParallelism()
@@ -132,11 +131,6 @@ export const DYNAMIC_MIN_PORT: number =
  */
 export const DYNAMIC_MAX_PORT: number =
     (process.env.DYNAMIC_MAX_PORT && Number(process.env.DYNAMIC_MAX_PORT)) || 59999;
-
-// check for overlap in ports
-if (RECORDING && !(DYNAMIC_MAX_PORT < RTC_MIN_PORT || DYNAMIC_MIN_PORT > RTC_MAX_PORT)) {
-    throw new Error("Dynamic ports overlap with RTC ports");
-}
 /**
  * The maximum size of the buffer in byes for incoming messages per session
  */
@@ -241,7 +235,7 @@ export const timeouts: TimeoutConfig = Object.freeze({
 export const recording = Object.freeze({
     routingInterface: "127.0.0.1",
     directory: RECORDING_PATH,
-    enabled: RECORDING,
+    enabled: RECORDING || TRANSCRIPTION,
     maxDuration: 1000 * 60 * 60, // 1 hour, could be a env-var.
     fileTTL: 1000 * 60 * 60 * 24, // 24 hours
     videoCodec: "libx264",
@@ -250,6 +244,16 @@ export const recording = Object.freeze({
     cameraLimit: 4, // how many camera can be merged into one recording
     screenLimit: 1
 });
+// check for overlap in ports
+if (recording.enabled && !(DYNAMIC_MAX_PORT < RTC_MIN_PORT || DYNAMIC_MIN_PORT > RTC_MAX_PORT)) {
+    throw new Error("Dynamic ports overlap with RTC ports");
+}
+if (recording.enabled) {
+    fs.mkdirSync(RECORDING_PATH, { recursive: true });
+}
+if (recording.enabled) {
+    fs.mkdirSync(RESOURCES_PATH, { recursive: true });
+}
 
 // how many errors can occur before the session is closed, recovery attempts will be made until this limit is reached
 export const maxSessionErrors: number = 6;

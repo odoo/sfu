@@ -188,11 +188,21 @@ export class Session extends EventEmitter {
         return {
             availableFeatures: {
                 rtc: Boolean(this._channel.router),
-                recording: Boolean(this._channel.recorder && this.permissions.recording),
-                transcription: Boolean(this._channel.recorder && this.permissions.transcription)
+                recording: this.canRecord,
+                transcription: this.canTranscribe
             },
             channelInfo: this._channel.info
         };
+    }
+
+    get canRecord(): boolean {
+        return Boolean(this._channel.recorder && config.RECORDING && this.permissions.recording);
+    }
+
+    get canTranscribe(): boolean {
+        return Boolean(
+            this._channel.recorder && config.TRANSCRIPTION && this.permissions.transcription
+        );
     }
 
     get name(): string {
@@ -698,26 +708,26 @@ export class Session extends EventEmitter {
                 return { id: producer.id };
             }
             case CLIENT_REQUEST.START_RECORDING: {
-                if (this.permissions.recording) {
-                    return this._channel.recorder?.start();
+                if (this.canRecord) {
+                    return this._channel.recorder!.start();
                 }
                 return;
             }
             case CLIENT_REQUEST.STOP_RECORDING: {
-                if (this.permissions.recording) {
-                    return this._channel.recorder?.stop();
+                if (this.canRecord) {
+                    return this._channel.recorder!.stop();
                 }
                 return;
             }
             case CLIENT_REQUEST.START_TRANSCRIPTION: {
-                if (this.permissions.transcription) {
-                    return this._channel.recorder?.startTranscription();
+                if (this.canTranscribe) {
+                    return this._channel.recorder!.startTranscription();
                 }
                 return;
             }
             case CLIENT_REQUEST.STOP_TRANSCRIPTION: {
-                if (this.permissions.transcription) {
-                    return this._channel.recorder?.stopTranscription();
+                if (this.canTranscribe) {
+                    return this._channel.recorder!.stopTranscription();
                 }
                 return;
             }

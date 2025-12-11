@@ -14,28 +14,32 @@ flowchart TB
         Channel["Channel"]
         Resources["Resources Service"]
         Recorder["Recorder"]
-        Media["Media Service<br>(processing)"]
+        Media["Media Service<br>(scheduling/monitoring)"]
         Session["Session"]
         Disk["Disk<br>(raw recordings)"]
+        MC
   end
     C1["Cloud"]
     Auth -- verify --> WS
-    Server(["🏢 Odoo Server"]) <-. REST API ...-> HTTP
-    Client(["💻 Odoo Client"]) <-. WebSocket ...-> WS
+    Server(["🏢 Odoo Server"]) <-.....-> HTTP
+    CB["Client Bundle"]
+    Client(["💻 Odoo Client"]) <----> CB
+    CB <-..-> WS
     Auth -- verify --> HTTP
     WS <--> Bus
-    Channel --- Session
+    Channel <---> Session
     Bus <----> Session
     Resources -- Get Worker ---> Channel
     Resources -- Get Folder/Port ---> Recorder
-    HTTP -- create/get ---- Channel
-    WS <-- Join ---> Channel
+    HTTP <-- create/get ---> Channel
     
     Channel ---> Recorder
     Recorder --> Disk
+    
     Media -.->|recording| C1
     Media <-.-> R1(["routing"])
-    Media -.-> O2["Odoo server"]
+    Media -.->|transcription| O2["Odoo server"]
+    MC["Media Compiler"] <--> Media
     Disk --> Media
     
 

@@ -33,7 +33,7 @@ export type TimeTagInfo = {
      */
     active: boolean;
 };
-type TimeStampData = {
+export type TimeStampData = {
     tag: TIME_TAG;
     timestamp: number;
     info?: TimeTagInfo;
@@ -41,7 +41,7 @@ type TimeStampData = {
 export type Metadata = {
     channelName: string;
     routingAddress: string;
-    timeStamps: Array<TimeStampData>;
+    timeStamps: TimeStampData[];
 };
 
 const logger = new Logger("RECORDER");
@@ -96,6 +96,7 @@ export class Recorder extends EventEmitter {
     isTranscribing: boolean = false;
     state: RECORDER_STATE = RECORDER_STATE.STOPPED;
     private _folder?: Folder;
+    private _timeout?: NodeJS.Timeout;
     private readonly _channel: Channel;
     private readonly _tasks = new Map<SessionId, RecordingTask>();
     /** Path to which the final recording will be uploaded to */
@@ -181,6 +182,8 @@ export class Recorder extends EventEmitter {
             return;
         }
         this.state = RECORDER_STATE.STOPPING;
+        clearTimeout(this._timeout);
+        this._timeout = undefined;
         logger.verbose(`terminating recorder for channel ${this._channel.name}`);
         this._channel.off(Channel.Events.SESSION_JOIN, this._onSessionJoin);
         this._channel.off(Channel.Events.SESSION_LEAVE, this._onSessionLeave);
@@ -249,7 +252,7 @@ export class Recorder extends EventEmitter {
         } else {
             this.terminate();
         }
-        this.emit("update", { isRecording: this.isRecording, isTranscribing: this.isTranscribing });
+        this._emitStatus();
     }
 
     private async _update() {
@@ -259,9 +262,21 @@ export class Recorder extends EventEmitter {
         }
     }
 
+    private _emitStatus(cause?: string) {
+        this.emit("update", {
+            isRecording: this.isRecording,
+            isTranscribing: this.isTranscribing,
+            cause
+        });
+    }
     private async _init() {
         this.state = RECORDER_STATE.STARTED;
         this._folder = await getFolder();
+        clearTimeout(this._timeout);
+        this._timeout = setTimeout(() => {
+            this.terminate();
+            this._emitStatus("timeout");
+        }, recording.maxDuration);
         logger.verbose(`Initializing recorder for channel: ${this._channel.name}`);
         for (const [sessionId, session] of this._channel.sessions) {
             this._tasks.set(
