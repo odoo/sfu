@@ -7,10 +7,6 @@ The recording feature in the SFU allows for capturing audio, video from camera, 
 The recording architecture follows a hierarchical structure, managing resources from the channel level down to individual system processes.
 
 ```mermaid
----
-config:
-  layout: elk
----
 flowchart TB
    
     R["Recorder <br> Channel Level"] --> RT1["RecordingTask <br> Session 1"] & RT2["RecordingTask <br> Session 2"]
