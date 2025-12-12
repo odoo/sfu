@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 
-import { RECORDING, RECORDING_PATH } from "#src/config.ts";
+import { recording, RECORDING_PATH } from "#src/config.ts";
 import { MediaCompiler } from "#src/models/recording/media_compiler.ts";
 import type { Metadata } from "#src/models/recording/recorder.ts";
 import { Logger } from "#src/utils/utils.ts";
@@ -14,7 +14,7 @@ const CPU_LOAD_THRESHOLD = 0.8;
 let interval: NodeJS.Timeout | undefined;
 
 export async function start(): Promise<void> {
-    if (!RECORDING) {
+    if (!recording.enabled) {
         logger.info("Recording is disabled, media service will not start");
         return;
     }
@@ -86,7 +86,7 @@ async function processRecording(folderName: string) {
         logger.debug(`Read metadata for recording ${folderName}: ${metadata.channelName}`);
         logger.debug(`Expected to be delivered at ${metadata.routingAddress}`);
         const comp = new MediaCompiler(dir, metadata.timeStamps);
-        comp.compile();
+        await comp.compile();
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
             logger.debug(`No metadata.json found in ${folderName}, skipping`);
