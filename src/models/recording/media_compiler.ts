@@ -1,5 +1,6 @@
-import path from "node:path";
 import { spawn } from "node:child_process";
+import { access } from "node:fs/promises";
+import path from "node:path";
 
 import { type TimeStampData, TIME_TAG } from "#src/models/recording/recorder.ts";
 import { Logger } from "#src/utils/utils.ts";
@@ -83,7 +84,13 @@ export class MediaCompiler {
             return;
         }
         const outputPath = path.join(this._workingDir, `transcription_${segment.start}.mp3`);
-        // TODO if file already exists, return
+        try {
+            await access(outputPath);
+            logger.info(`Output file ${outputPath} already exists, skipping compilation`);
+            return;
+        } catch {
+            // File does not exist, continue to compilation
+        }
 
         const inputs: string[] = [];
         const filterComplex: string[] = [];
