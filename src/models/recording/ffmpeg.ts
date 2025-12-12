@@ -14,6 +14,7 @@ const isDebug = LOG_LEVEL === LogLevel.DEBUG;
  * Abstraction for a FFMPEG child process
  */
 export class FFMPEG {
+    readonly extension: string;
     readonly filename: string;
     private readonly _rtp: rtpData;
     private _process?: ChildProcess;
@@ -23,8 +24,9 @@ export class FFMPEG {
 
     constructor(rtp: rtpData, directory: string, filename: string) {
         this._rtp = rtp;
-        this.filename = filename;
         this._directory = directory;
+        this.extension = this._getContainerExtension();
+        this.filename = `${filename}.${this.extension}`;
         this._init();
     }
 
@@ -166,8 +168,7 @@ export class FFMPEG {
         } else {
             args = args.concat(["-map", "0:v:0", "-c:v", "copy"]);
         }
-        const extension = this._getContainerExtension();
-        args.push(`${path.join(this._directory, this.filename)}.${extension}`);
+        args.push(path.join(this._directory, this.filename));
         return args;
     }
 }
