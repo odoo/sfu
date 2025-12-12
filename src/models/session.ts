@@ -23,6 +23,7 @@ import {
 import type {
     BusMessage,
     JSONSerializable,
+    recordingActionResult,
     RequestMessage,
     StartupData,
     StreamType
@@ -708,28 +709,44 @@ export class Session extends EventEmitter {
                 return { id: producer.id };
             }
             case CLIENT_REQUEST.START_RECORDING: {
+                const actionResult: recordingActionResult = {
+                    state: this._channel.recorder?.isRecording,
+                    allowed: this.canRecord
+                };
                 if (this.canRecord) {
-                    return this._channel.recorder!.start();
+                    actionResult.state = await this._channel.recorder!.start();
                 }
-                return;
+                return actionResult;
             }
             case CLIENT_REQUEST.STOP_RECORDING: {
+                const actionResult: recordingActionResult = {
+                    state: this._channel.recorder?.isRecording,
+                    allowed: this.canRecord
+                };
                 if (this.canRecord) {
-                    return this._channel.recorder!.stop();
+                    actionResult.state = await this._channel.recorder!.stop();
                 }
-                return;
+                return actionResult;
             }
             case CLIENT_REQUEST.START_TRANSCRIPTION: {
+                const actionResult: recordingActionResult = {
+                    state: this._channel.recorder?.isTranscribing,
+                    allowed: this.canTranscribe
+                };
                 if (this.canTranscribe) {
-                    return this._channel.recorder!.startTranscription();
+                    actionResult.state = await this._channel.recorder!.startTranscription();
                 }
-                return;
+                return actionResult;
             }
             case CLIENT_REQUEST.STOP_TRANSCRIPTION: {
+                const actionResult: recordingActionResult = {
+                    state: this._channel.recorder?.isTranscribing,
+                    allowed: this.canTranscribe
+                };
                 if (this.canTranscribe) {
-                    return this._channel.recorder!.stopTranscription();
+                    actionResult.state = await this._channel.recorder!.stopTranscription();
                 }
-                return;
+                return actionResult;
             }
             default:
                 logger.warn(`[${this.name}] Unknown request type: ${name}`);
