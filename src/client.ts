@@ -25,7 +25,8 @@ import type {
     BusMessage,
     RequestMessage,
     StartupData,
-    WebSocketCredentials
+    WebSocketCredentials,
+    recordingActionResult
 } from "#src/shared/types";
 import type { TransportConfig, SessionId, SessionInfo } from "#src/models/session";
 
@@ -273,9 +274,9 @@ export class SfuClient extends EventTarget {
         await Promise.all(proms);
         return stats;
     }
-    async startRecording(): Promise<boolean> {
+    async startRecording(): Promise<recordingActionResult> {
         if (this.state !== SfuClientState.CONNECTED) {
-            return false;
+            return { state: undefined, allowed: false };
         }
         return this._bus!.request(
             {
@@ -285,9 +286,9 @@ export class SfuClient extends EventTarget {
         );
     }
 
-    async stopRecording(): Promise<boolean> {
+    async stopRecording(): Promise<recordingActionResult> {
         if (this.state !== SfuClientState.CONNECTED) {
-            return false;
+            return { state: undefined, allowed: false };
         }
         return this._bus!.request(
             {
@@ -297,9 +298,9 @@ export class SfuClient extends EventTarget {
         );
     }
 
-    async startTranscription(): Promise<boolean> {
+    async startTranscription(): Promise<recordingActionResult> {
         if (this.state !== SfuClientState.CONNECTED) {
-            return false;
+            return { state: undefined, allowed: false };
         }
         return this._bus!.request(
             {
@@ -309,9 +310,9 @@ export class SfuClient extends EventTarget {
         );
     }
 
-    async stopTranscription(): Promise<boolean> {
+    async stopTranscription(): Promise<recordingActionResult> {
         if (this.state !== SfuClientState.CONNECTED) {
-            return false;
+            return { state: undefined, allowed: false };
         }
         return this._bus!.request(
             {

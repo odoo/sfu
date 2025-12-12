@@ -78,10 +78,16 @@ describe("Recording & Transcription", () => {
         const { SfuClient } = await import("#src/client");
         const client = new SfuClient();
 
-        expect(await client.startRecording()).toBe(false);
-        expect(await client.stopRecording()).toBe(false);
-        expect(await client.startTranscription()).toBe(false);
-        expect(await client.stopTranscription()).toBe(false);
+        expect(await client.startRecording()).toStrictEqual({ allowed: false, state: undefined });
+        expect(await client.stopRecording()).toStrictEqual({ allowed: false, state: undefined });
+        expect(await client.startTranscription()).toStrictEqual({
+            allowed: false,
+            state: undefined
+        });
+        expect(await client.stopTranscription()).toStrictEqual({
+            allowed: false,
+            state: undefined
+        });
     });
     test("can record", async () => {
         const { restore, network } = await recordingSetup({ RECORDING: "true" });
@@ -91,10 +97,12 @@ describe("Recording & Transcription", () => {
         const user2 = await network.connect(channelUUID, 3);
         await user2.isConnected;
         expect(user2.sfuClient.availableFeatures.recording).toBe(true);
-        const startResult = (await user2.sfuClient.startRecording()) as boolean;
-        expect(startResult).toBe(true);
-        const stopResult = (await user2.sfuClient.stopRecording()) as boolean;
-        expect(stopResult).toBe(false);
+        const startResult = await user2.sfuClient.startRecording();
+        expect(startResult.allowed).toBe(true);
+        expect(startResult.state).toBe(true);
+        const stopResult = await user2.sfuClient.stopRecording();
+        expect(stopResult.allowed).toBe(true);
+        expect(stopResult.state).toBe(false);
         restore();
     });
     test("can transcribe", async () => {
@@ -105,10 +113,12 @@ describe("Recording & Transcription", () => {
         const user2 = await network.connect(channelUUID, 3);
         await user2.isConnected;
         expect(user2.sfuClient.availableFeatures.transcription).toBe(true);
-        const startResult = (await user2.sfuClient.startTranscription()) as boolean;
-        expect(startResult).toBe(true);
-        const stopResult = (await user2.sfuClient.stopTranscription()) as boolean;
-        expect(stopResult).toBe(false);
+        const startResult = await user2.sfuClient.startTranscription();
+        expect(startResult.allowed).toBe(true);
+        expect(startResult.state).toBe(true);
+        const stopResult = await user2.sfuClient.stopTranscription();
+        expect(stopResult.allowed).toBe(true);
+        expect(stopResult.state).toBe(false);
         restore();
     });
     test("can record and transcribe simultaneously", async () => {
