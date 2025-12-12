@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { spawn, ChildProcess } from "node:child_process";
 import { Readable } from "node:stream";
@@ -45,13 +46,16 @@ export class FFMPEG {
         }
     }
 
-    private _init() {
+    private async _init() {
         try {
             /**
              * FFMPEG does not create the directory if it doesn't exist,
              * so it needs to be created before spawning the process.
              */
-            fs.mkdirSync(this._directory, { recursive: true });
+            await mkdir(this._directory, { recursive: true });
+            if (this._isClosed) {
+                return;
+            }
             const sdpString = this._createSdpText();
             logger.debug(`FFMPEG ${this.filename} SDP:\n${sdpString}`);
             const sdpStream = Readable.from([sdpString]);
