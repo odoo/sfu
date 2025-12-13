@@ -4,6 +4,10 @@ import path from "node:path";
 
 import { type TimeStampData, TIME_TAG } from "#src/models/recording/recorder.ts";
 import { Logger } from "#src/utils/utils.ts";
+type compiledFile = {
+    recordings: string[];
+    transcriptions: string[];
+};
 
 const logger = new Logger("MEDIA_COMPILER");
 
@@ -15,7 +19,11 @@ export class MediaCompiler {
         this._workingDir = workingDir;
         this._timeStamps = timeStamps;
     }
-    async compile() {
+    /**
+     * Compiles the raw recording into compiled files.
+     * @returns The paths to the compiled files.
+     */
+    async compile(): Promise<compiledFile> {
         logger.debug(`Working dir: ${this._workingDir}`);
         const segments: { start: number; end: number }[] = [];
         const files = new Map<string, number>();
@@ -59,10 +67,18 @@ export class MediaCompiler {
 
         logger.info(`Found ${segments.length} transcription segments`);
 
+        const transcriptions: string[] = [];
         for (const segment of segments) {
             logger.info(`Compiling segment ${segment.start} - ${segment.end}`);
-            await this._compileSegment(segment, files);
+            const processedFile = await this._compileSegment(segment, files);
+            if (processedFile) {
+                transcriptions.push(processedFile);
+            }
         }
+        return {
+            transcriptions,
+            recordings: [] // TODO to implement
+        };
     }
 
     private async _compileSegment(
@@ -83,10 +99,10 @@ export class MediaCompiler {
             logger.warn("No audio files found for segment");
             return;
         }
-        const outputPath = path.join(this._workingDir, `transcription_${segment.start}.mp3`);
+        const outputName = path.join(this._workingDir, `transcription_${segment.start}.mp3`);
         try {
-            await access(outputPath);
-            logger.info(`Output file ${outputPath} already exists, skipping compilation`);
+            await access(outputName);
+            logger.info(`Output file ${outputName} already exists, skipping compilation`);
             return;
         } catch {
             // File does not exist, continue to compilation
@@ -123,12 +139,12 @@ export class MediaCompiler {
             duration.toFixed(3),
             "-b:a",
             "8k",
-            outputPath
+            outputName
         ];
 
         logger.debug(`Running FFMPEG: ffmpeg ${args.join(" ")}`);
 
-        return new Promise<void>((resolve, reject) => {
+        return new Promise<string>((resolve, reject) => {
             const proc = spawn("ffmpeg", args);
 
             proc.stderr.on("data", (data) => {
@@ -137,8 +153,8 @@ export class MediaCompiler {
 
             proc.on("close", (code) => {
                 if (code === 0) {
-                    logger.info(`Compiled ${outputPath}`);
-                    resolve();
+                    logger.info(`Compiled ${outputName}`);
+                    resolve(outputName);
                 } else {
                     logger.error(`FFMPEG failed with code ${code}`);
                     reject(new Error(`FFMPEG exited with code ${code}`));
