@@ -86,7 +86,8 @@ async function processRecording(folderName: string) {
         logger.debug(`Read metadata for recording ${folderName}: ${metadata.channelName}`);
         logger.debug(`Expected to be delivered at ${metadata.routingAddress}`);
         const comp = new MediaCompiler(dir, metadata.timeStamps);
-        await comp.compile();
+        const { transcriptions } = await comp.compile();
+        await uploadFiles({ dest: metadata.routingAddress, transcriptions });
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
             logger.debug(`No metadata.json found in ${folderName}, skipping`);
@@ -94,4 +95,9 @@ async function processRecording(folderName: string) {
             logger.error(`Failed to process recording ${folderName}: ${error}`);
         }
     }
+}
+
+async function uploadFiles({ dest, transcriptions }: { dest: string; transcriptions: string[] }) {
+    logger.debug(`Uploading ${transcriptions.length} files to ${dest}`);
+    // TODO to implement
 }

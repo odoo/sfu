@@ -43,6 +43,7 @@ export class FFMPEG {
             });
             this._process!.kill("SIGINT");
             await closed;
+            // TODO: shouldn't let the process linger forever, probably need some timeout in case it takes too long to close
         }
     }
 
