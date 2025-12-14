@@ -1,6 +1,6 @@
-# Services
+# Architecture
 
-This directory contains the core infrastructure services that power the SFU. These services manage network protocols, authentication, and system resources.
+The SFU is divided into [services](../src/services), each responsible for a specific functionality of the server. And models [models](../src/models) for the data structures used by the services.
 
 ## Overview
 
@@ -22,23 +22,23 @@ flowchart TB
     C1["Cloud"]
     Auth -- verify --> WS
     Server(["🏢 Odoo Server"]) <-.....-> HTTP
-    CB["Client Bundle"]
+    CB["SfuClient</br>(bundle)"]
     Client(["💻 Odoo Client"]) <----> CB
     CB <-..-> WS
     Auth -- verify --> HTTP
     WS <--> Bus
     Channel <---> Session
     Bus <----> Session
-    Resources -- Get Worker ---> Channel
+    Resources -- Get Worker---> Channel
     Resources -- Get Folder/Port ---> Recorder
     HTTP <-- create/get ---> Channel
     
     Channel ---> Recorder
     Recorder --> Disk
     
-    Media -.->|recording| C1
+    Media -.-> C1
     Media <-.-> R1(["routing"])
-    Media -.->|transcription| O2["Odoo server"]
+    Media -.-> O2["Odoo server"]
     MC["Media Compiler"] <--> Media
     Disk --> Media
     
@@ -66,17 +66,9 @@ flowchart TB
 The Authentication service is responsible for the security of the application. It handles the signing and verification of JSON Web Tokens (JWT).
 
 ### 2. HTTP Service (`http.ts`)
+more at [http.md](./http.md)
 
 The HTTP service provides the REST API for the SFU. It handles channel creation, status checks, and session management.
-
-**Key Endpoints:**
-
-| Method | Endpoint         | Description                                         |
-| ------ | ---------------- | --------------------------------------------------- |
-| `GET`  | `/v1/channel`    | Creates or retrieves a media channel. Requires JWT. |
-| `POST` | `/v1/disconnect` | Disconnects specific sessions from a channel.       |
-| `GET`  | `/v1/stats`      | Returns statistics for all active channels.         |
-| `GET`  | `/v1/noop`       | Health check endpoint.                              |
 
 ### 3. WebSocket Service (`ws.ts`)
 
@@ -114,5 +106,6 @@ The Resources service acts as the interface to the underlying system and Mediaso
 - **Port Management**: Allocates dynamic ports for media transport using the `DynamicPort` class.
 
 ### 5. Media Service (`media.ts`)
+more at [recording.md](./recording.md)
 
-The Media service is responsible for the processing and dispatching of media files and the scheduling of these tasks.
+The Media service is responsible for the processing and dispatching of media files (recordings) and the scheduling of these tasks.
