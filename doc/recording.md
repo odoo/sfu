@@ -1,4 +1,5 @@
 # Recording
+see [media.ts](../src/services/media.ts) and [recording/*](../src/models/recording) for more details.
 
 The recording feature in the SFU allows for capturing audio, video from camera, and screen sharing streams from a channel. It is designed to handle each stream independently to produce raw recording files that can be processed later (e.g., for transcription, composition, or playback).
 
