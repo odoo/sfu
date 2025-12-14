@@ -133,10 +133,9 @@ See [server.js](./src/server.js) for more details.
 See [http.js](./src/services/http.js) for more details.
 
 ## Client API (bundle)
-see [client.js](./src/client.js) for more details.
+See [client.js](./src/client.js), and check the `build` script in [package.json](./package.json) for more details on how to build the bundle.
 
-The bundle built with the `build` script in [package.json](./package.json) can be imported
-in the client(js) code that implements the call feature like this:
+The bundle can be imported in the client(js) code that implements the call feature like this:
 
 ```js
 import { SfuClient, SFU_CLIENT_STATE } from "/bundle/odoo_sfu.js";

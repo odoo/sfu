@@ -21,6 +21,7 @@ async function run(): Promise<void> {
     logger.debug(`* should recording when alone be disallowed?`);
     logger.debug(`* Media service / Recording compiler (also manages the folder cleanup)`);
     logger.debug(`* Media service write tests`);
+    logger.debug(`* Media compiler write tests`);
     logger.debug(`* Routing Address`);
     /**
      * the address passed to the recorder should maybe be a routing address, the SFU asks at this address what to do with the files
