@@ -25,7 +25,8 @@ export class MediaCompiler {
      */
     async compile(): Promise<compiledFile> {
         logger.debug(`Working dir: ${this._workingDir}`);
-        const segments: { start: number; end: number }[] = [];
+        const transcriptionSegments: { start: number; end: number }[] = [];
+        // TODO: recordingSegments equivalent for TIME_TAG.RECORDING_STARTED and TIME_TAG.RECORDING_STOPPED
         const files = new Map<string, number>();
         let currentStart = 0;
 
@@ -37,7 +38,10 @@ export class MediaCompiler {
                     break;
                 case TIME_TAG.TRANSCRIPTION_STOPPED:
                     if (currentStart) {
-                        segments.push({ start: currentStart, end: timestamp.timestamp });
+                        transcriptionSegments.push({
+                            start: currentStart,
+                            end: timestamp.timestamp
+                        });
                         currentStart = 0;
                     }
                     logger.debug(`Transcription stopped at ${timestamp.timestamp}`);
@@ -59,16 +63,16 @@ export class MediaCompiler {
 
         // If a transcription started but didn't stop properly, assume it goes until the end
         if (currentStart) {
-            segments.push({
+            transcriptionSegments.push({
                 start: currentStart,
                 end: this._timeStamps[this._timeStamps.length - 1].timestamp
             });
         }
 
-        logger.info(`Found ${segments.length} transcription segments`);
+        logger.info(`Found ${transcriptionSegments.length} transcription segments`);
 
         const transcriptions: string[] = [];
-        for (const segment of segments) {
+        for (const segment of transcriptionSegments) {
             logger.info(`Compiling segment ${segment.start} - ${segment.end}`);
             const processedFile = await this._compileSegment(segment, files);
             if (processedFile) {
@@ -76,8 +80,8 @@ export class MediaCompiler {
             }
         }
         return {
-            transcriptions,
-            recordings: [] // TODO to implement
+            recordings: [], // TODO to implement
+            transcriptions
         };
     }
 
