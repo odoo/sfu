@@ -99,6 +99,7 @@ function setupRoutes(routeListener: RouteListener): void {
      *
      * ### Responses
      * - `200 OK` — returns `{ uuid: string, url: string }`
+     * - `400 Bad Request` — provided a `recordingAddress` without a `key` claim
      * - `401 Unauthorized` — missing or invalid Authorization header
      * - `403 Forbidden` — missing `iss` claim
      * - `500 Internal Server Error` — failed to create the channel
@@ -120,10 +121,16 @@ function setupRoutes(routeListener: RouteListener): void {
                     res.statusCode = 403; // forbidden
                     return res.end();
                 }
+                const recordingAddress = searchParams.get("recordingAddress");
+                if (recordingAddress && !claims.key) {
+                    logger.warn(`${remoteAddress}: missing key claim when creating channel`);
+                    res.statusCode = 400; // bad request
+                    return res.end();
+                }
                 const channel = await Channel.create(remoteAddress, claims.iss, {
                     key: claims.key,
                     useWebRtc: searchParams.get("webRTC") !== "false",
-                    recordingAddress: searchParams.get("recordingAddress")
+                    recordingAddress
                 });
                 res.setHeader("Content-Type", "application/json");
                 res.statusCode = 200;
