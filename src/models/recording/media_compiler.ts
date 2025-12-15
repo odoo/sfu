@@ -103,7 +103,7 @@ export class MediaCompiler {
             logger.warn("No audio files found for segment");
             return;
         }
-        const outputName = path.join(this._workingDir, `transcription_${segment.start}.mp3`);
+        const outputName = path.join(this._workingDir, `transcription_${segment.start}.ogg`);
         try {
             await access(outputName);
             logger.info(`Output file ${outputName} already exists, skipping compilation`);
@@ -141,6 +141,8 @@ export class MediaCompiler {
             "[out]",
             "-t",
             duration.toFixed(3),
+            "-c:a",
+            "libopus",
             "-b:a",
             "8k",
             outputName
