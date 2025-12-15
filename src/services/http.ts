@@ -94,9 +94,8 @@ function setupRoutes(routeListener: RouteListener): void {
      * - `webRTC` — optional, defaults to `"true"`.
      *   When set to `"false"`, disables WebRTC setup and creates a non-media channel.
      * - `recordingAddress` — optional.
-     *   If provided, enables recording and specifies the destination address
-     *   for recorded media streams. This address should most likely include a secret token,
-     *   so that it can be used publicly. For example http://example.com/recording/123?token=asdasdasdasd
+     *   If provided, enables recording and specifies the address
+     *   that the SFU can contact to get routing instructions for the recording.
      *
      * ### Responses
      * - `200 OK` — returns `{ uuid: string, url: string }`

@@ -127,10 +127,8 @@ function base64Decode(str: string): Buffer {
 export function sign(
     claims: JWTClaims,
     key: StringLike = jwtKey!,
-    options: SignOptions = {}
+    { algorithm = ALGORITHM.HS256 }: SignOptions = {}
 ): string {
-    const { algorithm = ALGORITHM.HS256 } = options;
-
     if (!key) {
         throw new AuthenticationError("JWT signing key is not set");
     }
