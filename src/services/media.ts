@@ -83,6 +83,12 @@ async function processRecording(folderName: string) {
     try {
         const content = await fs.readFile(metadataPath, "utf-8");
         const metadata: Metadata = JSON.parse(content);
+        const expirationDate = (metadata.sealedAt || 0) + recording.fileTTL;
+        if (expirationDate < Date.now()) {
+            logger.debug(`Recording ${folderName} is older than ${recording.fileTTL}ms, removing`);
+            fs.rm(dir, { recursive: true });
+            return;
+        }
         logger.debug(`Read metadata for recording ${folderName}: ${metadata.channelName}`);
         logger.debug(`Expected to be delivered at ${metadata.routingAddress}`);
         const comp = new MediaCompiler(dir, metadata.timeStamps);
