@@ -42,6 +42,7 @@ export type Metadata = {
     channelName: string;
     routingAddress: string;
     timeStamps: TimeStampData[];
+    sealedAt?: number;
 };
 
 const logger = new Logger("RECORDER");
@@ -190,7 +191,7 @@ export class Recorder extends EventEmitter {
         this.isRecording = false;
         this.isTranscribing = false;
         const currentFolder = this._folder;
-        const metadata = JSON.stringify(this._metaData);
+        const metaData = this._sealMetaData();
         /**
          * Not awaiting as FFMPEG can take arbitrarily long to complete
          * (several seconds, or more), and we don't want to block the
@@ -202,7 +203,7 @@ export class Recorder extends EventEmitter {
             .then((results) => {
                 const failed = results.some((result) => result.status === "rejected");
                 if (save && !failed) {
-                    currentFolder!.add("metadata.json", metadata);
+                    currentFolder!.add("metadata.json", metaData);
                     currentFolder!.seal(
                         path.join(recording.directory, `${this._channel.name}_${Date.now()}`)
                     );
@@ -216,8 +217,15 @@ export class Recorder extends EventEmitter {
                 );
             });
         this._folder = undefined;
-        this._metaData.timeStamps = [];
         this.state = RECORDER_STATE.STOPPED;
+    }
+
+    private _sealMetaData() {
+        this._metaData.sealedAt = Date.now();
+        const metadata = JSON.stringify(this._metaData);
+        this._metaData.timeStamps = [];
+        this._metaData.sealedAt = undefined;
+        return metadata;
     }
 
     private _onSessionJoin(id: SessionId) {
