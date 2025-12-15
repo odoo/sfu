@@ -128,16 +128,15 @@ async function uploadFiles({
     logger.debug(`Uploading files to ${metadata.routingAddress}`);
     try {
         // first, asking for routing
-        const response = await fetch(metadata.routingAddress, {
+        const queryParameters = new URLSearchParams({
+            recordings: `${recordings?.length || 0}`,
+            transcriptions: `${transcriptions?.length || 0}`
+        });
+        const response = await fetch(`${metadata.routingAddress}?${queryParameters}`, {
             method: "GET",
             headers: {
-                Authorization: `Bearer ${metadata.routingJwt}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                recording: recordings?.length || 0,
-                transcriptions: transcriptions?.length || 0
-            })
+                Authorization: `Bearer ${metadata.routingJwt}`
+            }
         });
         if (!response.ok) {
             throw new Error(
@@ -148,6 +147,7 @@ async function uploadFiles({
         logger.debug(
             `Obtained routing from ${metadata.routingAddress}: ${JSON.stringify(routing)}`
         );
+        // TODO implement upload
     } catch (e) {
         logger.error(`Failed to obtain routing from ${metadata.routingAddress}: ${e}`);
     }
