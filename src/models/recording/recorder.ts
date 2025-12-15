@@ -4,6 +4,7 @@ import { EventEmitter } from "node:events";
 import { recording } from "#src/config.ts";
 import { getFolder, type Folder } from "#src/services/resources.ts";
 import { RecordingTask, type RecordingStates } from "#src/models/recording/recording_task.ts";
+import { sign } from "#src/services/auth.ts";
 import { Logger } from "#src/utils/utils.ts";
 
 import { Channel } from "#src/models/channel.ts";
@@ -38,11 +39,15 @@ export type TimeStampData = {
     timestamp: number;
     info?: TimeTagInfo;
 };
-export type Metadata = {
+type Metadata = {
     channelName: string;
     routingAddress: string;
     timeStamps: TimeStampData[];
-    sealedAt?: number;
+};
+
+export type SealedMetaData = Metadata & {
+    sealedAt: number;
+    routingJwt: string;
 };
 
 const logger = new Logger("RECORDER");
@@ -221,10 +226,15 @@ export class Recorder extends EventEmitter {
     }
 
     private _sealMetaData() {
-        this._metaData.sealedAt = Date.now();
-        const metadata = JSON.stringify(this._metaData);
+        const routingJwt = sign(
+            {
+                aud: this._metaData.routingAddress,
+                exp: Date.now() + (recording.fileTTL + 60 * 60) * 1000
+            },
+            this._channel.key!
+        );
+        const metadata = JSON.stringify({ ...this._metaData, routingJwt, sealedAt: Date.now() });
         this._metaData.timeStamps = [];
-        this._metaData.sealedAt = undefined;
         return metadata;
     }
 

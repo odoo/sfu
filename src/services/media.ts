@@ -4,12 +4,17 @@ import os from "node:os";
 
 import { recording, RECORDING_PATH } from "#src/config.ts";
 import { MediaCompiler } from "#src/models/recording/media_compiler.ts";
-import type { Metadata } from "#src/models/recording/recorder.ts";
+import type { SealedMetaData } from "#src/models/recording/recorder.ts";
 import { Logger } from "#src/utils/utils.ts";
 
 const logger = new Logger("MEDIA");
 const CHECK_INTERVAL = 10 * 60 * 1000; // 10 minutes
 const CPU_LOAD_THRESHOLD = 0.8;
+
+type RoutingInformation = {
+    recording?: string;
+    transcription?: string;
+};
 
 let interval: NodeJS.Timeout | undefined;
 
@@ -82,7 +87,7 @@ async function processRecording(folderName: string) {
     const metadataPath = path.join(dir, "metadata.json");
     try {
         const content = await fs.readFile(metadataPath, "utf-8");
-        const metadata: Metadata = JSON.parse(content);
+        const metadata: SealedMetaData = JSON.parse(content);
         const expirationDate = (metadata.sealedAt || 0) + recording.fileTTL;
         if (expirationDate < Date.now()) {
             logger.debug(`Recording ${folderName} is older than ${recording.fileTTL}ms, removing`);
@@ -92,8 +97,12 @@ async function processRecording(folderName: string) {
         logger.debug(`Read metadata for recording ${folderName}: ${metadata.channelName}`);
         logger.debug(`Expected to be delivered at ${metadata.routingAddress}`);
         const comp = new MediaCompiler(dir, metadata.timeStamps);
-        const { transcriptions } = await comp.compile();
-        await uploadFiles({ dest: metadata.routingAddress, transcriptions });
+        const { transcriptions, recordings } = await comp.compile();
+        await uploadFiles({
+            metadata,
+            transcriptions,
+            recordings
+        });
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
             logger.debug(`No metadata.json found in ${folderName}, skipping`);
@@ -103,7 +112,43 @@ async function processRecording(folderName: string) {
     }
 }
 
-async function uploadFiles({ dest, transcriptions }: { dest: string; transcriptions: string[] }) {
-    logger.debug(`Uploading ${transcriptions.length} files to ${dest}`);
-    // TODO to implement
+async function uploadFiles({
+    metadata,
+    transcriptions,
+    recordings
+}: {
+    metadata: SealedMetaData;
+    transcriptions?: string[];
+    recordings?: string[];
+}) {
+    if (!transcriptions?.length && !recordings?.length) {
+        logger.debug("No files to upload");
+        return;
+    }
+    logger.debug(`Uploading files to ${metadata.routingAddress}`);
+    try {
+        // first, asking for routing
+        const response = await fetch(metadata.routingAddress, {
+            method: "GET",
+            headers: {
+                Authorization: `Bearer ${metadata.routingJwt}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                recording: recordings?.length || 0,
+                transcriptions: transcriptions?.length || 0
+            })
+        });
+        if (!response.ok) {
+            throw new Error(
+                `Failed to obtain routing from ${metadata.routingAddress}: ${response.statusText}`
+            );
+        }
+        const routing = (await response.json()) as RoutingInformation;
+        logger.debug(
+            `Obtained routing from ${metadata.routingAddress}: ${JSON.stringify(routing)}`
+        );
+    } catch (e) {
+        logger.error(`Failed to obtain routing from ${metadata.routingAddress}: ${e}`);
+    }
 }

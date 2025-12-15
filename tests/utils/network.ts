@@ -84,7 +84,11 @@ export class LocalNetwork {
      * @param [param0.key=HMAC_B64_KEY] - Channel key
      * @returns Promise resolving to channel UUID
      */
-    async getChannelUUID({ useWebRtc = true, key = HMAC_B64_KEY } = {}): Promise<string> {
+    async getChannelUUID({
+        useWebRtc = true,
+        key = HMAC_B64_KEY,
+        recordingAddress = "dummy-dest"
+    } = {}): Promise<string> {
         if (!this.hostname || !this.port) {
             throw new Error("Network not started - call start() first");
         }
@@ -93,9 +97,8 @@ export class LocalNetwork {
             iss: `http://${this.hostname}:${this.port}/`,
             key
         });
-        const TEST_RECORDING_ADDRESS = "http://localhost:8080"; // TODO maybe to change and use that later
         const response = await fetch(
-            `http://${this.hostname}:${this.port}/v${http.API_VERSION}/channel?webRTC=${useWebRtc}&recordingAddress=${TEST_RECORDING_ADDRESS}`,
+            `http://${this.hostname}:${this.port}/v${http.API_VERSION}/channel?webRTC=${useWebRtc}&recordingAddress=${recordingAddress}`,
             {
                 method: "GET",
                 headers: {

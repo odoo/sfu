@@ -56,7 +56,7 @@ describe("Security", () => {
         expect(channel!.sessions.size).toBe(1);
     });
     test("Legacy Auth: Succeeds if channel has NO key and channelUUID not provided", async () => {
-        const channelUUID = await network.getChannelUUID({ key: "" });
+        const channelUUID = await network.getChannelUUID({ key: "", recordingAddress: "" });
         const ws = new WebSocket(`ws://localhost:${PORT}`);
         await once(ws, "open");
 
@@ -73,5 +73,10 @@ describe("Security", () => {
         expect(data).toHaveProperty("availableFeatures");
 
         ws.close();
+    });
+    test("cannot omit key when recordingAddress is provided", async () => {
+        await expect(
+            network.getChannelUUID({ key: "", recordingAddress: "dummy-dest" })
+        ).rejects.toThrow();
     });
 });
