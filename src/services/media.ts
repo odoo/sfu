@@ -18,6 +18,19 @@ type RoutingInformation = {
 
 let interval: NodeJS.Timeout | undefined;
 
+/**
+ * Service responsible for post-processing of media recordings.
+ *
+ * This service runs periodically to check for completed recordings in the recording directory.
+ * Manages the lifecycle of recording files:
+ * - Monitoring CPU load to schedule processing during idle times.
+ * - Checking for expired recordings and cleaning them up based on TTL.
+ * - Compiling raw media streams into consumable formats (e.g., merging audio/video, generating transcriptions).
+ * - Uploading processed media and transcriptions to the routing address specified in the metadata.
+ *
+ * Note: This service is currently part of the main process but is designed to potentially
+ * run as a separate worker or service in the future to offload heavy media processing.
+ */
 export async function start(): Promise<void> {
     if (!recording.enabled) {
         logger.info("Recording is disabled, media service will not start");

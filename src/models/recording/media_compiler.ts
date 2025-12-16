@@ -5,11 +5,15 @@ import path from "node:path";
 import { type TimeStampData, TIME_TAG } from "#src/models/recording/recorder.ts";
 import { recording } from "#src/config.ts";
 import { Logger } from "#src/utils/utils.ts";
-type compiledFile = {
+type compiledFiles = {
     recordings: string[];
     transcriptions: string[];
 };
-
+type compilableSegment = {
+    start: number;
+    end: number;
+    type: "transcription" | "recording";
+};
 const logger = new Logger("MEDIA_COMPILER");
 
 // TODO When all the files are processed, delete (or move, or mark as processed) the folder
@@ -24,10 +28,17 @@ export class MediaCompiler {
      * Compiles the raw recording into compiled files.
      * @returns The paths to the compiled files.
      */
-    async compile(): Promise<compiledFile> {
+    async compile(): Promise<compiledFiles> {
         logger.debug(`Working dir: ${this._workingDir}`);
-        const transcriptionSegments: { start: number; end: number }[] = [];
-        // TODO: recordingSegments equivalent for TIME_TAG.RECORDING_STARTED and TIME_TAG.RECORDING_STOPPED
+        const transcriptionSegments: compilableSegment[] = [];
+        /**
+         * TODO: recordingSegments equivalent for TIME_TAG.RECORDING_STARTED and TIME_TAG.RECORDING_STOPPED
+         * ffmpeg -i input.mp4 \
+         *  -c:v libx264 -preset slow -crf 19 \
+         *  -pix_fmt yuv420p \
+         *  -c:a aac -b:a 128k \
+         *  output.mp4
+         */
         const files = new Map<string, number>();
         let currentStart = 0;
 
@@ -41,7 +52,8 @@ export class MediaCompiler {
                     if (currentStart) {
                         transcriptionSegments.push({
                             start: currentStart,
-                            end: timestamp.timestamp
+                            end: timestamp.timestamp,
+                            type: "transcription"
                         });
                         currentStart = 0;
                     }
@@ -66,7 +78,8 @@ export class MediaCompiler {
         if (currentStart) {
             transcriptionSegments.push({
                 start: currentStart,
-                end: this._timeStamps[this._timeStamps.length - 1].timestamp
+                end: this._timeStamps[this._timeStamps.length - 1].timestamp,
+                type: "transcription"
             });
         }
 
@@ -86,10 +99,7 @@ export class MediaCompiler {
         };
     }
 
-    private async _compileSegment(
-        segment: { start: number; end: number },
-        files: Map<string, number>
-    ) {
+    private async _compileSegment(segment: compilableSegment, files: Map<string, number>) {
         const relevantFiles: { path: string; offset: number }[] = [];
         for (const [filename, startTime] of files) {
             if (startTime < segment.end) {

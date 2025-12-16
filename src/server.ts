@@ -22,6 +22,16 @@ async function run(): Promise<void> {
     logger.debug(`* Media service / Recording compiler (also manages the folder cleanup)`);
     logger.debug(`* Media service write tests`);
     logger.debug(`* Media compiler write tests`);
+    logger.debug(`* Choose format for recording`);
+    /**
+     * Maybe h264 for compatibility, ~1-2 GB/hour
+     * H.264 + CRF
+     * Codec: H.264
+     * Profile: High
+     * CRF: 18–20
+     * Preset: slow or medium
+     * Audio: Opus or AAC (96–128 kbps)
+     */
     logger.debug(`* Routing Address`);
     /**
      * the address passed to the recorder should maybe be a routing address, the SFU asks at this address what to do with the files
