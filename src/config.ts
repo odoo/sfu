@@ -237,11 +237,11 @@ export const recording = Object.freeze({
     directory: RECORDING_PATH,
     enabled: RECORDING || TRANSCRIPTION,
     maxDuration: 1000 * 60 * 60, // 1 hour, could be a env-var.
-    // TODO to implement
     fileTTL: 1000 * 60 * 60 * 24, // 24 hours
-    videoCodec: "libx264",
-    audioCodec: "aac",
-    audioLimit: 20,
+    videoCodec: "libx264", // TODO to implement
+    audioCodec: "libopus",
+    audioLimit: 20, // TODO to implement
+    audioBitRate: "8k",
     cameraLimit: 4, // how many camera can be merged into one recording
     screenLimit: 1
 });
