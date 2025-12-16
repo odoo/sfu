@@ -119,11 +119,20 @@ export class RecordingTask extends EventEmitter {
                 });
                 data.mediaOutput.on(
                     MediaOutput.Events.FILE_STATE_CHANGE,
-                    ({ active, filename }: { active: boolean; filename: string }) => {
+                    ({
+                        active,
+                        filename,
+                        eof
+                    }: {
+                        active: boolean;
+                        filename: string;
+                        eof?: boolean;
+                    }) => {
                         this._recorder.mark(TIME_TAG.FILE_STATE_CHANGE, {
                             active,
                             filename,
-                            type
+                            type,
+                            eof
                         });
                     }
                 );

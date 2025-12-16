@@ -33,6 +33,10 @@ export type TimeTagInfo = {
      * actively broadcasting data, and false when it is not.
      */
     active: boolean;
+    /**
+     * marks the end of file, could instead of active: undefined/null, but not clear.
+     */
+    eof?: boolean;
 };
 export type TimeStampData = {
     tag: TIME_TAG;
@@ -289,7 +293,7 @@ export class Recorder extends EventEmitter {
     }
     private async _init() {
         this.state = RECORDER_STATE.STARTED;
-        this._folder = await getFolder();
+        this._folder = await getFolder(["audio", "camera", "screen"]);
         clearTimeout(this._timeout);
         this._timeout = setTimeout(() => {
             this.terminate();

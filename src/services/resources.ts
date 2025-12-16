@@ -40,6 +40,7 @@ export async function start(): Promise<void> {
     logger.info("starting...");
     logger.info(`cleaning resources folder (${config.RESOURCES_PATH})...`);
     clearResourcesDir();
+    await fs.mkdir(config.RESOURCES_PATH, { recursive: true });
     for (let i = 0; i < config.NUM_WORKERS; ++i) {
         await makeWorker();
     }
@@ -115,9 +116,14 @@ export async function getWorker(): Promise<RtcWorker> {
 export class Folder {
     path: string;
 
-    static async create(name: string) {
+    static async create(name: string, subDirectories: string[]) {
         const p: string = path.join(config.RESOURCES_PATH, name);
-        await fs.mkdir(p, { recursive: true });
+        await fs.mkdir(p);
+        const proms = [];
+        for (const subDirectory of subDirectories) {
+            proms.push(fs.mkdir(path.join(p, subDirectory)));
+        }
+        await Promise.all(proms);
         return new Folder(p);
     }
 
@@ -149,8 +155,8 @@ export class Folder {
     }
 }
 
-export async function getFolder(): Promise<Folder> {
-    return Folder.create(`${Date.now()}-${unique++}`);
+export async function getFolder(subDirectories: string[]): Promise<Folder> {
+    return Folder.create(`${Date.now()}-${unique++}`, subDirectories);
 }
 export class DynamicPort {
     number: number;

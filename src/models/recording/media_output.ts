@@ -153,7 +153,8 @@ export class MediaOutput extends EventEmitter {
         if (this._ffmpeg) {
             this.emit(MediaOutput.Events.FILE_STATE_CHANGE, {
                 active: false,
-                filename: this._ffmpeg.filename
+                filename: this._ffmpeg.filename,
+                eof: true
             });
         }
         const prom = this._ffmpeg?.close();
