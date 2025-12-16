@@ -10,6 +10,11 @@ import type { rtpData } from "#src/models/recording/media_output.ts";
 
 const logger = new Logger("FFMPEG");
 const isDebug = LOG_LEVEL === LogLevel.DEBUG;
+/**
+ * We need to move forward with the recording even if ffmpeg does not close gracefully.
+ * If ffmpeg does not close gracefully, force kill it after this timeout.
+ */
+const FFMPEG_KILL_TIMEOUT = 30_000;
 
 /**
  * Abstraction for a FFMPEG child process
@@ -38,12 +43,26 @@ export class FFMPEG {
         this._isClosed = true;
         this._logStream?.end();
         if (this._process && !this._process.killed) {
-            const closed = new Promise((resolve) => {
-                this._process!.on("close", resolve);
+            let timeoutId: NodeJS.Timeout;
+            const closed = new Promise<void>((resolve) => {
+                this._process!.once("close", () => resolve());
             });
-            this._process!.kill("SIGINT");
-            await closed;
-            // TODO: shouldn't let the process linger forever, probably need some timeout in case it takes too long to close
+
+            this._process.kill("SIGINT");
+
+            const timeoutResult = await Promise.race([
+                closed.then(() => "closed"),
+                new Promise<string>((resolve) => {
+                    timeoutId = setTimeout(() => resolve("timeout"), FFMPEG_KILL_TIMEOUT);
+                })
+            ]);
+
+            clearTimeout(timeoutId!);
+
+            if (timeoutResult === "timeout") {
+                logger.warn(`FFMPEG ${this.filename} did not close gracefully, force killing.`);
+                this._process.kill("SIGKILL");
+            }
         }
     }
 
