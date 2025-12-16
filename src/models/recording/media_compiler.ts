@@ -3,6 +3,7 @@ import { access } from "node:fs/promises";
 import path from "node:path";
 
 import { type TimeStampData, TIME_TAG } from "#src/models/recording/recorder.ts";
+import { recording } from "#src/config.ts";
 import { Logger } from "#src/utils/utils.ts";
 type compiledFile = {
     recordings: string[];
@@ -92,6 +93,7 @@ export class MediaCompiler {
         const relevantFiles: { path: string; offset: number }[] = [];
         for (const [filename, startTime] of files) {
             if (startTime < segment.end) {
+                // TODO we could have files that start before the segment, so we will have to skip the beginning of the file (negative offset)
                 relevantFiles.push({
                     path: path.join(this._workingDir, "audio", filename),
                     offset: startTime - segment.start
@@ -142,9 +144,9 @@ export class MediaCompiler {
             "-t",
             duration.toFixed(3),
             "-c:a",
-            "libopus",
+            recording.audioCodec,
             "-b:a",
-            "8k",
+            recording.audioBitRate,
             outputName
         ];
 

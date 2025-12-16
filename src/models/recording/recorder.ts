@@ -229,7 +229,7 @@ export class Recorder extends EventEmitter {
         const routingJwt = sign(
             {
                 aud: this._metaData.routingAddress,
-                exp: Date.now() + (recording.fileTTL + 60 * 60) * 1000
+                exp: Math.floor((Date.now() + recording.fileTTL) / 1000) + 60 * 60
             },
             this._channel.key!
         );
