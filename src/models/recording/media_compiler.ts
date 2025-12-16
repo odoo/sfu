@@ -60,6 +60,10 @@ export class MediaCompiler {
                     logger.debug(`Transcription stopped at ${timestamp.timestamp}`);
                     break;
                 case TIME_TAG.FILE_STATE_CHANGE:
+                    /**
+                     * TODO use timestamp.info.eof to not use files that end before `currentStart`.
+                     * where `timestamp.eof====true` if `timestamp.timestamp` is before `currentStart`, then we can remove it from `files`
+                     */
                     if (
                         timestamp.info &&
                         timestamp.info.type === "audio" &&
@@ -103,7 +107,6 @@ export class MediaCompiler {
         const relevantFiles: { path: string; offset: number }[] = [];
         for (const [filename, startTime] of files) {
             if (startTime < segment.end) {
-                // TODO we could have files that start before the segment, so we will have to skip the beginning of the file (negative offset)
                 relevantFiles.push({
                     path: path.join(this._workingDir, "audio", filename),
                     offset: startTime - segment.start
