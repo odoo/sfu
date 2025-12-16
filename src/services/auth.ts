@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import * as config from "#src/config.ts";
 import { Logger } from "#src/utils/utils.ts";
 import { AuthenticationError } from "#src/utils/errors.ts";
-import type { SessionId } from "#src/models/session.ts";
+import type { SessionId, SessionPermissions } from "#src/models/session.ts";
 import type { StringLike } from "#src/shared/types.ts";
 
 /**
@@ -43,6 +43,7 @@ interface PrivateJWTClaims {
     sfu_channel_uuid?: string;
     session_id?: SessionId;
     ice_servers?: object[];
+    permissions?: SessionPermissions;
     sessionIdsByChannel?: Record<string, SessionId[]>;
     /** If provided when requesting a channel, this key will be used instead of the global key to verify JWTs related to this channel */
     key?: string;
@@ -126,10 +127,8 @@ function base64Decode(str: string): Buffer {
 export function sign(
     claims: JWTClaims,
     key: StringLike = jwtKey!,
-    options: SignOptions = {}
+    { algorithm = ALGORITHM.HS256 }: SignOptions = {}
 ): string {
-    const { algorithm = ALGORITHM.HS256 } = options;
-
     if (!key) {
         throw new AuthenticationError("JWT signing key is not set");
     }

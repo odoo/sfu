@@ -79,6 +79,31 @@ function setupRoutes(routeListener: RouteListener): void {
             return res.end(JSON.stringify(channelStats));
         }
     });
+    /**
+     * GET /v1/channel
+     *
+     * Provides a channel to host a rtc conference between user sessions.
+     *
+     * ### Headers
+     * - `Authorization: Bearer <JWT>` — required.
+     *   The JWT must include the `iss` (issuer) claim identifying the caller.
+     *   This claim ensures idempotency: only one channel is created per unique issuer.
+     *   To create multiple channels, the caller must provide a distinct `iss` for each request.
+     *
+     * ### Query Parameters
+     * - `webRTC` — optional, defaults to `"true"`.
+     *   When set to `"false"`, disables WebRTC setup and creates a non-media channel.
+     * - `recordingAddress` — optional.
+     *   If provided, enables recording and specifies the address
+     *   that the SFU can contact to get routing instructions for the recording.
+     *
+     * ### Responses
+     * - `200 OK` — returns `{ uuid: string, url: string }`
+     * - `400 Bad Request` — provided a `recordingAddress` without a `key` claim
+     * - `401 Unauthorized` — missing or invalid Authorization header
+     * - `403 Forbidden` — missing `iss` claim
+     * - `500 Internal Server Error` — failed to create the channel
+     */
     routeListener.get(`/v${API_VERSION}/channel`, {
         callback: async (req, res, { host, protocol, remoteAddress, searchParams }) => {
             try {
@@ -96,9 +121,16 @@ function setupRoutes(routeListener: RouteListener): void {
                     res.statusCode = 403; // forbidden
                     return res.end();
                 }
+                const recordingAddress = searchParams.get("recordingAddress");
+                if (recordingAddress && !claims.key) {
+                    logger.warn(`${remoteAddress}: missing key claim when creating channel`);
+                    res.statusCode = 400; // bad request
+                    return res.end();
+                }
                 const channel = await Channel.create(remoteAddress, claims.iss, {
                     key: claims.key,
-                    useWebRtc: searchParams.get("webRTC") !== "false"
+                    useWebRtc: searchParams.get("webRTC") !== "false",
+                    recordingAddress
                 });
                 res.setHeader("Content-Type", "application/json");
                 res.statusCode = 200;
@@ -158,7 +190,7 @@ function setupRoutes(routeListener: RouteListener): void {
     });
 }
 
-class RouteListener {
+export class RouteListener {
     private readonly GETs = new Map<string, RouteEntry>();
     private readonly POSTs = new Map<string, RouteEntry>();
     private readonly OPTIONs = new Map<string, RouteEntry>();

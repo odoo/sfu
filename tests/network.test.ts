@@ -10,7 +10,6 @@ import { SFU_CLIENT_STATE } from "#src/client";
 import { timeouts } from "#src/config";
 
 import { LocalNetwork } from "#tests/utils/network";
-import { delay } from "#tests/utils/utils.ts";
 
 const HTTP_INTERFACE = "0.0.0.0";
 const PORT = 61254;
@@ -146,11 +145,11 @@ describe("Full network", () => {
     test("A client can forward a track to other clients", async () => {
         const channelUUID = await network.getChannelUUID();
         const user1 = await network.connect(channelUUID, 1);
-        await once(user1.session, "stateChange");
+        await user1.isConnected;
         const user2 = await network.connect(channelUUID, 2);
-        await once(user2.session, "stateChange");
+        await user2.isConnected;
         const sender = await network.connect(channelUUID, 3);
-        await once(sender.session, "stateChange");
+        await sender.isConnected;
         const track = new FakeMediaStreamTrack({ kind: "audio" });
         await sender.sfuClient.updateUpload(STREAM_TYPE.AUDIO, track);
         const prom1 = once(user1.sfuClient, "update");
@@ -166,39 +165,41 @@ describe("Full network", () => {
     test("Recovery attempts are made if the production fails, a failure does not close the connection", async () => {
         const channelUUID = await network.getChannelUUID();
         const user = await network.connect(channelUUID, 1);
-        await once(user.session, "stateChange");
+        await user.isConnected;
         const sender = await network.connect(channelUUID, 3);
-        await once(sender.session, "stateChange");
+        await sender.isConnected;
         const track = new FakeMediaStreamTrack({ kind: "audio" });
+        const errorPromise = once(sender.sfuClient, "handledError");
         // closing the transport so the `updateUpload` should fail.
         // @ts-expect-error accessing private property for testing purposes
         sender.sfuClient._ctsTransport.close();
         await sender.sfuClient.updateUpload(STREAM_TYPE.AUDIO, track);
+        await errorPromise;
         expect(sender.sfuClient.errors.length).toBe(1);
         expect(sender.sfuClient.state).toBe(SFU_CLIENT_STATE.CONNECTED);
     });
     test("Recovery attempts are made if the consumption fails, a failure does not close the connection", async () => {
         const channelUUID = await network.getChannelUUID();
         const user = await network.connect(channelUUID, 1);
-        await once(user.session, "stateChange");
+        await user.isConnected;
         const sender = await network.connect(channelUUID, 3);
-        await once(sender.session, "stateChange");
+        await sender.isConnected;
         const track = new FakeMediaStreamTrack({ kind: "audio" });
+        const errorProm = once(user.session, "handledError");
         // closing the transport so the consumption should fail.
         // @ts-expect-error accessing private property for testing purposes
         user.session._stcTransport.close();
         await sender.sfuClient.updateUpload(STREAM_TYPE.AUDIO, track);
-        // not ideal but we have to wait a tick for the websocket message to go through
-        await delay();
+        await errorProm;
         expect(user.session.errors.length).toBe(1);
         expect(user.session.state).toBe(SESSION_STATE.CONNECTED);
     });
     test("The client can obtain download and upload statistics", async () => {
         const channelUUID = await network.getChannelUUID();
         const user1 = await network.connect(channelUUID, 1);
-        await once(user1.session, "stateChange");
+        await user1.isConnected;
         const sender = await network.connect(channelUUID, 3);
-        await once(sender.session, "stateChange");
+        await sender.isConnected;
         const track = new FakeMediaStreamTrack({ kind: "audio" });
         await sender.sfuClient.updateUpload(STREAM_TYPE.AUDIO, track);
         await once(user1.sfuClient, "update");
@@ -211,31 +212,23 @@ describe("Full network", () => {
     test("The client can update the state of their downloads", async () => {
         const channelUUID = await network.getChannelUUID();
         const user1 = await network.connect(channelUUID, 1234);
-        await once(user1.session, "stateChange");
+        await user1.isConnected;
         const sender = await network.connect(channelUUID, 123);
-        await once(sender.session, "stateChange");
+        await sender.isConnected;
         const track = new FakeMediaStreamTrack({ kind: "audio" });
         await sender.sfuClient.updateUpload(STREAM_TYPE.AUDIO, track);
         await once(user1.sfuClient, "update");
         user1.sfuClient.updateDownload(sender.session.id, { audio: false });
-        // waiting for the websocket message to go through
-        await delay();
         user1.sfuClient.updateDownload(sender.session.id, { audio: true });
-        await new Promise((resolve) => {
-            // this 100ms is not ideal, but it prevents a race condition where the worker is closed right
-            // when the consumer is updated, which prevents the main process to send that message to the worker,
-            // this is not a problem in production as it is normal that workers that are closed do not send messages.
-            setTimeout(resolve, 100);
-        });
         expect(user1.sfuClient.state).toBe(SFU_CLIENT_STATE.CONNECTED);
         expect(user1.session.state).toBe(SESSION_STATE.CONNECTED);
     });
     test("The client can update the state of their upload", async () => {
         const channelUUID = await network.getChannelUUID();
         const user1 = await network.connect(channelUUID, 1234);
-        await once(user1.session, "stateChange");
+        await user1.isConnected;
         const sender = await network.connect(channelUUID, 123);
-        await once(sender.session, "stateChange");
+        await sender.isConnected;
         const track = new FakeMediaStreamTrack({ kind: "video" });
         await sender.sfuClient.updateUpload(STREAM_TYPE.CAMERA, track);
         await once(user1.sfuClient, "update");

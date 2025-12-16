@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import crypto from "node:crypto";
 
-import type { Router, Worker, WebRtcServer } from "mediasoup/node/lib/types";
+import type { Router, WebRtcServer } from "mediasoup/node/lib/types";
 
 import * as config from "#src/config.ts";
 import { getAllowedCodecs, Logger } from "#src/utils/utils.ts";
@@ -11,7 +11,10 @@ import {
     SESSION_CLOSE_CODE,
     type SessionId,
 } from "#src/models/session.ts";
-import { getWorker, type RtcWorker } from "#src/services/rtc.ts";
+import { Recorder } from "#src/models/recording/recorder.ts";
+import { getWorker, type RtcWorker } from "#src/services/resources.ts";
+import { SERVER_MESSAGE } from "#src/shared/enums.ts";
+import type { ChannelInfo } from "#src/shared/types.ts";
 
 const logger = new Logger("CHANNEL");
 
@@ -52,6 +55,7 @@ interface ChannelCreateOptions {
     key?: string;
     /** Whether to enable WebRTC functionality */
     useWebRtc?: boolean;
+    recordingAddress?: string | null;
 }
 interface JoinResult {
     /** The channel instance */
@@ -66,6 +70,12 @@ interface JoinResult {
  * @fires Channel#close
  */
 export class Channel extends EventEmitter {
+    static Events = {
+        SESSION_JOIN: "sessionJoin",
+        SESSION_LEAVE: "sessionLeave",
+        CLOSE: "close"
+    };
+
     /** Global registry of all active channels by UUID */
     static records = new Map<string, Channel>();
     /** Global registry of channels by issuer for reuse */
@@ -82,6 +92,8 @@ export class Channel extends EventEmitter {
     public readonly key?: Buffer;
     /** mediasoup Router for media routing */
     public readonly router?: Router;
+    /** Manages the recording of this channel, undefined if the feature is disabled */
+    public readonly recorder?: Recorder;
     /** Active sessions in this channel */
     public readonly sessions = new Map<SessionId, Session>();
     /** mediasoup Worker handling this channel */
@@ -101,7 +113,7 @@ export class Channel extends EventEmitter {
         issuer: string,
         options: ChannelCreateOptions = {}
     ): Promise<Channel> {
-        const { key, useWebRtc = true } = options;
+        const { key, useWebRtc = true, recordingAddress } = options;
         const safeIssuer = `${remoteAddress}::${issuer}`;
         const oldChannel = Channel.recordsByIssuer.get(safeIssuer);
         if (oldChannel) {
@@ -109,9 +121,9 @@ export class Channel extends EventEmitter {
             return oldChannel;
         }
         const channelOptions: ChannelCreateOptions & {
-            worker?: Worker;
+            worker?: RtcWorker;
             router?: Router;
-        } = { key };
+        } = { key, recordingAddress: useWebRtc ? recordingAddress : null };
         if (useWebRtc) {
             channelOptions.worker = await getWorker();
             channelOptions.router = await channelOptions.worker.createRouter({
@@ -124,12 +136,14 @@ export class Channel extends EventEmitter {
         logger.info(
             `created channel ${channel.uuid} (${key ? "unique" : "global"} key) for ${safeIssuer}`
         );
+        logger.verbose(`rtc feature: ${Boolean(channel.router)}`);
+        logger.verbose(`recording feature: ${Boolean(channel.recorder)}`);
         const onWorkerDeath = () => {
             logger.warn(`worker died, closing channel ${channel.uuid}`);
             channel.close();
         };
         channelOptions.worker?.once("died", onWorkerDeath);
-        channel.once("close", () => {
+        channel.once(Channel.Events.CLOSE, () => {
             channelOptions.worker?.off("died", onWorkerDeath);
             Channel.recordsByIssuer.delete(safeIssuer);
             Channel.records.delete(channel.uuid);
@@ -173,7 +187,7 @@ export class Channel extends EventEmitter {
     constructor(
         remoteAddress: string,
         options: ChannelCreateOptions & {
-            worker?: Worker;
+            worker?: RtcWorker;
             router?: Router;
         } = {}
     ) {
@@ -182,13 +196,16 @@ export class Channel extends EventEmitter {
         const now = new Date();
         this.createDate = now.toISOString();
         this.remoteAddress = remoteAddress;
+        this._worker = worker;
+        this.router = router;
+        this.recorder =
+            this.router && config.recording.enabled && options.recordingAddress
+                ? new Recorder(this, options.recordingAddress)
+                : undefined;
+        this.recorder?.on(Recorder.Events.UPDATE, (data) => this._broadcastState(data));
         this.key = key ? Buffer.from(key, "base64") : undefined;
         this.uuid = crypto.randomUUID();
         this.name = `${remoteAddress}*${this.uuid.slice(-5)}`;
-        this.router = router;
-        this._worker = worker;
-
-        // Bind event handlers
         this._onSessionClose = this._onSessionClose.bind(this);
     }
 
@@ -198,7 +215,14 @@ export class Channel extends EventEmitter {
             uuid: this.uuid,
             remoteAddress: this.remoteAddress,
             sessionsStats: await this.getSessionsStats(),
-            webRtcEnabled: Boolean(this._worker)
+            webRtcEnabled: Boolean(this.router)
+        };
+    }
+
+    get info(): ChannelInfo {
+        return {
+            isRecording: Boolean(this.recorder?.isRecording),
+            isTranscribing: Boolean(this.recorder?.isTranscribing)
         };
     }
 
@@ -264,7 +288,7 @@ export class Channel extends EventEmitter {
          * @event Channel#sessionJoin
          * @type {SessionId} sessionId - ID of the joining session
          */
-        this.emit("sessionJoin", session.id);
+        this.emit(Channel.Events.SESSION_JOIN, session.id);
         return session;
     }
 
@@ -286,6 +310,7 @@ export class Channel extends EventEmitter {
      * @fires Channel#close
      */
     close(): void {
+        this.recorder?.terminate({ save: true });
         for (const session of this.sessions.values()) {
             session.off("close", this._onSessionClose);
             session.close({ code: SESSION_CLOSE_CODE.CHANNEL_CLOSED });
@@ -297,7 +322,26 @@ export class Channel extends EventEmitter {
          * @event Channel#close
          * @type {string} channelId - UUID of the closed channel
          */
-        this.emit("close", this.uuid);
+        this.emit(Channel.Events.CLOSE, this.uuid);
+    }
+
+    /**
+     * Broadcast the state of this channel to all its participants
+     */
+    private _broadcastState({ cause }: { cause?: string }) {
+        for (const session of this.sessions.values()) {
+            if (!session.bus) {
+                logger.warn(`tried to broadcast state to session ${session.id}, but had no Bus`);
+                continue;
+            }
+            session.bus.send(
+                {
+                    name: SERVER_MESSAGE.CHANNEL_INFO_CHANGE,
+                    payload: { ...this.info, cause }
+                },
+                { batch: true }
+            );
+        }
     }
 
     /**
@@ -310,13 +354,14 @@ export class Channel extends EventEmitter {
          * @event Channel#sessionLeave
          * @type {SessionId} sessionId
          */
-        this.emit("sessionLeave", id);
+        this.emit(Channel.Events.SESSION_LEAVE, id);
         if (this.sessions.size <= 1) {
             /**
              * If there is only one person left in the call, we already start the timeout as
              * a single person should not keep a channel alive forever.
              */
             this.setCloseTimeout(true);
+            this.recorder?.terminate({ save: true });
         }
     }
 }

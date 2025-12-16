@@ -12,7 +12,8 @@ const ASCII = {
         green: "\x1b[32m",
         yellow: "\x1b[33m",
         white: "\x1b[37m",
-        default: "\x1b[0m"
+        default: "\x1b[0m",
+        blue: "\x1b[34m"
     }
 } as const;
 
@@ -48,6 +49,39 @@ export interface ParseBodyOptions {
     json?: boolean;
 }
 
+/**
+ * @deprecated Use Promise.withResolvers() when available
+ */
+export class Deferred<T = unknown> {
+    private readonly _promise: Promise<T>;
+    public resolve!: (value: T | PromiseLike<T>) => void;
+    public reject!: (reason?: unknown) => void;
+
+    constructor() {
+        this._promise = new Promise<T>((resolve, reject) => {
+            this.resolve = resolve;
+            this.reject = reject;
+        });
+    }
+
+    public then<TResult1 = T, TResult2 = never>(
+        onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | null,
+        onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+    ): Promise<TResult1 | TResult2> {
+        return this._promise.then(onfulfilled, onrejected);
+    }
+
+    public catch<TResult = never>(
+        onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null
+    ): Promise<T | TResult> {
+        return this._promise.catch(onrejected);
+    }
+
+    public finally(onfinally?: (() => void) | null): Promise<T> {
+        return this._promise.finally(onfinally);
+    }
+}
+
 export class Logger {
     private readonly _name: string;
     private readonly _colorize: (text: string, color?: string) => string;
@@ -78,7 +112,7 @@ export class Logger {
         this._log(console.log, ":INFO:", text, ASCII.color.green);
     }
     debug(text: string): void {
-        this._log(console.log, ":DEBUG:", text);
+        this._log(console.log, ":DEBUG:", text, ASCII.color.blue);
     }
     verbose(text: string): void {
         this._log(console.log, ":VERBOSE:", text, ASCII.color.white);

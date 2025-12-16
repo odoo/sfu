@@ -1,0 +1,325 @@
+import path from "node:path";
+import { EventEmitter } from "node:events";
+
+import { recording } from "#src/config.ts";
+import { getFolder, type Folder } from "#src/services/resources.ts";
+import { RecordingTask, type RecordingStates } from "#src/models/recording/recording_task.ts";
+import { sign } from "#src/services/auth.ts";
+import { Logger } from "#src/utils/utils.ts";
+
+import { Channel } from "#src/models/channel.ts";
+import { STREAM_TYPE } from "#src/shared/enums.ts";
+import type { SessionId } from "#src/models/session.ts";
+
+export enum TIME_TAG {
+    RECORDING_STARTED = "recording_started",
+    RECORDING_STOPPED = "recording_stopped",
+    TRANSCRIPTION_STARTED = "transcription_started",
+    TRANSCRIPTION_STOPPED = "transcription_stopped",
+    FILE_STATE_CHANGE = "file_state_change"
+}
+export enum RECORDER_STATE {
+    STARTED = "started",
+    STOPPING = "stopping",
+    STOPPED = "stopped"
+}
+export type TimeTagInfo = {
+    filename: string;
+    type: STREAM_TYPE;
+    /**
+     * The file lasts for the whole duration of the client producer, which means that
+     * it can represent a sequence of streams, with periods of inactivity (no packets).
+     * active is set to true when the stream is active, which means that the producer is
+     * actively broadcasting data, and false when it is not.
+     */
+    active: boolean;
+};
+export type TimeStampData = {
+    tag: TIME_TAG;
+    timestamp: number;
+    info?: TimeTagInfo;
+};
+type Metadata = {
+    channelName: string;
+    routingAddress: string;
+    timeStamps: TimeStampData[];
+};
+
+export type SealedMetaData = Metadata & {
+    sealedAt: number;
+    routingJwt: string;
+};
+
+const logger = new Logger("RECORDER");
+
+/**
+ * The recorder generates a "raw" file bundle, of recordings of individual
+ * audio and video streams, accompanied with a metadata file describing the
+ * recording (timestamps, ids,...).
+ *
+ * These raw recordings can then be used for further processing (transcription, compilation,...).
+ *
+ * {@link Recorder} acts at the channel level, managing the creation and closure
+ * of sessions in that channel, whereas the {@link RecordingTask} acts at the
+ * session level, managing the recording of an individual session and following
+ * its producer lifecycle.
+ *
+ * Architecture Schematic:
+ *
+ * Recorder (Channel Level)
+ *   |
+ *   +-- RecordingTask (Session Level) [1 per Session]
+ *         |
+ *         +-- MediaOutput (Stream Level) [1 per Stream type: AUDIO, CAMERA, SCREEN]
+ *               |
+ *               +-- FFMPEG (Process Level) [1 per Active Stream Segment]
+ *
+ * - **Recorder**: Orchestrates the recording for a whole channel. It manages
+ *   the lifecycle of `RecordingTask`s as users join or leave the channel.
+ *
+ * - **RecordingTask**: Bound to a specific `Session` (user). It monitors the
+ *   user's streams (audio, camera, screen) and manages `MediaOutput` instances for each type.
+ *
+ * - **MediaOutput**: Handles a single media stream type for a session. It sets
+ *   up the transport/consumer to receive RTP data and manages the `FFMPEG` wrapper.
+ *
+ * - **FFMPEG**: Represents the actual ffmpeg process that writes the RTP stream
+ *   to a file. It is created when valid RTP data is available and the producer is active.
+ */
+export class Recorder extends EventEmitter {
+    static Events = {
+        UPDATE: "update"
+    };
+
+    /**
+     * Plain recording means that we mark the recording to be saved as a audio/video file
+     **/
+    isRecording: boolean = false;
+    /**
+     * Transcribing means that we mark the audio for being transcribed later,
+     * this captures only the audio of the call.
+     **/
+    isTranscribing: boolean = false;
+    state: RECORDER_STATE = RECORDER_STATE.STOPPED;
+    private _folder?: Folder;
+    private _timeout?: NodeJS.Timeout;
+    private readonly _channel: Channel;
+    private readonly _tasks = new Map<SessionId, RecordingTask>();
+    /** Path to which the final recording will be uploaded to */
+    private readonly _metaData: Metadata = {
+        channelName: "",
+        routingAddress: "",
+        timeStamps: []
+    };
+
+    get isActive(): boolean {
+        return this.state === RECORDER_STATE.STARTED;
+    }
+
+    get path(): string | undefined {
+        return this._folder?.path;
+    }
+
+    /**
+     * @param channel - the channel to record
+     * @param routingAddress - the address to which the recording will be forwarded
+     */
+    constructor(channel: Channel, routingAddress: string) {
+        super();
+        this._onSessionJoin = this._onSessionJoin.bind(this);
+        this._onSessionLeave = this._onSessionLeave.bind(this);
+        this._channel = channel;
+        this._metaData.channelName = channel.name;
+        this._metaData.routingAddress = routingAddress;
+    }
+
+    async start() {
+        if (!this.isRecording) {
+            this.isRecording = true;
+            this.mark(TIME_TAG.RECORDING_STARTED);
+            await this._refreshConfiguration();
+        }
+        return this.isRecording;
+    }
+
+    async stop() {
+        if (this.isRecording) {
+            this.isRecording = false;
+            this.mark(TIME_TAG.RECORDING_STOPPED);
+            await this._refreshConfiguration();
+        }
+        return this.isRecording;
+    }
+
+    async startTranscription() {
+        if (!this.isTranscribing) {
+            this.isTranscribing = true;
+            this.mark(TIME_TAG.TRANSCRIPTION_STARTED);
+            await this._refreshConfiguration();
+        }
+        return this.isTranscribing;
+    }
+
+    async stopTranscription() {
+        if (this.isTranscribing) {
+            this.isTranscribing = false;
+            this.mark(TIME_TAG.TRANSCRIPTION_STOPPED);
+            await this._refreshConfiguration();
+        }
+        return this.isTranscribing;
+    }
+    /* eslint-disable no-dupe-class-members */ // overloads
+    mark(tag: TIME_TAG.FILE_STATE_CHANGE, info: TimeTagInfo): void;
+    mark(tag: Exclude<TIME_TAG, TIME_TAG.FILE_STATE_CHANGE>): void;
+    mark(tag: TIME_TAG, info?: TimeTagInfo) {
+        this._metaData.timeStamps.push({
+            tag,
+            timestamp: Date.now(),
+            info
+        } as TimeStampData);
+    }
+
+    /**
+     * @param param0
+     * @param param0.save - whether to save the recording
+     */
+    terminate({ save = true }: { save?: boolean } = {}) {
+        if (!this.isActive) {
+            return;
+        }
+        this.state = RECORDER_STATE.STOPPING;
+        clearTimeout(this._timeout);
+        this._timeout = undefined;
+        logger.verbose(`terminating recorder for channel ${this._channel.name}`);
+        this._channel.off(Channel.Events.SESSION_JOIN, this._onSessionJoin);
+        this._channel.off(Channel.Events.SESSION_LEAVE, this._onSessionLeave);
+        this.isRecording = false;
+        this.isTranscribing = false;
+        const currentFolder = this._folder;
+        const metaData = this._sealMetaData();
+        /**
+         * Not awaiting as FFMPEG can take arbitrarily long to complete
+         * (several seconds, or more), and we don't want to block the
+         * termination of the recorder as a new recording can be started
+         * straight away, independently of the saving process of the
+         * previous recording. The input delay for the user would also be too long.
+         */
+        this._stopRecordingTasks()
+            .then((results) => {
+                const failed = results.some((result) => result.status === "rejected");
+                if (save && !failed) {
+                    currentFolder!.add("metadata.json", metaData);
+                    currentFolder!.seal(
+                        path.join(recording.directory, `${this._channel.name}_${Date.now()}`)
+                    );
+                } else {
+                    currentFolder!.delete();
+                }
+            })
+            .catch((error) => {
+                logger.error(
+                    `Failed to save recording for channel ${this._channel.name}: ${error}`
+                );
+            });
+        this._folder = undefined;
+        this.state = RECORDER_STATE.STOPPED;
+    }
+
+    private _sealMetaData() {
+        const routingJwt = sign(
+            {
+                aud: this._metaData.routingAddress,
+                exp: Math.floor((Date.now() + recording.fileTTL) / 1000) + 60 * 60
+            },
+            this._channel.key!
+        );
+        const metadata = JSON.stringify({ ...this._metaData, routingJwt, sealedAt: Date.now() });
+        this._metaData.timeStamps = [];
+        return metadata;
+    }
+
+    private _onSessionJoin(id: SessionId) {
+        const session = this._channel.sessions.get(id);
+        if (!session) {
+            return;
+        }
+        this._tasks.set(session.id, new RecordingTask(this, session, this._getRecordingStates()));
+    }
+
+    private _onSessionLeave(id: SessionId) {
+        const task = this._tasks.get(id);
+        if (task) {
+            task.stop();
+            this._tasks.delete(id);
+        }
+    }
+
+    private async _refreshConfiguration() {
+        if (this.isRecording || this.isTranscribing) {
+            if (this.isActive) {
+                await this._update().catch(async () => {
+                    logger.warn(`Failed to update recording or ${this._channel.name}`);
+                    this.terminate({ save: false });
+                });
+            } else {
+                await this._init().catch(async () => {
+                    logger.error(`Failed to start recording or ${this._channel.name}`);
+                    this.terminate({ save: false });
+                });
+            }
+        } else {
+            this.terminate();
+        }
+        this._emitStatus();
+    }
+
+    private async _update() {
+        const params = this._getRecordingStates();
+        for (const task of this._tasks.values()) {
+            Object.assign(task, params);
+        }
+    }
+
+    private _emitStatus(cause?: string) {
+        this.emit("update", {
+            isRecording: this.isRecording,
+            isTranscribing: this.isTranscribing,
+            cause
+        });
+    }
+    private async _init() {
+        this.state = RECORDER_STATE.STARTED;
+        this._folder = await getFolder();
+        clearTimeout(this._timeout);
+        this._timeout = setTimeout(() => {
+            this.terminate();
+            this._emitStatus("timeout");
+        }, recording.maxDuration);
+        logger.verbose(`Initializing recorder for channel: ${this._channel.name}`);
+        for (const [sessionId, session] of this._channel.sessions) {
+            this._tasks.set(
+                sessionId,
+                new RecordingTask(this, session, this._getRecordingStates())
+            );
+        }
+        this._channel.on(Channel.Events.SESSION_JOIN, this._onSessionJoin);
+        this._channel.on(Channel.Events.SESSION_LEAVE, this._onSessionLeave);
+    }
+
+    private async _stopRecordingTasks() {
+        const proms = [];
+        for (const task of this._tasks.values()) {
+            proms.push(task.stop());
+        }
+        this._tasks.clear();
+        return Promise.allSettled(proms);
+    }
+
+    private _getRecordingStates(): RecordingStates {
+        return {
+            audio: this.isRecording || this.isTranscribing,
+            camera: this.isRecording,
+            screen: this.isRecording
+        };
+    }
+}

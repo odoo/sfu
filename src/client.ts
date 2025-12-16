@@ -18,7 +18,16 @@ import {
     SERVER_REQUEST,
     WS_CLOSE_CODE
 } from "#src/shared/enums.ts";
-import type { JSONSerializable, StreamType, BusMessage } from "#src/shared/types";
+import type {
+    AvailableFeatures,
+    JSONSerializable,
+    StreamType,
+    BusMessage,
+    RequestMessage,
+    StartupData,
+    WebSocketCredentials,
+    recordingActionResult
+} from "#src/shared/types";
 import type { TransportConfig, SessionId, SessionInfo } from "#src/models/session";
 
 interface Consumers {
@@ -55,11 +64,13 @@ export enum CLIENT_UPDATE {
     /** A session has left the channel */
     DISCONNECT = "disconnect",
     /** Session info has changed */
-    INFO_CHANGE = "info_change"
+    INFO_CHANGE = "info_change",
+    CHANNEL_INFO_CHANGE = "channel_info_change"
 }
 type ClientUpdatePayload =
     | { senderId: SessionId; message: JSONSerializable }
     | { sessionId: SessionId }
+    | { isRecording: boolean }
     | Record<SessionId, SessionInfo>
     | {
           type: StreamType;
@@ -141,6 +152,13 @@ const ACTIVE_STATES = new Set<SfuClientState>([
 export class SfuClient extends EventTarget {
     /** Connection errors encountered */
     public errors: Error[] = [];
+    public availableFeatures: AvailableFeatures = {
+        rtc: false,
+        recording: false,
+        transcription: false
+    };
+    public isRecording: boolean = false;
+    public isTranscribing: boolean = false;
     /** Current client state */
     private _state: SfuClientState = SfuClientState.DISCONNECTED;
     /** Communication bus */
@@ -256,6 +274,53 @@ export class SfuClient extends EventTarget {
         await Promise.all(proms);
         return stats;
     }
+    async startRecording(): Promise<recordingActionResult> {
+        if (this.state !== SfuClientState.CONNECTED) {
+            return { state: undefined, allowed: false };
+        }
+        return this._bus!.request(
+            {
+                name: CLIENT_REQUEST.START_RECORDING
+            },
+            { batch: true }
+        );
+    }
+
+    async stopRecording(): Promise<recordingActionResult> {
+        if (this.state !== SfuClientState.CONNECTED) {
+            return { state: undefined, allowed: false };
+        }
+        return this._bus!.request(
+            {
+                name: CLIENT_REQUEST.STOP_RECORDING
+            },
+            { batch: true }
+        );
+    }
+
+    async startTranscription(): Promise<recordingActionResult> {
+        if (this.state !== SfuClientState.CONNECTED) {
+            return { state: undefined, allowed: false };
+        }
+        return this._bus!.request(
+            {
+                name: CLIENT_REQUEST.START_TRANSCRIPTION
+            },
+            { batch: true }
+        );
+    }
+
+    async stopTranscription(): Promise<recordingActionResult> {
+        if (this.state !== SfuClientState.CONNECTED) {
+            return { state: undefined, allowed: false };
+        }
+        return this._bus!.request(
+            {
+                name: CLIENT_REQUEST.STOP_TRANSCRIPTION
+            },
+            { batch: true }
+        );
+    }
 
     /**
      * Updates the server with the info of the session (isTalking, isCameraOn,...) so that it can broadcast it to the
@@ -344,11 +409,8 @@ export class SfuClient extends EventTarget {
                 appData: { type }
             });
         } catch (error) {
-            this.errors.push(error as Error);
-            // if we reach the max error count, we restart the whole connection from scratch
-            if (this.errors.length > MAX_ERRORS) {
-                // not awaited
-                this._handleConnectionEnd();
+            const exit = this._handleError(error as Error);
+            if (exit) {
                 return;
             }
             // retry after some delay
@@ -395,6 +457,25 @@ export class SfuClient extends EventTarget {
         this._bus.onRequest = this._handleRequest;
     }
 
+    /**
+     * Handles an error and returns true if the connection should be closed.
+     */
+    private _handleError(error: Error): boolean {
+        this.errors.push(error);
+        this.dispatchEvent(
+            new CustomEvent("handledError", {
+                detail: { error }
+            })
+        );
+        // if we reach the max error count, we restart the whole connection from scratch
+        if (this.errors.length > MAX_ERRORS) {
+            // not awaited
+            this._handleConnectionEnd();
+            return true;
+        }
+        return false;
+    }
+
     private _close(cause?: string): void {
         this._clear();
         const state = SfuClientState.CLOSED;
@@ -435,17 +516,30 @@ export class SfuClient extends EventTarget {
                         JSON.stringify({
                             channelUUID: this._channelUUID,
                             jwt: this._jsonWebToken
-                        })
+                        } as WebSocketCredentials)
                     );
                 },
                 { once: true }
             );
             /**
-             * Receiving a message means that the server has authenticated the client and is ready to receive messages.
+             * Receiving a message means that the server has authenticated the client and is ready to receive messages,
+             * this contains initialization data.
              */
             webSocket.addEventListener(
                 "message",
-                () => {
+                (message) => {
+                    /**
+                     * the old API does not use the data of the first message,
+                     * so we check for backward compatibility.
+                     */
+                    if (message.data) {
+                        const { availableFeatures, channelInfo } = JSON.parse(
+                            message.data
+                        ) as StartupData;
+                        this.availableFeatures = availableFeatures;
+                        this.isRecording = channelInfo.isRecording;
+                        this.isTranscribing = channelInfo.isTranscribing;
+                    }
                     resolve(new Bus(webSocket));
                 },
                 { once: true }
@@ -488,10 +582,10 @@ export class SfuClient extends EventTarget {
         });
         transport.on("produce", async ({ kind, rtpParameters, appData }, callback, errback) => {
             try {
-                const result = (await this._bus!.request({
+                const result = await this._bus!.request({
                     name: CLIENT_REQUEST.INIT_PRODUCER,
                     payload: { type: appData.type as StreamType, kind, rtpParameters }
-                })) as { id: string };
+                });
                 callback({ id: result.id });
             } catch (error) {
                 errback(error as Error);
@@ -558,7 +652,7 @@ export class SfuClient extends EventTarget {
         // Retry connecting with an exponential backoff.
         this._connectRetryDelay =
             Math.min(this._connectRetryDelay * 1.5, MAXIMUM_RECONNECT_DELAY) + 1000 * Math.random();
-        const timeout = window.setTimeout(() => this._connect(), this._connectRetryDelay);
+        const timeout = setTimeout(() => this._connect(), this._connectRetryDelay);
         this._onCleanup(() => clearTimeout(timeout));
     }
 
@@ -576,10 +670,18 @@ export class SfuClient extends EventTarget {
             case SERVER_MESSAGE.INFO_CHANGE:
                 this._updateClient(CLIENT_UPDATE.INFO_CHANGE, payload);
                 break;
+            case SERVER_MESSAGE.CHANNEL_INFO_CHANGE:
+                this.isRecording = payload.isRecording;
+                this.isTranscribing = payload.isTranscribing;
+                this._updateClient(CLIENT_UPDATE.CHANNEL_INFO_CHANGE, payload);
+                break;
         }
     }
 
-    private async _handleRequest({ name, payload }: BusMessage): Promise<JSONSerializable | void> {
+    private async _handleRequest({
+        name,
+        payload
+    }: RequestMessage): Promise<JSONSerializable | void> {
         switch (name) {
             case SERVER_REQUEST.INIT_CONSUMER: {
                 const { id, kind, producerId, rtpParameters, sessionId, type, active } = payload;

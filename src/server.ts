@@ -1,6 +1,7 @@
-import * as rtc from "#src/services/rtc.ts";
+import * as resources from "#src/services/resources.ts";
 import * as http from "#src/services/http.ts";
 import * as auth from "#src/services/auth.ts";
+import * as media from "#src/services/media.ts";
 import { Logger } from "#src/utils/utils.ts";
 import { Channel } from "#src/models/channel.ts";
 
@@ -8,15 +9,31 @@ const logger = new Logger("SERVER", { logLevel: "all" });
 
 async function run(): Promise<void> {
     auth.start();
-    await rtc.start();
+    await resources.start();
     await http.start();
+    await media.start();
     logger.info(`ready - PID: ${process.pid}`);
+    logger.debug(`TO IMPLEMENT: `);
+    logger.debug(`* get session labels from the odoo server`);
+    // probably need names associated to rtc sessions (passed in JWT) so that we can add those labels to the compiled video
+    logger.debug(`* zip the recording files`);
+    // using node:zlib
+    logger.debug(`* should recording when alone be disallowed?`);
+    logger.debug(`* Media service / Recording compiler (also manages the folder cleanup)`);
+    logger.debug(`* Media service write tests`);
+    logger.debug(`* Media compiler write tests`);
+    logger.debug(`* Routing Address`);
+    /**
+     * the address passed to the recorder should maybe be a routing address, the SFU asks at this address what to do with the files
+     * can auth with a JWT and just be something like odoo/discuss/recording/routing/<channelId/channelUUID> + Signed JWT in auth header (or payload)
+     */
 }
 
 function cleanup(): void {
     Channel.closeAll();
     http.close();
-    rtc.close();
+    resources.close();
+    media.close();
     logger.info("cleanup complete");
 }
 

@@ -1,9 +1,12 @@
 import os from "node:os";
+import path from "node:path";
+import fs from "node:fs";
 
 import type {
     RtpCodecCapability,
     WorkerSettings,
-    WebRtcServerOptions
+    WebRtcServerOptions,
+    PlainTransportOptions
 } from "mediasoup/node/lib/types";
 // eslint-disable-next-line node/no-unpublished-import
 import type { ProducerOptions } from "mediasoup-client/lib/Producer";
@@ -11,6 +14,8 @@ import type { ProducerOptions } from "mediasoup-client/lib/Producer";
 const FALSY_INPUT = new Set(["disable", "false", "none", "no", "0"]);
 type LogLevel = "none" | "error" | "warn" | "info" | "debug" | "verbose";
 type WorkerLogLevel = "none" | "error" | "warn" | "debug";
+const testingMode = Boolean(process.env.JEST_WORKER_ID);
+export const tmpDir = path.join(os.tmpdir(), "odoo_sfu");
 
 // ------------------------------------------------------------
 // ------------------   ENV VARIABLES   -----------------------
@@ -22,7 +27,7 @@ type WorkerLogLevel = "none" | "error" | "warn" | "debug";
  * e.g: AUTH_KEY=u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng=
  */
 export const AUTH_KEY: string = process.env.AUTH_KEY!;
-if (!AUTH_KEY && !process.env.JEST_WORKER_ID) {
+if (!AUTH_KEY && !testingMode) {
     throw new Error(
         "AUTH_KEY env variable is required, it is not possible to authenticate requests without it"
     );
@@ -34,7 +39,7 @@ if (!AUTH_KEY && !process.env.JEST_WORKER_ID) {
  * e.g: PUBLIC_IP=190.165.1.70
  */
 export const PUBLIC_IP: string = process.env.PUBLIC_IP!;
-if (!PUBLIC_IP && !process.env.JEST_WORKER_ID) {
+if (!PUBLIC_IP && !testingMode) {
     throw new Error(
         "PUBLIC_IP env variable is required, clients cannot establish webRTC connections without it"
     );
@@ -64,6 +69,25 @@ export const HTTP_INTERFACE: string = process.env.HTTP_INTERFACE || "0.0.0.0";
  */
 export const PORT: number = Number(process.env.PORT) || 8070;
 
+/**
+ * Whether the recording feature is enabled, false by default.
+ */
+export const RECORDING: boolean = Boolean(process.env.RECORDING);
+
+/**
+ * Whether the transcription feature is enabled, false by default.
+ */
+export const TRANSCRIPTION: boolean = Boolean(process.env.TRANSCRIPTION);
+/**
+ * The path where the recordings will be saved, defaults to `${tmpDir}/recordings`.
+ */
+export const RECORDING_PATH: string = process.env.RECORDING_PATH || path.join(tmpDir, "recordings");
+/**
+ * The path use by the resources service for temporary files, defaults to `${tmpDir}/resources`,
+ * Keeping the default is fine as this is only used for temporary files used for internal process, but it can
+ * be changed for debugging.
+ */
+export const RESOURCES_PATH: string = process.env.RESOURCES_PATH || path.join(tmpDir, "resources");
 /**
  * The number of workers to spawn (up to core limits) to manage RTC servers.
  * 0 < NUM_WORKERS <= os.availableParallelism()
@@ -96,7 +120,17 @@ export const RTC_MIN_PORT: number =
  */
 export const RTC_MAX_PORT: number =
     (process.env.RTC_MAX_PORT && Number(process.env.RTC_MAX_PORT)) || 49999;
-
+/**
+ * Lower bound for the range of ports that the SFU server can use for dynamic ports, used for
+ * routing streams to internal processes (recording).
+ */
+export const DYNAMIC_MIN_PORT: number =
+    (process.env.DYNAMIC_MIN_PORT && Number(process.env.DYNAMIC_MIN_PORT)) || 50000;
+/**
+ * Upper bound for the range of ports that the SFU server can use for dynamic ports
+ */
+export const DYNAMIC_MAX_PORT: number =
+    (process.env.DYNAMIC_MAX_PORT && Number(process.env.DYNAMIC_MAX_PORT)) || 59999;
 /**
  * The maximum size of the buffer in byes for incoming messages per session
  */
@@ -194,8 +228,33 @@ export const timeouts: TimeoutConfig = Object.freeze({
     // how long before a channel is closed after the last session leaves
     channel: 60 * 60_000,
     // how long to wait to gather messages before sending through the bus
-    busBatch: process.env.JEST_WORKER_ID ? 10 : 300
+    busBatch: testingMode ? 10 : 300
 });
+
+// TODO cleanup
+export const recording = Object.freeze({
+    routingInterface: "127.0.0.1",
+    directory: RECORDING_PATH,
+    enabled: RECORDING || TRANSCRIPTION,
+    maxDuration: 1000 * 60 * 60, // 1 hour, could be a env-var.
+    fileTTL: 1000 * 60 * 60 * 24, // 24 hours
+    videoCodec: "libx264", // TODO to implement
+    audioCodec: "libopus",
+    audioLimit: 20, // TODO to implement
+    audioBitRate: "8k",
+    cameraLimit: 4, // how many camera can be merged into one recording
+    screenLimit: 1
+});
+// check for overlap in ports
+if (recording.enabled && !(DYNAMIC_MAX_PORT < RTC_MIN_PORT || DYNAMIC_MIN_PORT > RTC_MAX_PORT)) {
+    throw new Error("Dynamic ports overlap with RTC ports");
+}
+if (recording.enabled) {
+    fs.mkdirSync(RECORDING_PATH, { recursive: true });
+}
+if (recording.enabled) {
+    fs.mkdirSync(RESOURCES_PATH, { recursive: true });
+}
 
 // how many errors can occur before the session is closed, recovery attempts will be made until this limit is reached
 export const maxSessionErrors: number = 6;
@@ -215,6 +274,7 @@ const baseProducerOptions: ProducerOptions = {
 export interface RtcConfig {
     readonly workerSettings: WorkerSettings;
     readonly rtcServerOptions: WebRtcServerOptions;
+    readonly plainTransportOptions: PlainTransportOptions;
     readonly rtcTransportOptions: {
         readonly maxSctpMessageSize: number;
         readonly sctpSendBufferSize: number;
@@ -228,7 +288,9 @@ export interface RtcConfig {
 export const rtc: RtcConfig = Object.freeze({
     // https://mediasoup.org/documentation/v3/mediasoup/api/#WorkerSettings
     workerSettings: {
-        logLevel: WORKER_LOG_LEVEL
+        logLevel: WORKER_LOG_LEVEL,
+        rtcMinPort: RTC_MIN_PORT,
+        rtcMaxPort: RTC_MAX_PORT
     },
     // https://mediasoup.org/documentation/v3/mediasoup/api/#WebRtcServer-dictionaries
     rtcServerOptions: {
@@ -257,6 +319,11 @@ export const rtc: RtcConfig = Object.freeze({
     rtcTransportOptions: {
         maxSctpMessageSize: MAX_BUF_IN,
         sctpSendBufferSize: MAX_BUF_OUT
+    },
+    plainTransportOptions: {
+        listenIp: { ip: "0.0.0.0", announcedIp: PUBLIC_IP },
+        rtcpMux: true,
+        comedia: false
     },
     producerOptionsByKind: {
         /** Audio producer options */

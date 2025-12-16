@@ -29,25 +29,22 @@ export default {
             banner: "/* @odoo-module */",
             file: "./bundle/odoo_sfu.js",
             format: "es",
-            outro,
-        },
+            outro
+        }
     ],
     plugins: [
         typescript({
-            tsconfig: "./tsconfig_bundle.json",
-            declaration: false,
-            declarationMap: false,
-            sourceMap: false,
+            tsconfig: "./tsconfig_bundle.json"
         }),
         resolve({
             browser: true,
-            preferBuiltins: false,
+            preferBuiltins: false
         }),
         commonjs(),
         license({
             thirdParty: {
-                output: "./bundle/odoo_sfu.licenses.txt",
-            },
-        }),
-    ],
+                output: "./bundle/odoo_sfu.licenses.txt"
+            }
+        })
+    ]
 };
