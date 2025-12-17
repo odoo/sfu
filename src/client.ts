@@ -27,7 +27,8 @@ import type {
     StartupData,
     WebSocketCredentials,
     recordingActionResult,
-    ChannelInfo
+    RecordingState,
+    RecordingStateUpdate
 } from "#src/shared/types";
 import type { TransportConfig, SessionId, SessionInfo } from "#src/models/session";
 
@@ -71,7 +72,7 @@ export enum CLIENT_UPDATE {
 type ClientUpdatePayload =
     | { senderId: SessionId; message: JSONSerializable }
     | { sessionId: SessionId }
-    | ChannelInfo
+    | RecordingStateUpdate
     | Record<SessionId, SessionInfo>
     | {
           type: StreamType;
@@ -157,9 +158,11 @@ export class SfuClient extends EventTarget {
         rtc: false,
         recording: false
     };
-    public isRecording: boolean = false;
-    public video: boolean = false;
-    public transcription: boolean = false;
+    public recordingState: RecordingState = {
+        recording: false,
+        transcription: false,
+        video: false
+    };
     /** Current client state */
     private _state: SfuClientState = SfuClientState.DISCONNECTED;
     /** Communication bus */
@@ -279,7 +282,7 @@ export class SfuClient extends EventTarget {
         options: { video?: boolean; transcription?: boolean } = {}
     ): Promise<recordingActionResult> {
         if (this.state !== SfuClientState.CONNECTED) {
-            return { state: undefined, allowed: false };
+            return { allowed: false };
         }
         return this._bus!.request(
             {
@@ -292,7 +295,7 @@ export class SfuClient extends EventTarget {
 
     async stopRecording(): Promise<recordingActionResult> {
         if (this.state !== SfuClientState.CONNECTED) {
-            return { state: undefined, allowed: false };
+            return { allowed: false };
         }
         return this._bus!.request(
             {
@@ -513,13 +516,11 @@ export class SfuClient extends EventTarget {
                      * so we check for backward compatibility.
                      */
                     if (message.data) {
-                        const { availableFeatures, channelInfo } = JSON.parse(
+                        const { availableFeatures, recordingState } = JSON.parse(
                             message.data
                         ) as StartupData;
                         this.availableFeatures = availableFeatures;
-                        this.isRecording = channelInfo.recording;
-                        this.video = channelInfo.video;
-                        this.transcription = channelInfo.transcription;
+                        this.recordingState = recordingState;
                     }
                     resolve(new Bus(webSocket));
                 },
@@ -652,9 +653,7 @@ export class SfuClient extends EventTarget {
                 this._updateClient(CLIENT_UPDATE.INFO_CHANGE, payload);
                 break;
             case SERVER_MESSAGE.CHANNEL_INFO_CHANGE:
-                this.isRecording = payload.recording;
-                this.video = payload.video;
-                this.transcription = payload.transcription;
+                this.recordingState = payload.state;
                 this._updateClient(CLIENT_UPDATE.CHANNEL_INFO_CHANGE, payload);
                 break;
         }

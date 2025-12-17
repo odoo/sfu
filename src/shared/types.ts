@@ -15,19 +15,20 @@ export type WebSocketCredentials = {
     jwt: string;
 };
 
-export type ChannelInfo = {
-    recording: boolean;
-    transcription: boolean;
-    video: boolean;
+export type RecordingState = {
+    recording?: boolean;
+    transcription?: boolean;
+    video?: boolean;
 };
 
-type ChannelInfoUpdate = ChannelInfo & {
+export type RecordingStateUpdate = {
+    state: RecordingState;
     cause?: string;
 };
 
 export type StartupData = {
     availableFeatures: AvailableFeatures;
-    channelInfo: ChannelInfo;
+    recordingState: RecordingState;
 };
 export type AvailableFeatures = {
     rtc: boolean;
@@ -86,7 +87,7 @@ export type BusMessage =
     | { name: typeof SERVER_MESSAGE.INFO_CHANGE; payload: Record<SessionId, SessionInfo> }
     | {
           name: typeof SERVER_MESSAGE.CHANNEL_INFO_CHANGE;
-          payload: ChannelInfoUpdate;
+          payload: RecordingStateUpdate;
       }
     | {
           name: typeof SERVER_REQUEST.INIT_CONSUMER;
@@ -112,7 +113,6 @@ export type BusMessage =
     | { name: typeof SERVER_REQUEST.PING; payload?: never };
 
 export type recordingActionResult = {
-    state?: boolean;
     allowed: boolean;
 };
 export interface RequestMap {
