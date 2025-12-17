@@ -45,14 +45,14 @@ export type Metadata = {
     routingAddress: string;
     startedAt?: number;
     stoppedAt?: number;
-    video: boolean;
-    transcription: boolean;
     timeStamps: TimeStampData[];
 };
 
 export type SealedMetaData = Metadata & {
     sealedAt: number;
     routingJwt: string;
+    video: boolean;
+    transcription: boolean;
 };
 
 const logger = new Logger("RECORDER");
@@ -117,8 +117,6 @@ export class Recorder extends EventEmitter {
     private readonly _metaData: Metadata = {
         channelName: "",
         routingAddress: "",
-        video: false,
-        transcription: false,
         timeStamps: []
     };
 
@@ -151,15 +149,18 @@ export class Recorder extends EventEmitter {
         this._metaData.routingAddress = routingAddress;
     }
 
+    /**
+     * Can be called again even if it has started to update the transcription state,
+     * this applies to the whole recording.
+     */
     async start(options: { video?: boolean; transcription?: boolean } = {}) {
+        this.transcription = Boolean(options.transcription);
         if (this.isRecording) {
-            return this.state;
+            this._emitStatus();
+            return;
         }
         this.isRecording = true;
         this.video = Boolean(options.video);
-        this.transcription = Boolean(options.transcription);
-        this._metaData.video = this.video;
-        this._metaData.transcription = this.transcription;
         this._metaData.startedAt = Date.now();
 
         try {
@@ -169,17 +170,16 @@ export class Recorder extends EventEmitter {
             this.terminate({ save: false });
         }
         this._emitStatus();
-        return this.state;
     }
 
     async stop() {
-        if (this.isRecording) {
-            this.isRecording = false;
-            this._metaData.stoppedAt = Date.now();
-            this.terminate();
-            this._emitStatus();
+        if (!this.isRecording) {
+            return;
         }
-        return this.state;
+        this.isRecording = false;
+        this._metaData.stoppedAt = Date.now();
+        this.terminate();
+        this._emitStatus();
     }
     /* eslint-disable no-dupe-class-members */ // overloads
     mark(tag: TIME_TAG.FILE_STATE_CHANGE, info: TimeTagInfo): void;
@@ -247,12 +247,16 @@ export class Recorder extends EventEmitter {
             },
             this._channel.key!
         );
-        const metadata = JSON.stringify({ ...this._metaData, routingJwt, sealedAt: Date.now() });
+        const metadata = JSON.stringify({
+            ...this._metaData,
+            video: this.video,
+            transcription: this.transcription,
+            routingJwt,
+            sealedAt: Date.now()
+        });
         this._metaData.timeStamps = [];
         this._metaData.stoppedAt = undefined;
         this._metaData.startedAt = undefined;
-        this._metaData.video = false;
-        this._metaData.transcription = false;
         return metadata;
     }
 
