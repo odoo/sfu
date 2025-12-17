@@ -64,6 +64,7 @@ export enum SESSION_CLOSE_CODE {
 }
 export interface SessionPermissions {
     recording?: boolean;
+    videoRecording?: boolean;
 }
 export interface TransportConfig {
     /** Transport identifier */
@@ -154,7 +155,8 @@ export class Session extends EventEmitter {
         screen: null
     };
     public readonly permissions: SessionPermissions = Object.seal({
-        recording: false
+        recording: false,
+        videoRecording: false
     });
     /** Parent channel containing this session */
     private readonly _channel: Channel;
@@ -186,7 +188,8 @@ export class Session extends EventEmitter {
         return {
             availableFeatures: {
                 rtc: Boolean(this._channel.router),
-                recording: this.canRecord
+                recording: this.canRecord,
+                videoRecording: this.canVideoRecord
             },
             recordingState: this._channel.recordingState
         };
@@ -194,6 +197,10 @@ export class Session extends EventEmitter {
 
     get canRecord(): boolean {
         return Boolean(this._channel.recorder && config.RECORDING && this.permissions.recording);
+    }
+
+    get canVideoRecord(): boolean {
+        return Boolean(this.canRecord && this.permissions.videoRecording);
     }
 
     get name(): string {

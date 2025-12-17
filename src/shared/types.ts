@@ -33,6 +33,7 @@ export type StartupData = {
 export type AvailableFeatures = {
     rtc: boolean;
     recording: boolean;
+    videoRecording: boolean;
 };
 
 import type { DownloadStates } from "#src/client.ts";

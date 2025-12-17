@@ -183,7 +183,6 @@ export class Recorder extends EventEmitter {
     }
     /* eslint-disable no-dupe-class-members */ // overloads
     mark(tag: TIME_TAG.FILE_STATE_CHANGE, info: TimeTagInfo): void;
-
     mark(tag: TIME_TAG, info?: TimeTagInfo) {
         this._metaData.timeStamps.push({
             tag,
