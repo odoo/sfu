@@ -30,19 +30,28 @@ export class MediaCompiler {
     async compile(startedAt: number, stoppedAt: number): Promise<string | undefined> {
         logger.debug(`Working dir: ${this._workingDir}`);
 
-        const files = new Map<string, number>();
+        const audioFiles = new Map<string, number>();
         for (const timestamp of this._timeStamps) {
             if (timestamp.tag === TIME_TAG.FILE_STATE_CHANGE) {
                 if (timestamp.info && timestamp.info.type === "audio" && timestamp.info.active) {
-                    if (!files.has(timestamp.info.filename)) {
+                    if (!audioFiles.has(timestamp.info.filename)) {
                         logger.debug(`Found audio file ${timestamp.info.filename}`);
-                        files.set(timestamp.info.filename, timestamp.timestamp);
+                        audioFiles.set(timestamp.info.filename, timestamp.timestamp);
                     }
                 }
             }
         }
-
-        return this._compileAudio(files, startedAt, stoppedAt);
+        /**
+         * TODO Do the same for video, but needs cameraFiles and screenFiles,
+         * then make a much more complex logic on what to display.
+         * Will probably need Odoo to provide labels for rtc sessions
+         * so that these labels can be passed to timestamp info.
+         * The recorder may have to update _getRecordingStates() based on if there is
+         * at least one screen (because if there is a screen that's what we show,
+         * and maybe just the video of the sharer if there is)
+         * then iterate recording tasks to update them with the new parameters.
+         */
+        return this._compileAudio(audioFiles, startedAt, stoppedAt);
     }
 
     private async _compileAudio(
