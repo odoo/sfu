@@ -12,10 +12,6 @@ import { STREAM_TYPE } from "#src/shared/enums.ts";
 import type { SessionId } from "#src/models/session.ts";
 
 export enum TIME_TAG {
-    RECORDING_STARTED = "recording_started",
-    RECORDING_STOPPED = "recording_stopped",
-    TRANSCRIPTION_STARTED = "transcription_started",
-    TRANSCRIPTION_STOPPED = "transcription_stopped",
     FILE_STATE_CHANGE = "file_state_change"
 }
 export enum RECORDER_STATE {
@@ -43,9 +39,13 @@ export type TimeStampData = {
     timestamp: number;
     info?: TimeTagInfo;
 };
-type Metadata = {
+export type Metadata = {
     channelName: string;
     routingAddress: string;
+    startedAt?: number;
+    stoppedAt?: number;
+    video: boolean;
+    transcription: boolean;
     timeStamps: TimeStampData[];
 };
 
@@ -100,10 +100,13 @@ export class Recorder extends EventEmitter {
      **/
     isRecording: boolean = false;
     /**
-     * Transcribing means that we mark the audio for being transcribed later,
-     * this captures only the audio of the call.
+     * Whether video is recorded (camera and screen sharing)
      **/
-    isTranscribing: boolean = false;
+    video: boolean = false;
+    /**
+     * Whether transcription is desired (metadata flag)
+     **/
+    transcription: boolean = false;
     state: RECORDER_STATE = RECORDER_STATE.STOPPED;
     private _folder?: Folder;
     private _timeout?: NodeJS.Timeout;
@@ -113,6 +116,8 @@ export class Recorder extends EventEmitter {
     private readonly _metaData: Metadata = {
         channelName: "",
         routingAddress: "",
+        video: false,
+        transcription: false,
         timeStamps: []
     };
 
@@ -137,44 +142,39 @@ export class Recorder extends EventEmitter {
         this._metaData.routingAddress = routingAddress;
     }
 
-    async start() {
-        if (!this.isRecording) {
-            this.isRecording = true;
-            this.mark(TIME_TAG.RECORDING_STARTED);
-            await this._refreshConfiguration();
+    async start(options: { video?: boolean; transcription?: boolean } = {}) {
+        if (this.isRecording) {
+            return this.isRecording;
         }
+        this.isRecording = true;
+        this.video = Boolean(options.video);
+        this.transcription = Boolean(options.transcription);
+        this._metaData.video = this.video;
+        this._metaData.transcription = this.transcription;
+        this._metaData.startedAt = Date.now();
+
+        try {
+            await this._init();
+        } catch (error) {
+            logger.error(`Failed to start recording for ${this._channel.name}: ${error}`);
+            this.terminate({ save: false });
+        }
+        this._emitStatus();
         return this.isRecording;
     }
 
     async stop() {
         if (this.isRecording) {
             this.isRecording = false;
-            this.mark(TIME_TAG.RECORDING_STOPPED);
-            await this._refreshConfiguration();
+            this._metaData.stoppedAt = Date.now();
+            this.terminate();
+            this._emitStatus();
         }
         return this.isRecording;
     }
-
-    async startTranscription() {
-        if (!this.isTranscribing) {
-            this.isTranscribing = true;
-            this.mark(TIME_TAG.TRANSCRIPTION_STARTED);
-            await this._refreshConfiguration();
-        }
-        return this.isTranscribing;
-    }
-
-    async stopTranscription() {
-        if (this.isTranscribing) {
-            this.isTranscribing = false;
-            this.mark(TIME_TAG.TRANSCRIPTION_STOPPED);
-            await this._refreshConfiguration();
-        }
-        return this.isTranscribing;
-    }
     /* eslint-disable no-dupe-class-members */ // overloads
     mark(tag: TIME_TAG.FILE_STATE_CHANGE, info: TimeTagInfo): void;
-    mark(tag: Exclude<TIME_TAG, TIME_TAG.FILE_STATE_CHANGE>): void;
+
     mark(tag: TIME_TAG, info?: TimeTagInfo) {
         this._metaData.timeStamps.push({
             tag,
@@ -198,7 +198,8 @@ export class Recorder extends EventEmitter {
         this._channel.off(Channel.Events.SESSION_JOIN, this._onSessionJoin);
         this._channel.off(Channel.Events.SESSION_LEAVE, this._onSessionLeave);
         this.isRecording = false;
-        this.isTranscribing = false;
+        this.video = false;
+        this.transcription = false;
         const currentFolder = this._folder;
         const metaData = this._sealMetaData();
         /**
@@ -258,36 +259,11 @@ export class Recorder extends EventEmitter {
         }
     }
 
-    private async _refreshConfiguration() {
-        if (this.isRecording || this.isTranscribing) {
-            if (this.isActive) {
-                await this._update().catch(async () => {
-                    logger.warn(`Failed to update recording or ${this._channel.name}`);
-                    this.terminate({ save: false });
-                });
-            } else {
-                await this._init().catch(async () => {
-                    logger.error(`Failed to start recording or ${this._channel.name}`);
-                    this.terminate({ save: false });
-                });
-            }
-        } else {
-            this.terminate();
-        }
-        this._emitStatus();
-    }
-
-    private async _update() {
-        const params = this._getRecordingStates();
-        for (const task of this._tasks.values()) {
-            Object.assign(task, params);
-        }
-    }
-
     private _emitStatus(cause?: string) {
         this.emit("update", {
             isRecording: this.isRecording,
-            isTranscribing: this.isTranscribing,
+            transcription: this.transcription,
+            video: this.video,
             cause
         });
     }
@@ -321,9 +297,9 @@ export class Recorder extends EventEmitter {
 
     private _getRecordingStates(): RecordingStates {
         return {
-            audio: this.isRecording || this.isTranscribing,
-            camera: this.isRecording,
-            screen: this.isRecording
+            audio: this.isRecording,
+            camera: this.isRecording && this.video,
+            screen: this.isRecording && this.video
         };
     }
 }

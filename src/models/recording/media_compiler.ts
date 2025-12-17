@@ -2,134 +2,81 @@ import { spawn } from "node:child_process";
 import { access } from "node:fs/promises";
 import path from "node:path";
 
-import { type TimeStampData, TIME_TAG } from "#src/models/recording/recorder.ts";
+import { type Metadata, TIME_TAG } from "#src/models/recording/recorder.ts";
 import { recording } from "#src/config.ts";
 import { Logger } from "#src/utils/utils.ts";
-type compiledFiles = {
-    recordings: string[];
-    transcriptions: string[];
-};
-type compilableSegment = {
-    start: number;
-    end: number;
-    type: "transcription" | "recording";
-};
+
 const logger = new Logger("MEDIA_COMPILER");
 
-// TODO When all the files are processed, delete (or move, or mark as processed) the folder
 export class MediaCompiler {
     private readonly _workingDir: string;
-    private readonly _timeStamps: TimeStampData[];
-    constructor(workingDir: string, timeStamps: TimeStampData[]) {
+    private readonly _timeStamps: Metadata["timeStamps"];
+
+    constructor(workingDir: string, timeStamps: Metadata["timeStamps"]) {
         this._workingDir = workingDir;
         this._timeStamps = timeStamps;
     }
+
     /**
      * Compiles the raw recording into compiled files.
      * @returns The paths to the compiled files.
      */
-    async compile(): Promise<compiledFiles> {
+    /**
+     * Compiles the raw recording into a single file.
+     * @param startedAt - The start timestamp of the recording.
+     * @param stoppedAt - The stop timestamp of the recording.
+     * @returns The path to the compiled file, or undefined if no audio files were found.
+     */
+    async compile(startedAt: number, stoppedAt: number): Promise<string | undefined> {
         logger.debug(`Working dir: ${this._workingDir}`);
-        const transcriptionSegments: compilableSegment[] = [];
-        /**
-         * TODO: recordingSegments equivalent for TIME_TAG.RECORDING_STARTED and TIME_TAG.RECORDING_STOPPED
-         * ffmpeg -i input.mp4 \
-         *  -c:v libx264 -preset slow -crf 19 \
-         *  -pix_fmt yuv420p \
-         *  -c:a aac -b:a 128k \
-         *  output.mp4
-         */
+
         const files = new Map<string, number>();
-        let currentStart = 0;
-
         for (const timestamp of this._timeStamps) {
-            switch (timestamp.tag) {
-                case TIME_TAG.TRANSCRIPTION_STARTED:
-                    currentStart = timestamp.timestamp;
-                    logger.debug(`Transcription started at ${timestamp.timestamp}`);
-                    break;
-                case TIME_TAG.TRANSCRIPTION_STOPPED:
-                    if (currentStart) {
-                        transcriptionSegments.push({
-                            start: currentStart,
-                            end: timestamp.timestamp,
-                            type: "transcription"
-                        });
-                        currentStart = 0;
+            if (timestamp.tag === TIME_TAG.FILE_STATE_CHANGE) {
+                if (timestamp.info && timestamp.info.type === "audio" && timestamp.info.active) {
+                    if (!files.has(timestamp.info.filename)) {
+                        logger.debug(`Found audio file ${timestamp.info.filename}`);
+                        files.set(timestamp.info.filename, timestamp.timestamp);
                     }
-                    logger.debug(`Transcription stopped at ${timestamp.timestamp}`);
-                    break;
-                case TIME_TAG.FILE_STATE_CHANGE:
-                    /**
-                     * TODO use timestamp.info.eof to not use files that end before `currentStart`.
-                     * where `timestamp.eof====true` if `timestamp.timestamp` is before `currentStart`, then we can remove it from `files`
-                     */
-                    if (
-                        timestamp.info &&
-                        timestamp.info.type === "audio" &&
-                        timestamp.info.active
-                    ) {
-                        if (!files.has(timestamp.info.filename)) {
-                            logger.debug(`Found audio file ${timestamp.info.filename}`);
-                            files.set(timestamp.info.filename, timestamp.timestamp);
-                        }
-                    }
-                    break;
+                }
             }
         }
 
-        // If a transcription started but didn't stop properly, assume it goes until the end
-        if (currentStart) {
-            transcriptionSegments.push({
-                start: currentStart,
-                end: this._timeStamps[this._timeStamps.length - 1].timestamp,
-                type: "transcription"
-            });
-        }
-
-        logger.info(`Found ${transcriptionSegments.length} transcription segments`);
-
-        const transcriptions: string[] = [];
-        for (const segment of transcriptionSegments) {
-            logger.info(`Compiling segment ${segment.start} - ${segment.end}`);
-            const processedFile = await this._compileSegment(segment, files);
-            if (processedFile) {
-                transcriptions.push(processedFile);
-            }
-        }
-        return {
-            recordings: [], // TODO to implement
-            transcriptions
-        };
+        return this._compileAudio(files, startedAt, stoppedAt);
     }
 
-    private async _compileSegment(segment: compilableSegment, files: Map<string, number>) {
+    private async _compileAudio(
+        files: Map<string, number>,
+        startedAt: number,
+        stoppedAt: number
+    ): Promise<string | undefined> {
         const relevantFiles: { path: string; offset: number }[] = [];
         for (const [filename, startTime] of files) {
-            if (startTime < segment.end) {
+            if (startTime < stoppedAt) {
                 relevantFiles.push({
                     path: path.join(this._workingDir, "audio", filename),
-                    offset: startTime - segment.start
+                    offset: startTime - startedAt
                 });
             }
         }
 
         if (relevantFiles.length === 0) {
-            logger.warn("No audio files found for segment");
+            logger.warn("No audio files found");
             return;
         }
-        const outputName = path.join(this._workingDir, `transcription_${segment.start}.ogg`);
+
+        const outputName = path.join(this._workingDir, `recording_${startedAt}.ogg`);
         try {
             await access(outputName);
             logger.info(`Output file ${outputName} already exists, skipping compilation`);
-            return;
+            return outputName;
         } catch {
             // File does not exist, continue to compilation
         }
 
         const inputs: string[] = [];
         const filterComplex: string[] = [];
-        const duration = (segment.end - segment.start) / 1000;
+        const duration = (stoppedAt - startedAt) / 1000;
 
         relevantFiles.forEach((file, index) => {
             const delay = file.offset > 0 ? file.offset : 0;

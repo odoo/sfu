@@ -110,12 +110,15 @@ async function processRecording(folderName: string) {
         logger.debug(`Read metadata for recording ${folderName}: ${metadata.channelName}`);
         logger.debug(`Expected to be delivered at ${metadata.routingAddress}`);
         const comp = new MediaCompiler(dir, metadata.timeStamps);
-        const { transcriptions, recordings } = await comp.compile();
-        await uploadFiles({
-            metadata,
-            transcriptions,
-            recordings
-        });
+        const file = await comp.compile(metadata.startedAt || 0, metadata.stoppedAt || 0);
+
+        if (file) {
+            await uploadFiles({
+                metadata,
+                video: Boolean(metadata.video),
+                transcription: Boolean(metadata.transcription)
+            });
+        }
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
             logger.debug(`No metadata.json found in ${folderName}, skipping`);
@@ -127,14 +130,14 @@ async function processRecording(folderName: string) {
 
 async function uploadFiles({
     metadata,
-    transcriptions,
-    recordings
+    video,
+    transcription
 }: {
     metadata: SealedMetaData;
-    transcriptions?: string[];
-    recordings?: string[];
+    video?: boolean;
+    transcription?: boolean;
 }) {
-    if (!transcriptions?.length && !recordings?.length) {
+    if (!video && !transcription) {
         logger.debug("No files to upload");
         return;
     }
@@ -142,8 +145,8 @@ async function uploadFiles({
     try {
         // first, asking for routing
         const queryParameters = new URLSearchParams({
-            recordings: `${recordings?.length || 0}`,
-            transcriptions: `${transcriptions?.length || 0}`
+            video: `${video ? 1 : 0}`,
+            transcription: `${transcription ? 1 : 0}`
         });
         const response = await fetch(`${metadata.routingAddress}?${queryParameters}`, {
             method: "GET",
