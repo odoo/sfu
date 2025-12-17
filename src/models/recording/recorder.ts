@@ -9,6 +9,7 @@ import { Logger } from "#src/utils/utils.ts";
 
 import { Channel } from "#src/models/channel.ts";
 import { STREAM_TYPE } from "#src/shared/enums.ts";
+import type { RecordingState } from "#src/shared/types.ts";
 import type { SessionId } from "#src/models/session.ts";
 
 export enum TIME_TAG {
@@ -107,7 +108,7 @@ export class Recorder extends EventEmitter {
      * Whether transcription is desired (metadata flag)
      **/
     transcription: boolean = false;
-    state: RECORDER_STATE = RECORDER_STATE.STOPPED;
+    private _state: RECORDER_STATE = RECORDER_STATE.STOPPED;
     private _folder?: Folder;
     private _timeout?: NodeJS.Timeout;
     private readonly _channel: Channel;
@@ -122,7 +123,15 @@ export class Recorder extends EventEmitter {
     };
 
     get isActive(): boolean {
-        return this.state === RECORDER_STATE.STARTED;
+        return this._state === RECORDER_STATE.STARTED;
+    }
+
+    get state(): RecordingState {
+        return {
+            recording: this.isRecording,
+            video: this.video,
+            transcription: this.transcription
+        };
     }
 
     get path(): string | undefined {
@@ -144,7 +153,7 @@ export class Recorder extends EventEmitter {
 
     async start(options: { video?: boolean; transcription?: boolean } = {}) {
         if (this.isRecording) {
-            return this.isRecording;
+            return this.state;
         }
         this.isRecording = true;
         this.video = Boolean(options.video);
@@ -160,7 +169,7 @@ export class Recorder extends EventEmitter {
             this.terminate({ save: false });
         }
         this._emitStatus();
-        return this.isRecording;
+        return this.state;
     }
 
     async stop() {
@@ -170,7 +179,7 @@ export class Recorder extends EventEmitter {
             this.terminate();
             this._emitStatus();
         }
-        return this.isRecording;
+        return this.state;
     }
     /* eslint-disable no-dupe-class-members */ // overloads
     mark(tag: TIME_TAG.FILE_STATE_CHANGE, info: TimeTagInfo): void;
@@ -191,7 +200,7 @@ export class Recorder extends EventEmitter {
         if (!this.isActive) {
             return;
         }
-        this.state = RECORDER_STATE.STOPPING;
+        this._state = RECORDER_STATE.STOPPING;
         clearTimeout(this._timeout);
         this._timeout = undefined;
         logger.verbose(`terminating recorder for channel ${this._channel.name}`);
@@ -227,7 +236,7 @@ export class Recorder extends EventEmitter {
                 );
             });
         this._folder = undefined;
-        this.state = RECORDER_STATE.STOPPED;
+        this._state = RECORDER_STATE.STOPPED;
     }
 
     private _sealMetaData() {
@@ -268,12 +277,12 @@ export class Recorder extends EventEmitter {
         });
     }
     private async _init() {
-        this.state = RECORDER_STATE.STARTED;
+        this._state = RECORDER_STATE.STARTED;
         this._folder = await getFolder(["audio", "camera", "screen"]);
         clearTimeout(this._timeout);
         this._timeout = setTimeout(() => {
             this.terminate();
-            this._emitStatus("timeout");
+            this._emitStatus("recording_timeout");
         }, recording.maxDuration);
         logger.verbose(`Initializing recorder for channel: ${this._channel.name}`);
         for (const [sessionId, session] of this._channel.sessions) {

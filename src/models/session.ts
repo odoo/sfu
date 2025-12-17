@@ -23,7 +23,6 @@ import {
 import type {
     BusMessage,
     JSONSerializable,
-    recordingActionResult,
     RequestMessage,
     StartupData,
     StreamType
@@ -189,7 +188,7 @@ export class Session extends EventEmitter {
                 rtc: Boolean(this._channel.router),
                 recording: this.canRecord
             },
-            channelInfo: this._channel.info
+            recordingState: this._channel.recordingState
         };
     }
 
@@ -700,28 +699,24 @@ export class Session extends EventEmitter {
                 return { id: producer.id };
             }
             case CLIENT_REQUEST.START_RECORDING: {
-                const actionResult: recordingActionResult = {
-                    state: this._channel.recorder?.isRecording,
-                    allowed: this.canRecord
-                };
                 if (this.canRecord) {
                     const { video, transcription } = payload || {};
-                    actionResult.state = await this._channel.recorder!.start({
+                    await this._channel.recorder!.start({
                         video,
                         transcription
                     });
                 }
-                return actionResult;
-            }
-            case CLIENT_REQUEST.STOP_RECORDING: {
-                const actionResult: recordingActionResult = {
-                    state: this._channel.recorder?.isRecording,
+                return {
                     allowed: this.canRecord
                 };
+            }
+            case CLIENT_REQUEST.STOP_RECORDING: {
                 if (this.canRecord) {
-                    actionResult.state = await this._channel.recorder!.stop();
+                    await this._channel.recorder!.stop();
                 }
-                return actionResult;
+                return {
+                    allowed: this.canRecord
+                };
             }
             default:
                 logger.warn(`[${this.name}] Unknown request type: ${name}`);

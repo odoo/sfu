@@ -15,7 +15,7 @@ import {
 import { Recorder } from "#src/models/recording/recorder.ts";
 import { getWorker, type RtcWorker } from "#src/services/resources.ts";
 import { SERVER_MESSAGE } from "#src/shared/enums.ts";
-import type { ChannelInfo } from "#src/shared/types.ts";
+import type { RecordingState } from "#src/shared/types.ts";
 
 const logger = new Logger("CHANNEL");
 
@@ -220,12 +220,8 @@ export class Channel extends EventEmitter {
         };
     }
 
-    get info(): ChannelInfo {
-        return {
-            recording: Boolean(this.recorder?.isRecording),
-            transcription: Boolean(this.recorder?.transcription),
-            video: Boolean(this.recorder?.video)
-        };
+    get recordingState(): RecordingState {
+        return this.recorder?.state || {};
     }
 
     get sessionsInfo(): Record<SessionId, SessionInfo> {
@@ -347,7 +343,7 @@ export class Channel extends EventEmitter {
             session.bus.send(
                 {
                     name: SERVER_MESSAGE.CHANNEL_INFO_CHANGE,
-                    payload: { ...this.info, cause }
+                    payload: { state: this.recordingState, cause }
                 },
                 { batch: true }
             );

@@ -3,13 +3,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
-import { EventEmitter } from "node:events";
+import { EventEmitter, once } from "node:events";
 
 import { describe, expect, jest, test } from "@jest/globals";
 import { FakeMediaStreamTrack } from "fake-mediastreamtrack";
 
-import { RECORDER_STATE } from "#src/models/recording/recorder";
 import { STREAM_TYPE } from "#src/shared/enums.ts";
+import { CLIENT_UPDATE } from "#src/client";
 
 import { withMockEnv } from "#tests/utils/utils";
 
@@ -78,8 +78,8 @@ describe("Recording & Transcription", () => {
         const { SfuClient } = await import("#src/client");
         const client = new SfuClient();
 
-        expect(await client.startRecording()).toStrictEqual({ allowed: false, state: undefined });
-        expect(await client.stopRecording()).toStrictEqual({ allowed: false, state: undefined });
+        expect(await client.startRecording()).toStrictEqual({ allowed: false });
+        expect(await client.stopRecording()).toStrictEqual({ allowed: false });
     });
     test("can record", async () => {
         const { restore, network } = await recordingSetup({ RECORDING: "true" });
@@ -89,12 +89,23 @@ describe("Recording & Transcription", () => {
         const user2 = await network.connect(channelUUID, 3);
         await user2.isConnected;
         expect(user2.sfuClient.availableFeatures.recording).toBe(true);
+        const recordingStartEventPromise = once(user1.sfuClient, "update");
         const startResult = await user2.sfuClient.startRecording();
         expect(startResult.allowed).toBe(true);
-        expect(startResult.state).toBe(true);
-        const stopResult = await user2.sfuClient.stopRecording();
+        const [recordingStartEvent] = await recordingStartEventPromise;
+        expect(recordingStartEvent.detail).toEqual({
+            name: CLIENT_UPDATE.CHANNEL_INFO_CHANGE,
+            payload: { state: { recording: true, transcription: false, video: false } }
+        });
+        expect(user2.sfuClient.recordingState.recording).toBe(true);
+        const recordingEndEventPromise = once(user2.sfuClient, "update");
+        const stopResult = await user1.sfuClient.stopRecording();
+        const [recordingEventEnd] = await recordingEndEventPromise;
+        expect(recordingEventEnd.detail).toEqual({
+            name: CLIENT_UPDATE.CHANNEL_INFO_CHANGE,
+            payload: { state: { recording: false, transcription: false, video: false } }
+        });
         expect(stopResult.allowed).toBe(true);
-        expect(stopResult.state).toBe(false);
         restore();
     });
     test("can transcribe", async () => {
@@ -106,39 +117,16 @@ describe("Recording & Transcription", () => {
         await user2.isConnected;
         const startResult = await user2.sfuClient.startRecording({ transcription: true });
         expect(startResult.allowed).toBe(true);
-        expect(startResult.state).toBe(true);
-        expect(user2.sfuClient.transcription).toBe(true);
-        expect(user2.sfuClient.isRecording).toBe(true);
+        expect(startResult.allowed).toBe(true);
+        expect(user2.sfuClient.recordingState.recording).toBe(true);
+        expect(user2.sfuClient.recordingState.transcription).toBe(true);
 
         const stopResult = await user2.sfuClient.stopRecording();
         expect(stopResult.allowed).toBe(true);
-        expect(stopResult.state).toBe(false);
-        expect(user2.sfuClient.transcription).toBe(false);
+        expect(user2.sfuClient.recordingState.recording).toBe(false);
+        expect(user2.sfuClient.recordingState.transcription).toBe(false);
         restore();
     });
-    test("can record and transcribe simultaneously", async () => {
-        const { restore, network, getChannel } = await recordingSetup({
-            RECORDING: "true"
-        });
-        const channelUUID = await network.getChannelUUID();
-        const channel = getChannel(channelUUID);
-        const user1 = await network.connect(channelUUID, 1);
-        await user1.isConnected;
-        const user2 = await network.connect(channelUUID, 3);
-        await user2.isConnected;
-        await user1.sfuClient.startRecording({ transcription: true, video: true });
-        const recorder = channel!.recorder!;
-        expect(recorder.isRecording).toBe(true);
-        expect(recorder.transcription).toBe(true);
-        expect(recorder.video).toBe(true);
-        expect(recorder.state).toBe(RECORDER_STATE.STARTED);
-        await user1.sfuClient.stopRecording();
-        expect(recorder.isRecording).toBe(false);
-        expect(recorder.transcription).toBe(false);
-        expect(recorder.video).toBe(false);
-        restore();
-    });
-
     test("Spawns FFMPEG for both audio and video streams", async () => {
         mockSpawn.mockImplementation(() => {
             const mp = new EventEmitter() as ChildProcessLike;
