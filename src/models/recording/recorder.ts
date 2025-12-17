@@ -249,6 +249,10 @@ export class Recorder extends EventEmitter {
         );
         const metadata = JSON.stringify({ ...this._metaData, routingJwt, sealedAt: Date.now() });
         this._metaData.timeStamps = [];
+        this._metaData.stoppedAt = undefined;
+        this._metaData.startedAt = undefined;
+        this._metaData.video = false;
+        this._metaData.transcription = false;
         return metadata;
     }
 
