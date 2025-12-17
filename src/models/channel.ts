@@ -222,8 +222,9 @@ export class Channel extends EventEmitter {
 
     get info(): ChannelInfo {
         return {
-            isRecording: Boolean(this.recorder?.isRecording),
-            isTranscribing: Boolean(this.recorder?.isTranscribing)
+            recording: Boolean(this.recorder?.isRecording),
+            transcription: Boolean(this.recorder?.transcription),
+            video: Boolean(this.recorder?.video)
         };
     }
 

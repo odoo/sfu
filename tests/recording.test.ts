@@ -39,6 +39,7 @@ jest.mock("node:child_process", () => {
 });
 
 async function recordingSetup(env: Record<string, string | undefined>) {
+    jest.resetModules();
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sfu-test-"));
     const resourcesPath = path.join(tmpDir, "resources");
     const recordingPath = path.join(tmpDir, "recordings");
@@ -67,8 +68,7 @@ async function recordingSetup(env: Record<string, string | undefined>) {
 describe("Recording & Transcription", () => {
     test("Does not record when the feature is disabled", async () => {
         const { restore } = await recordingSetup({
-            RECORDING: undefined,
-            TRANSCRIPTION: undefined
+            RECORDING: undefined
         });
         const config = await import("#src/config");
         expect(config.recording.enabled).toBe(false);
@@ -80,14 +80,6 @@ describe("Recording & Transcription", () => {
 
         expect(await client.startRecording()).toStrictEqual({ allowed: false, state: undefined });
         expect(await client.stopRecording()).toStrictEqual({ allowed: false, state: undefined });
-        expect(await client.startTranscription()).toStrictEqual({
-            allowed: false,
-            state: undefined
-        });
-        expect(await client.stopTranscription()).toStrictEqual({
-            allowed: false,
-            state: undefined
-        });
     });
     test("can record", async () => {
         const { restore, network } = await recordingSetup({ RECORDING: "true" });
@@ -106,25 +98,27 @@ describe("Recording & Transcription", () => {
         restore();
     });
     test("can transcribe", async () => {
-        const { restore, network } = await recordingSetup({ TRANSCRIPTION: "enabled" });
+        const { restore, network } = await recordingSetup({ RECORDING: "true" });
         const channelUUID = await network.getChannelUUID();
         const user1 = await network.connect(channelUUID, 1);
         await user1.isConnected;
         const user2 = await network.connect(channelUUID, 3);
         await user2.isConnected;
-        expect(user2.sfuClient.availableFeatures.transcription).toBe(true);
-        const startResult = await user2.sfuClient.startTranscription();
+        const startResult = await user2.sfuClient.startRecording({ transcription: true });
         expect(startResult.allowed).toBe(true);
         expect(startResult.state).toBe(true);
-        const stopResult = await user2.sfuClient.stopTranscription();
+        expect(user2.sfuClient.transcription).toBe(true);
+        expect(user2.sfuClient.isRecording).toBe(true);
+
+        const stopResult = await user2.sfuClient.stopRecording();
         expect(stopResult.allowed).toBe(true);
         expect(stopResult.state).toBe(false);
+        expect(user2.sfuClient.transcription).toBe(false);
         restore();
     });
     test("can record and transcribe simultaneously", async () => {
         const { restore, network, getChannel } = await recordingSetup({
-            RECORDING: "true",
-            TRANSCRIPTION: "enabled"
+            RECORDING: "true"
         });
         const channelUUID = await network.getChannelUUID();
         const channel = getChannel(channelUUID);
@@ -132,21 +126,16 @@ describe("Recording & Transcription", () => {
         await user1.isConnected;
         const user2 = await network.connect(channelUUID, 3);
         await user2.isConnected;
-        await user2.sfuClient.startTranscription();
-        await user1.sfuClient.startRecording();
+        await user1.sfuClient.startRecording({ transcription: true, video: true });
         const recorder = channel!.recorder!;
         expect(recorder.isRecording).toBe(true);
-        expect(recorder.isTranscribing).toBe(true);
+        expect(recorder.transcription).toBe(true);
+        expect(recorder.video).toBe(true);
         expect(recorder.state).toBe(RECORDER_STATE.STARTED);
         await user1.sfuClient.stopRecording();
-        // stopping the recording while a transcription is active should not stop the transcription
         expect(recorder.isRecording).toBe(false);
-        expect(recorder.isTranscribing).toBe(true);
-        expect(recorder.state).toBe(RECORDER_STATE.STARTED);
-        await user2.sfuClient.stopTranscription();
-        expect(recorder.isRecording).toBe(false);
-        expect(recorder.isTranscribing).toBe(false);
-        expect(recorder.state).toBe(RECORDER_STATE.STOPPED);
+        expect(recorder.transcription).toBe(false);
+        expect(recorder.video).toBe(false);
         restore();
     });
 
@@ -167,7 +156,7 @@ describe("Recording & Transcription", () => {
             const channelUUID = await network.getChannelUUID();
             const user = await network.connect(channelUUID, 1);
             await user.isConnected;
-            await user.sfuClient.startRecording();
+            await user.sfuClient.startRecording({ video: true });
 
             const audioTrack = new FakeMediaStreamTrack({ kind: "audio" });
             await user.sfuClient.updateUpload(STREAM_TYPE.AUDIO, audioTrack);
@@ -248,7 +237,7 @@ describe("Recording & Transcription", () => {
             await user.sfuClient.updateUpload(STREAM_TYPE.SCREEN, videoTrack);
             await user.sfuClient.updateUpload(STREAM_TYPE.SCREEN, null);
 
-            await user.sfuClient.startRecording();
+            await user.sfuClient.startRecording({ video: true });
 
             await new Promise<void>((resolve, reject) => {
                 const timeout = setTimeout(() => {

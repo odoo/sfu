@@ -65,7 +65,6 @@ export enum SESSION_CLOSE_CODE {
 }
 export interface SessionPermissions {
     recording?: boolean;
-    transcription?: boolean;
 }
 export interface TransportConfig {
     /** Transport identifier */
@@ -156,8 +155,7 @@ export class Session extends EventEmitter {
         screen: null
     };
     public readonly permissions: SessionPermissions = Object.seal({
-        recording: false,
-        transcription: false
+        recording: false
     });
     /** Parent channel containing this session */
     private readonly _channel: Channel;
@@ -189,8 +187,7 @@ export class Session extends EventEmitter {
         return {
             availableFeatures: {
                 rtc: Boolean(this._channel.router),
-                recording: this.canRecord,
-                transcription: this.canTranscribe
+                recording: this.canRecord
             },
             channelInfo: this._channel.info
         };
@@ -198,12 +195,6 @@ export class Session extends EventEmitter {
 
     get canRecord(): boolean {
         return Boolean(this._channel.recorder && config.RECORDING && this.permissions.recording);
-    }
-
-    get canTranscribe(): boolean {
-        return Boolean(
-            this._channel.recorder && config.TRANSCRIPTION && this.permissions.transcription
-        );
     }
 
     get name(): string {
@@ -714,7 +705,11 @@ export class Session extends EventEmitter {
                     allowed: this.canRecord
                 };
                 if (this.canRecord) {
-                    actionResult.state = await this._channel.recorder!.start();
+                    const { video, transcription } = payload || {};
+                    actionResult.state = await this._channel.recorder!.start({
+                        video,
+                        transcription
+                    });
                 }
                 return actionResult;
             }
@@ -725,26 +720,6 @@ export class Session extends EventEmitter {
                 };
                 if (this.canRecord) {
                     actionResult.state = await this._channel.recorder!.stop();
-                }
-                return actionResult;
-            }
-            case CLIENT_REQUEST.START_TRANSCRIPTION: {
-                const actionResult: recordingActionResult = {
-                    state: this._channel.recorder?.isTranscribing,
-                    allowed: this.canTranscribe
-                };
-                if (this.canTranscribe) {
-                    actionResult.state = await this._channel.recorder!.startTranscription();
-                }
-                return actionResult;
-            }
-            case CLIENT_REQUEST.STOP_TRANSCRIPTION: {
-                const actionResult: recordingActionResult = {
-                    state: this._channel.recorder?.isTranscribing,
-                    allowed: this.canTranscribe
-                };
-                if (this.canTranscribe) {
-                    actionResult.state = await this._channel.recorder!.stopTranscription();
                 }
                 return actionResult;
             }

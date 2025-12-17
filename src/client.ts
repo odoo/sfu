@@ -26,7 +26,8 @@ import type {
     RequestMessage,
     StartupData,
     WebSocketCredentials,
-    recordingActionResult
+    recordingActionResult,
+    ChannelInfo
 } from "#src/shared/types";
 import type { TransportConfig, SessionId, SessionInfo } from "#src/models/session";
 
@@ -70,7 +71,7 @@ export enum CLIENT_UPDATE {
 type ClientUpdatePayload =
     | { senderId: SessionId; message: JSONSerializable }
     | { sessionId: SessionId }
-    | { isRecording: boolean }
+    | ChannelInfo
     | Record<SessionId, SessionInfo>
     | {
           type: StreamType;
@@ -154,11 +155,11 @@ export class SfuClient extends EventTarget {
     public errors: Error[] = [];
     public availableFeatures: AvailableFeatures = {
         rtc: false,
-        recording: false,
-        transcription: false
+        recording: false
     };
     public isRecording: boolean = false;
-    public isTranscribing: boolean = false;
+    public video: boolean = false;
+    public transcription: boolean = false;
     /** Current client state */
     private _state: SfuClientState = SfuClientState.DISCONNECTED;
     /** Communication bus */
@@ -274,13 +275,16 @@ export class SfuClient extends EventTarget {
         await Promise.all(proms);
         return stats;
     }
-    async startRecording(): Promise<recordingActionResult> {
+    async startRecording(
+        options: { video?: boolean; transcription?: boolean } = {}
+    ): Promise<recordingActionResult> {
         if (this.state !== SfuClientState.CONNECTED) {
             return { state: undefined, allowed: false };
         }
         return this._bus!.request(
             {
-                name: CLIENT_REQUEST.START_RECORDING
+                name: CLIENT_REQUEST.START_RECORDING,
+                payload: options
             },
             { batch: true }
         );
@@ -293,30 +297,6 @@ export class SfuClient extends EventTarget {
         return this._bus!.request(
             {
                 name: CLIENT_REQUEST.STOP_RECORDING
-            },
-            { batch: true }
-        );
-    }
-
-    async startTranscription(): Promise<recordingActionResult> {
-        if (this.state !== SfuClientState.CONNECTED) {
-            return { state: undefined, allowed: false };
-        }
-        return this._bus!.request(
-            {
-                name: CLIENT_REQUEST.START_TRANSCRIPTION
-            },
-            { batch: true }
-        );
-    }
-
-    async stopTranscription(): Promise<recordingActionResult> {
-        if (this.state !== SfuClientState.CONNECTED) {
-            return { state: undefined, allowed: false };
-        }
-        return this._bus!.request(
-            {
-                name: CLIENT_REQUEST.STOP_TRANSCRIPTION
             },
             { batch: true }
         );
@@ -537,8 +517,9 @@ export class SfuClient extends EventTarget {
                             message.data
                         ) as StartupData;
                         this.availableFeatures = availableFeatures;
-                        this.isRecording = channelInfo.isRecording;
-                        this.isTranscribing = channelInfo.isTranscribing;
+                        this.isRecording = channelInfo.recording;
+                        this.video = channelInfo.video;
+                        this.transcription = channelInfo.transcription;
                     }
                     resolve(new Bus(webSocket));
                 },
@@ -671,8 +652,9 @@ export class SfuClient extends EventTarget {
                 this._updateClient(CLIENT_UPDATE.INFO_CHANGE, payload);
                 break;
             case SERVER_MESSAGE.CHANNEL_INFO_CHANGE:
-                this.isRecording = payload.isRecording;
-                this.isTranscribing = payload.isTranscribing;
+                this.isRecording = payload.recording;
+                this.video = payload.video;
+                this.transcription = payload.transcription;
                 this._updateClient(CLIENT_UPDATE.CHANNEL_INFO_CHANGE, payload);
                 break;
         }

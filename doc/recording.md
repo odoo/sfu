@@ -33,7 +33,7 @@ flowchart TB
 
 1.  **Recorder (Channel Level)**
     *   **Scope:** Manages recording for an entire `Channel`.
-    *   **Responsibility:** Handles the lifecycle of recording and holds the  `RecordingTask`s for current sessions and listens for new sessions joining the channel to create tasks for them dynamically, based on the transcription and recording settings.
+    *   **Responsibility:** Handles the lifecycle of recording and holds the  `RecordingTask`s for current sessions and listens for new sessions joining the channel to create tasks for them dynamically.
 
 2.  **RecordingTask (Session Level)**
     *   **Scope:** Bound to a specific rtc `Session`.
@@ -56,7 +56,6 @@ The recording feature is configured via environment variables in `src/config.ts`
 | Variable           | Type    | Description                                                               | Default                    |
 | :----------------- | :------ | :------------------------------------------------------------------------ | :------------------------- |
 | `RECORDING`        | boolean | Master switch to enable/disable the recording feature.                    | `false`                    |
-| `TRANSCRIPTION`    | boolean | Master switch to enable/disable the transcription feature.                | `false`                    |
 | `RECORDING_PATH`   | string  | Directory where the raw recordings/transcriptions are saved.              | `/tmp/odoo_sfu/recordings` |
 | `DYNAMIC_MIN_PORT` | number  | Start of the port range for internal RTP routing (MediaOutput -> FFMPEG). | `50000`                    |
 | `DYNAMIC_MAX_PORT` | number  | End of the port range for internal RTP routing.                           | `59999`                    |
@@ -94,12 +93,13 @@ Contains the timestamps of the recording, and the address to which the file shou
 
 ```json
 {
+  "channelName": "discuss-channel-1234",
   "routingAddress": "http://www.oodo.com/discuss/recording/routing/1234",
+  "video": true,
+  "transcription": false,
+  "startedAt": 1670000000000,
+  "stoppedAt": 1670000060000,
   "timeStamps": [
-    {
-      "tag": "recording_started",
-      "timestamp": 1670000000000
-    },
     {
       "tag": "file_state_change",
       "timestamp": 1670000005000,

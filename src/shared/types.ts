@@ -16,8 +16,9 @@ export type WebSocketCredentials = {
 };
 
 export type ChannelInfo = {
-    isRecording: boolean;
-    isTranscribing: boolean;
+    recording: boolean;
+    transcription: boolean;
+    video: boolean;
 };
 
 type ChannelInfoUpdate = ChannelInfo & {
@@ -31,7 +32,6 @@ export type StartupData = {
 export type AvailableFeatures = {
     rtc: boolean;
     recording: boolean;
-    transcription: boolean;
 };
 
 import type { DownloadStates } from "#src/client.ts";
@@ -73,10 +73,11 @@ export type BusMessage =
           name: typeof CLIENT_REQUEST.INIT_PRODUCER;
           payload: { type: StreamType; kind: MediaKind; rtpParameters: RtpParameters };
       }
-    | { name: typeof CLIENT_REQUEST.START_RECORDING; payload?: never }
+    | {
+          name: typeof CLIENT_REQUEST.START_RECORDING;
+          payload: { video?: boolean; transcription?: boolean };
+      }
     | { name: typeof CLIENT_REQUEST.STOP_RECORDING; payload?: never }
-    | { name: typeof CLIENT_REQUEST.START_TRANSCRIPTION; payload?: never }
-    | { name: typeof CLIENT_REQUEST.STOP_TRANSCRIPTION; payload?: never }
     | {
           name: typeof SERVER_MESSAGE.BROADCAST;
           payload: { senderId: SessionId; message: JSONSerializable };
@@ -120,8 +121,6 @@ export interface RequestMap {
     [CLIENT_REQUEST.INIT_PRODUCER]: { id: string };
     [CLIENT_REQUEST.START_RECORDING]: recordingActionResult;
     [CLIENT_REQUEST.STOP_RECORDING]: recordingActionResult;
-    [CLIENT_REQUEST.START_TRANSCRIPTION]: recordingActionResult;
-    [CLIENT_REQUEST.STOP_TRANSCRIPTION]: recordingActionResult;
     [SERVER_REQUEST.INIT_CONSUMER]: void;
     [SERVER_REQUEST.INIT_TRANSPORTS]: RtpCapabilities;
     [SERVER_REQUEST.PING]: void;

@@ -24,13 +24,7 @@ async function run(): Promise<void> {
     logger.debug(`* Media compiler write tests`);
     logger.debug(`* Choose format for recording`);
     /**
-     * Maybe h264 for compatibility, ~1-2 GB/hour
-     * H.264 + CRF
-     * Codec: H.264
-     * Profile: High
-     * CRF: 18–20
-     * Preset: slow or medium
-     * Audio: Opus or AAC (96–128 kbps)
+     * AV1
      */
     logger.debug(`* Routing Address`);
     /**
