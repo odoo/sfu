@@ -128,7 +128,7 @@ The `Session` represents a single connected user/client within a `Channel`. It e
 - **WebRTC Transports**: Manages both Send (producer) and Receive (consumer) WebRTC transports.
 - **Media Handling**: Handles media `Producer`s (Audio, Video, Screen) and `Consumer`s.
 - **Signaling**: Manages signaling traffic via the `Bus`.
-- **Permissions**: Scopes permissions for active features like recording and transcription.
+- **Permissions**: Scopes permissions for active features like recording/video-recording.
 
 ### 3. Recording Models
 see [recording.md](./recording.md)

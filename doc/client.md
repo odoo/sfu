@@ -68,25 +68,14 @@ const sfu = new SfuClient();
     typeof producerStats["camera"] === "RTCStatsReport"; // true
     // see https://w3c.github.io/webrtc-pc/#rtcstatsreport-object
     ```
-- startRecording() / stopRecording()
+- startRecording({ video: boolean, transcription: boolean }) / stopRecording()
     ```js
     let isRecording = false;
     async function toggleRecording() {
         if (isRecording) {
             isRecording = await sfuClient.stopRecording();
         } else {
-            isRecording = await sfuClient.startRecording();
-        }
-    }
-    ```
-- startTranscription() / stopTranscription()
-    ```js
-    let isTranscribing = false;
-    async function toggleTranscription() {
-        if (isTranscribing) {
-            isTranscribing = await sfuClient.stopTranscription();
-        } else {
-            isTranscribing = await sfuClient.startTranscription();
+            isRecording = await sfuClient.startRecording({ video: false, transcription: false });
         }
     }
     ```
