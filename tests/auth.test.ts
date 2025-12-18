@@ -167,4 +167,33 @@ describe("Auth Service", () => {
             "Unsupported algorithm: ES512"
         );
     });
+
+    test("should encrypt and decrypt a string", () => {
+        const text = "Hello World";
+        const encrypted = auth.encrypt(text);
+        const decrypted = auth.decrypt(encrypted);
+        expect(decrypted).toBe(text);
+        expect(encrypted).not.toBe(text);
+    });
+
+    test("should produce different ciphertexts for same input (random IV)", () => {
+        const text = "Hello World";
+        const encrypted1 = auth.encrypt(text);
+        const encrypted2 = auth.encrypt(text);
+        expect(encrypted1).not.toBe(encrypted2);
+        expect(auth.decrypt(encrypted1)).toBe(text);
+        expect(auth.decrypt(encrypted2)).toBe(text);
+    });
+
+    test("should handle buffer input for encryption", () => {
+        const text = "Buffer Content";
+        const buffer = Buffer.from(text);
+        const encrypted = auth.encrypt(buffer);
+        const decrypted = auth.decrypt(encrypted);
+        expect(decrypted).toBe(text);
+    });
+
+    test("should throw error when decrypting invalid format", () => {
+        expect(() => auth.decrypt("invalid-format")).toThrow("Invalid encrypted format");
+    });
 });
