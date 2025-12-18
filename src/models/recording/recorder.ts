@@ -50,7 +50,7 @@ export type Metadata = {
 
 export type SealedMetaData = Metadata & {
     sealedAt: number;
-    secret: string; // an ecrypted version of the key used to authenticate to the remote server
+    channelKey: string;
     video: boolean;
     transcription: boolean;
 };
@@ -238,18 +238,28 @@ export class Recorder extends EventEmitter {
         this._state = RECORDER_STATE.STOPPED;
     }
 
+    /**
+     * Adds the final entries to the metadata and encrypts it.
+     *
+     * @returns encrypted metadata
+     */
     private _sealMetaData() {
         const metadata = JSON.stringify({
             ...this._metaData,
             video: this.video,
             transcription: this.transcription,
-            secret: encrypt(this._channel.key!),
+            channelKey: this._channel.key,
             sealedAt: Date.now()
         });
         this._metaData.timeStamps = [];
         this._metaData.stoppedAt = undefined;
         this._metaData.startedAt = undefined;
-        return metadata;
+        /**
+         * As the metadata can contain sensitive information, like routing
+         * with tokens, or the channel key, it is encrypted before being
+         * saved on the disk.
+         */
+        return encrypt(metadata);
     }
 
     private _onSessionJoin(id: SessionId) {

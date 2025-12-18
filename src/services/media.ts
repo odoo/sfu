@@ -101,12 +101,11 @@ async function processRecording(folderName: string) {
     const metadataPath = path.join(dir, "metadata.json");
     try {
         const content = await fs.readFile(metadataPath, "utf-8");
-        const metadata: SealedMetaData = JSON.parse(content);
+        const metadata: SealedMetaData = JSON.parse(decrypt(content));
         const expirationDate = (metadata.sealedAt || 0) + recording.fileTTL;
         if (expirationDate < Date.now()) {
             logger.debug(`Recording ${folderName} is older than ${recording.fileTTL}ms, removing`);
-            fs.rm(dir, { recursive: true });
-            return;
+            throw new Error("expired recording");
         }
         logger.debug(`Read metadata for recording ${folderName}: ${metadata.channelName}`);
         logger.debug(`Expected to be delivered at ${metadata.routingAddress}`);
@@ -121,11 +120,8 @@ async function processRecording(folderName: string) {
             });
         }
     } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-            logger.debug(`No metadata.json found in ${folderName}, skipping`);
-        } else {
-            logger.error(`Failed to process recording ${folderName}: ${error}`);
-        }
+        logger.error(`Failed to process recording ${folderName}: ${error}`);
+        fs.rm(dir, { recursive: true });
     }
 }
 
@@ -144,13 +140,12 @@ async function uploadFiles({
     }
     logger.debug(`Uploading files to ${metadata.routingAddress}`);
     try {
-        // first, asking for routing
         const jwt = sign(
             {
                 aud: metadata.routingAddress,
-                exp: Date.now() + 60 * 60 * 1000
+                exp: Date.now() / 1000 + 120
             },
-            decrypt(metadata.secret)
+            metadata.channelKey
         );
         const response = await fetch(metadata.routingAddress, {
             method: "GET",

@@ -83,7 +83,7 @@ const ALGORITHM_FUNCTIONS: Record<ALGORITHM, (data: string, key: Buffer) => Buff
 };
 
 let jwtKey: Buffer | undefined;
-let localKey: Buffer;
+let localKey: Buffer | undefined;
 const logger = new Logger("AUTH");
 
 export function start(key?: string | Buffer): void {
@@ -91,17 +91,27 @@ export function start(key?: string | Buffer): void {
     if (!authKeyB64str) {
         throw new Error("AUTH_KEY is required for authentication service");
     }
-    const localKeyB64str = config.LOCAL_KEY || "TODO";
-
     jwtKey = Buffer.isBuffer(authKeyB64str) ? authKeyB64str : Buffer.from(authKeyB64str, "base64");
-    localKey = Buffer.isBuffer(localKeyB64str)
-        ? localKeyB64str
-        : Buffer.from(localKeyB64str, "base64");
-    logger.info("auth key set");
+    const localKeyB64str = config.LOCAL_KEY;
+    if (localKeyB64str) {
+        localKey = Buffer.isBuffer(localKeyB64str)
+            ? localKeyB64str
+            : Buffer.from(localKeyB64str, "base64");
+        if (localKey.length !== 32) {
+            throw new Error(
+                `Invalid LOCAL_KEY length: ${localKey.length} bytes. It must be 32 bytes (256 bits) for AES-256-CTR.`
+            );
+        }
+    } else {
+        localKey = crypto.randomBytes(32);
+        logger.warn("LOCAL_KEY is not set, generating a random key");
+    }
+    logger.info("auth keys set");
 }
 
 export function close(): void {
     jwtKey = undefined;
+    localKey = undefined;
 }
 
 export function base64Encode(data: Buffer | string): string {
@@ -220,17 +230,34 @@ export function verify(jsonWebToken: string, key: StringLike = jwtKey!): JWTClai
 }
 
 export function encrypt(str: string | Buffer) {
-    return _encrypt(str, localKey);
+    return _encrypt(str, localKey!);
 }
 
+/**
+ * @param key Must be a 32bytes Buffer
+ */
 function _encrypt(str: string | Buffer, key: Buffer) {
-    return str;
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv("aes-256-ctr", key, iv);
+    const encrypted = Buffer.concat([cipher.update(str), cipher.final()]);
+    return `${iv.toString("hex")}:${encrypted.toString("hex")}`;
 }
 
 export function decrypt(str: string | Buffer) {
-    return _decrypt(str, localKey);
+    return _decrypt(str, localKey!);
 }
 
 function _decrypt(str: string | Buffer, key: Buffer) {
-    return str;
+    if (Buffer.isBuffer(str)) {
+        str = str.toString("utf-8");
+    }
+    const [ivHex, encryptedHex] = str.split(":");
+    if (!ivHex || !encryptedHex) {
+        throw new Error("Invalid encrypted format");
+    }
+    const iv = Buffer.from(ivHex, "hex");
+    const encrypted = Buffer.from(encryptedHex, "hex");
+    const decipher = crypto.createDecipheriv("aes-256-ctr", key, iv);
+    const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
+    return decrypted.toString("utf-8");
 }
