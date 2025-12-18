@@ -113,7 +113,7 @@ async function processRecording(folderName: string) {
         const file = await comp.compile(metadata.startedAt || 0, metadata.stoppedAt || 0);
 
         if (file) {
-            await uploadFiles({
+            await uploadFiles(file, {
                 metadata,
                 video: Boolean(metadata.video),
                 transcription: Boolean(metadata.transcription)
@@ -125,19 +125,18 @@ async function processRecording(folderName: string) {
     }
 }
 
-async function uploadFiles({
-    metadata,
-    video,
-    transcription
-}: {
-    metadata: SealedMetaData;
-    video?: boolean;
-    transcription?: boolean;
-}) {
-    if (!video && !transcription) {
-        logger.debug("No files to upload");
-        return;
+async function uploadFiles(
+    file: string,
+    {
+        metadata,
+        video,
+        transcription
+    }: {
+        metadata: SealedMetaData;
+        video?: boolean;
+        transcription?: boolean;
     }
+) {
     logger.debug(`Uploading files to ${metadata.routingAddress}`);
     try {
         const jwt = sign(
