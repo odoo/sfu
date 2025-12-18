@@ -6,11 +6,16 @@ import { WS_CLOSE_CODE } from "#src/shared/enums.ts";
 import { Bus } from "#src/shared/bus.ts";
 import { Logger, extractRequestInfo } from "#src/utils/utils.ts";
 import { AuthenticationError, OvercrowdedError } from "#src/utils/errors.ts";
-import { Session, SESSION_CLOSE_CODE } from "#src/models/session.ts";
+import { Session, SESSION_CLOSE_CODE, type SessionPermissions } from "#src/models/session.ts";
 import { Channel } from "#src/models/channel.ts";
 import { verify } from "#src/services/auth.ts";
 import type { WebSocketCredentials } from "#src/shared/types.ts";
 
+type WSConnectClaims = {
+    sfu_channel_uuid: string;
+    session_id: string;
+    permissions: SessionPermissions;
+};
 type AuthenticationPayload = WebSocketCredentials | string;
 
 const logger = new Logger("WS");
@@ -109,7 +114,7 @@ export function close(): void {
 function connect(webSocket: WebSocket, credentials: WebSocketCredentials): Session {
     const { channelUUID, jwt } = credentials;
     let channel = channelUUID ? Channel.records.get(channelUUID) : undefined;
-    const authResult = verify(jwt, channel?.key);
+    const authResult = verify<WSConnectClaims>(jwt, channel?.key);
     const { sfu_channel_uuid, session_id, permissions } = authResult;
     if (!channelUUID && sfu_channel_uuid) {
         // Cases where the channelUUID is not provided in the credentials for backwards compatibility with version 1.1 and earlier.

@@ -152,14 +152,14 @@ describe("Auth Service", () => {
             { abcd: "12345" }
         ];
         for (const payload of payloads) {
-            const token = auth.sign(payload as auth.JWTClaims);
+            const token = auth.sign(payload);
             const result = auth.verify(token);
             expect(result).toEqual(payload);
         }
     });
     test("signing should fail with an unsupported algorithm", () => {
         expect(() =>
-            auth.sign({ payload: "abc" } as auth.JWTClaims, testKey, {
+            auth.sign({ payload: "abc" }, testKey, {
                 algorithm: "HS512" as auth.ALGORITHM
             })
         ).toThrow("Unsupported algorithm: HS512");

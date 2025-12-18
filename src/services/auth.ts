@@ -3,7 +3,6 @@ import crypto from "node:crypto";
 import * as config from "#src/config.ts";
 import { Logger } from "#src/utils/utils.ts";
 import { AuthenticationError } from "#src/utils/errors.ts";
-import type { SessionId, SessionPermissions } from "#src/models/session.ts";
 import type { StringLike } from "#src/shared/types.ts";
 
 /**
@@ -20,7 +19,7 @@ interface JWTHeader {
  * JsonWebToken claims
  * @see https://datatracker.ietf.org/doc/html/rfc7519#section-4
  */
-interface RegisteredJWTClaims {
+export interface JWTClaims {
     /** Expiration time (in seconds since epoch) */
     exp?: number;
     /** Issued at (in seconds since epoch) */
@@ -36,25 +35,12 @@ interface RegisteredJWTClaims {
     /** JWT ID */
     jti?: string;
 }
-/**
- * Private JWT claims specific to the SFU
- */
-interface PrivateJWTClaims {
-    sfu_channel_uuid?: string;
-    session_id?: SessionId;
-    ice_servers?: object[];
-    permissions?: SessionPermissions;
-    sessionIdsByChannel?: Record<string, SessionId[]>;
-    /** If provided when requesting a channel, this key will be used instead of the global key to verify JWTs related to this channel */
-    key?: string;
-}
-export type JWTClaims = RegisteredJWTClaims & PrivateJWTClaims;
 
-interface ParsedJWT {
+interface ParsedJWT<T> {
     /** JWT header */
     header: JWTHeader;
     /** JWT claims/payload */
-    claims: JWTClaims;
+    claims: JWTClaims & T;
     /** Signature buffer */
     signature: Buffer;
     /** Data that was signed (header.payload) */
@@ -139,8 +125,8 @@ function base64Decode(str: string): Buffer {
  * @returns The signed JsonWebToken
  * @throws {AuthenticationError} If signing fails
  */
-export function sign(
-    claims: JWTClaims, // TODO: this should be a 'or' type of unions between core claims and the custom claims of each specific call site.
+export function sign<T>(
+    claims: JWTClaims & T, // TODO: this should be a 'or' type of unions between core claims and the custom claims of each specific call site.
     key: StringLike = jwtKey!,
     { algorithm = ALGORITHM.HS256 }: SignOptions = {}
 ): string {
@@ -164,7 +150,7 @@ export function sign(
 /**
  * @throws {AuthenticationError} If token format is invalid
  */
-function parseJwt(token: string): ParsedJWT {
+function parseJwt<T>(token: string): ParsedJWT<T> {
     const parts = token.split(".");
     if (parts.length !== 3) {
         throw new AuthenticationError("Invalid JWT format");
@@ -172,7 +158,7 @@ function parseJwt(token: string): ParsedJWT {
     const [headerB64, claimsB64, signatureB64] = parts;
     try {
         const header = JSON.parse(base64Decode(headerB64).toString()) as JWTHeader;
-        const claims = JSON.parse(base64Decode(claimsB64).toString()) as JWTClaims;
+        const claims = JSON.parse(base64Decode(claimsB64).toString()) as JWTClaims & T;
         const signature = base64Decode(signatureB64);
         const signedData = `${headerB64}.${claimsB64}`;
         return { header, claims, signature, signedData };
@@ -195,14 +181,14 @@ function safeEqual(a: Buffer, b: Buffer): boolean {
 /**
  * @throws {AuthenticationError} If verification fails
  */
-export function verify(jsonWebToken: string, key: StringLike = jwtKey!): JWTClaims {
+export function verify<T>(jsonWebToken: string, key: StringLike = jwtKey!): T & JWTClaims {
     if (!key) {
         throw new AuthenticationError("JWT verification key is not set");
     }
     const keyBuffer = Buffer.isBuffer(key) ? key : Buffer.from(key, "base64");
-    let parsedJWT: ParsedJWT;
+    let parsedJWT: ParsedJWT<T>;
     try {
-        parsedJWT = parseJwt(jsonWebToken);
+        parsedJWT = parseJwt<T>(jsonWebToken);
     } catch {
         throw new AuthenticationError("Invalid JWT format");
     }
