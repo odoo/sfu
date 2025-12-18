@@ -83,15 +83,20 @@ const ALGORITHM_FUNCTIONS: Record<ALGORITHM, (data: string, key: Buffer) => Buff
 };
 
 let jwtKey: Buffer | undefined;
+let localKey: Buffer;
 const logger = new Logger("AUTH");
 
 export function start(key?: string | Buffer): void {
-    const keyB64str = key || config.AUTH_KEY;
-    if (!keyB64str) {
+    const authKeyB64str = key || config.AUTH_KEY;
+    if (!authKeyB64str) {
         throw new Error("AUTH_KEY is required for authentication service");
     }
+    const localKeyB64str = config.LOCAL_KEY || "TODO";
 
-    jwtKey = Buffer.isBuffer(keyB64str) ? keyB64str : Buffer.from(keyB64str, "base64");
+    jwtKey = Buffer.isBuffer(authKeyB64str) ? authKeyB64str : Buffer.from(authKeyB64str, "base64");
+    localKey = Buffer.isBuffer(localKeyB64str)
+        ? localKeyB64str
+        : Buffer.from(localKeyB64str, "base64");
     logger.info("auth key set");
 }
 
@@ -212,4 +217,20 @@ export function verify(jsonWebToken: string, key: StringLike = jwtKey!): JWTClai
         throw new AuthenticationError("Token issued in the future");
     }
     return claims;
+}
+
+export function encrypt(str: string | Buffer) {
+    return _encrypt(str, localKey);
+}
+
+function _encrypt(str: string | Buffer, key: Buffer) {
+    return str;
+}
+
+export function decrypt(str: string | Buffer) {
+    return _decrypt(str, localKey);
+}
+
+function _decrypt(str: string | Buffer, key: Buffer) {
+    return str;
 }

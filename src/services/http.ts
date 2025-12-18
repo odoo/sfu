@@ -123,7 +123,9 @@ function setupRoutes(routeListener: RouteListener): void {
                 }
                 const recordingAddress = searchParams.get("recordingAddress");
                 if (recordingAddress && !claims.key) {
-                    logger.warn(`${remoteAddress}: missing key claim when creating channel`);
+                    logger.warn(
+                        `${remoteAddress}: missing key claim when creating channel with recording address`
+                    );
                     res.statusCode = 400; // bad request
                     return res.end();
                 }

@@ -32,6 +32,10 @@ if (!AUTH_KEY && !testingMode) {
         "AUTH_KEY env variable is required, it is not possible to authenticate requests without it"
     );
 }
+/**
+ * A key used for encrypting/decrypting data locally, if not set one will be randomly generated.
+ */
+export const LOCAL_KEY: string | undefined = process.env.LOCAL_KEY;
 
 /**
  * This env variable is <<REQUIRED>>, the server needs to communicate its public IP to the clients as this is the IP
@@ -181,7 +185,6 @@ export const LOG_LEVEL: LogLevel = (process.env.LOG_LEVEL as LogLevel) ?? "error
  * Prefixes yyyy-mm-dd hh:mm:ss,mmm to the logs.
  */
 export const LOG_TIMESTAMP: boolean = !FALSY_INPUT.has(process.env.LOG_TIMESTAMP!);
-
 /**
  * Colors the logs according to their level.
  */

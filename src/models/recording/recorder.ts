@@ -4,7 +4,7 @@ import { EventEmitter } from "node:events";
 import { recording } from "#src/config.ts";
 import { getFolder, type Folder } from "#src/services/resources.ts";
 import { RecordingTask, type RecordingStates } from "#src/models/recording/recording_task.ts";
-import { sign } from "#src/services/auth.ts";
+import { encrypt } from "#src/services/auth.ts";
 import { Logger } from "#src/utils/utils.ts";
 
 import { Channel } from "#src/models/channel.ts";
@@ -50,7 +50,7 @@ export type Metadata = {
 
 export type SealedMetaData = Metadata & {
     sealedAt: number;
-    routingJwt: string;
+    secret: string; // an ecrypted version of the key used to authenticate to the remote server
     video: boolean;
     transcription: boolean;
 };
@@ -239,18 +239,11 @@ export class Recorder extends EventEmitter {
     }
 
     private _sealMetaData() {
-        const routingJwt = sign(
-            {
-                aud: this._metaData.routingAddress,
-                exp: Math.floor((Date.now() + recording.fileTTL) / 1000) + 60 * 60
-            },
-            this._channel.key!
-        );
         const metadata = JSON.stringify({
             ...this._metaData,
             video: this.video,
             transcription: this.transcription,
-            routingJwt,
+            secret: encrypt(this._channel.key!),
             sealedAt: Date.now()
         });
         this._metaData.timeStamps = [];

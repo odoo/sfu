@@ -200,7 +200,8 @@ export class Session extends EventEmitter {
     }
 
     get canVideoRecord(): boolean {
-        return Boolean(this.canRecord && this.permissions.videoRecording);
+        return false; // TODO: NOT IMPLEMENTED YET
+        // return Boolean(this.canRecord && this.permissions.videoRecording);
     }
 
     get name(): string {

@@ -22,7 +22,8 @@ async function run(): Promise<void> {
     logger.debug(`* Media service / Recording compiler (also manages the folder cleanup)`);
     logger.debug(`* Media service write tests`);
     logger.debug(`* Media compiler write tests`);
-    logger.debug(`* Choose format for recording`);
+    logger.debug(`* Choose format for recording (AV1)`);
+    logger.debug(`* Only one recording per channel lifetime, merge at channel end`);
     /**
      * AV1
      */
