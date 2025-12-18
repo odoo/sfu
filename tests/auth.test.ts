@@ -207,13 +207,25 @@ describe("Auth Service", () => {
         expect(decrypted).toBe(text);
     });
 
-    test("should fail to decrypt correctly with a wrong key", () => {
+    test("should throw when decrypting with a wrong key", () => {
         const text = "Secret Message";
         const key1 = crypto.randomBytes(32);
         const key2 = crypto.randomBytes(32);
         const encrypted = auth.encrypt(text, key1);
-        const decrypted = auth.decrypt(encrypted, key2);
-        expect(decrypted).not.toBe(text);
+        expect(() => auth.decrypt(encrypted, key2)).toThrow();
+    });
+
+    test("should throw when encrypted content is tampered with", () => {
+        const text = "Secret Message";
+        const encrypted = auth.encrypt(text);
+        const [iv, tag, data] = encrypted.split(":");
+
+        // Tamper with data part (bit-flip)
+        const tamperedData = Buffer.from(data, "hex");
+        tamperedData[0] ^= 1;
+        const tamperedEncrypted = `${iv}:${tag}:${tamperedData.toString("hex")}`;
+
+        expect(() => auth.decrypt(tamperedEncrypted)).toThrow();
     });
 
     test("should throw when using a key of incorrect length", () => {

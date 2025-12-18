@@ -99,7 +99,7 @@ export function start(key?: string | Buffer): void {
             : Buffer.from(localKeyB64str, "base64");
         if (localKey.length !== 32) {
             throw new Error(
-                `Invalid LOCAL_KEY length: ${localKey.length} bytes. It must be 32 bytes (256 bits) for AES-256-CTR.`
+                `Invalid LOCAL_KEY length: ${localKey.length} bytes. It must be 32 bytes (256 bits) for AES-256-GCM.`
             );
         }
     } else {
@@ -230,29 +230,32 @@ export function verify(jsonWebToken: string, key: StringLike = jwtKey!): JWTClai
 }
 
 /**
- * Encrypts a string using AES-256-CTR
+ * Encrypts a string using AES-256-GCM
  *
  * @param str The string to encrypt
  * @param key Must be a 32bytes Buffer
  */
 export function encrypt(str: string | Buffer, key: Buffer = localKey!) {
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv("aes-256-ctr", key, iv);
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
     const encrypted = Buffer.concat([cipher.update(str), cipher.final()]);
-    return `${iv.toString("hex")}:${encrypted.toString("hex")}`;
+    const tag = cipher.getAuthTag();
+    return `${iv.toString("hex")}:${tag.toString("hex")}:${encrypted.toString("hex")}`;
 }
 
 export function decrypt(str: string | Buffer, key: Buffer = localKey!) {
     if (Buffer.isBuffer(str)) {
         str = str.toString("utf-8");
     }
-    const [ivHex, encryptedHex] = str.split(":");
-    if (ivHex === undefined || encryptedHex === undefined) {
+    const [ivHex, tagHex, encryptedHex] = str.split(":");
+    if (ivHex === undefined || tagHex === undefined || encryptedHex === undefined) {
         throw new Error("Invalid encrypted format");
     }
     const iv = Buffer.from(ivHex, "hex");
+    const tag = Buffer.from(tagHex, "hex");
     const encrypted = Buffer.from(encryptedHex, "hex");
-    const decipher = crypto.createDecipheriv("aes-256-ctr", key, iv);
+    const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+    decipher.setAuthTag(tag);
     const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
     return decrypted.toString("utf-8");
 }
