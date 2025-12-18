@@ -3,6 +3,7 @@ import path from "node:path";
 import os from "node:os";
 
 import { recording, RECORDING_PATH } from "#src/config.ts";
+import { decrypt, sign } from "#src/services/auth.ts";
 import { MediaCompiler } from "#src/models/recording/media_compiler.ts";
 import type { SealedMetaData } from "#src/models/recording/recorder.ts";
 import { Logger } from "#src/utils/utils.ts";
@@ -144,14 +145,17 @@ async function uploadFiles({
     logger.debug(`Uploading files to ${metadata.routingAddress}`);
     try {
         // first, asking for routing
-        const queryParameters = new URLSearchParams({
-            video: `${video ? 1 : 0}`,
-            transcription: `${transcription ? 1 : 0}`
-        });
-        const response = await fetch(`${metadata.routingAddress}?${queryParameters}`, {
+        const jwt = sign(
+            {
+                aud: metadata.routingAddress,
+                exp: Date.now() + 60 * 60 * 1000
+            },
+            decrypt(metadata.secret)
+        );
+        const response = await fetch(metadata.routingAddress, {
             method: "GET",
             headers: {
-                Authorization: `Bearer ${metadata.routingJwt}`
+                Authorization: `Bearer ${jwt}`
             }
         });
         if (!response.ok) {
