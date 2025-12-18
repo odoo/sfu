@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+
 import { describe, beforeEach, afterEach, expect } from "@jest/globals";
 
 import * as auth from "#src/services/auth";
@@ -195,5 +197,45 @@ describe("Auth Service", () => {
 
     test("should throw error when decrypting invalid format", () => {
         expect(() => auth.decrypt("invalid-format")).toThrow("Invalid encrypted format");
+    });
+
+    test("should encrypt and decrypt with a custom 32-byte key", () => {
+        const text = "Secret Message";
+        const customKey = crypto.randomBytes(32);
+        const encrypted = auth.encrypt(text, customKey);
+        const decrypted = auth.decrypt(encrypted, customKey);
+        expect(decrypted).toBe(text);
+    });
+
+    test("should fail to decrypt correctly with a wrong key", () => {
+        const text = "Secret Message";
+        const key1 = crypto.randomBytes(32);
+        const key2 = crypto.randomBytes(32);
+        const encrypted = auth.encrypt(text, key1);
+        const decrypted = auth.decrypt(encrypted, key2);
+        expect(decrypted).not.toBe(text);
+    });
+
+    test("should throw when using a key of incorrect length", () => {
+        const text = "Secret Message";
+        const shortKey = crypto.randomBytes(16);
+        expect(() => auth.encrypt(text, shortKey)).toThrow();
+
+        const encrypted = auth.encrypt(text);
+        expect(() => auth.decrypt(encrypted, shortKey)).toThrow();
+    });
+
+    test("should handle empty string", () => {
+        const text = "";
+        const encrypted = auth.encrypt(text);
+        const decrypted = auth.decrypt(encrypted);
+        expect(decrypted).toBe("");
+    });
+
+    test("should handle a very large payload", () => {
+        const largeText = "A".repeat(1024 * 1024); // 1MB
+        const encrypted = auth.encrypt(largeText);
+        const decrypted = auth.decrypt(encrypted);
+        expect(decrypted).toBe(largeText);
     });
 });

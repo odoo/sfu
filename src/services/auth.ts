@@ -229,30 +229,25 @@ export function verify(jsonWebToken: string, key: StringLike = jwtKey!): JWTClai
     return claims;
 }
 
-export function encrypt(str: string | Buffer) {
-    return _encrypt(str, localKey!);
-}
-
 /**
+ * Encrypts a string using AES-256-CTR
+ *
+ * @param str The string to encrypt
  * @param key Must be a 32bytes Buffer
  */
-function _encrypt(str: string | Buffer, key: Buffer) {
+export function encrypt(str: string | Buffer, key: Buffer = localKey!) {
     const iv = crypto.randomBytes(16);
     const cipher = crypto.createCipheriv("aes-256-ctr", key, iv);
     const encrypted = Buffer.concat([cipher.update(str), cipher.final()]);
     return `${iv.toString("hex")}:${encrypted.toString("hex")}`;
 }
 
-export function decrypt(str: string | Buffer) {
-    return _decrypt(str, localKey!);
-}
-
-function _decrypt(str: string | Buffer, key: Buffer) {
+export function decrypt(str: string | Buffer, key: Buffer = localKey!) {
     if (Buffer.isBuffer(str)) {
         str = str.toString("utf-8");
     }
     const [ivHex, encryptedHex] = str.split(":");
-    if (!ivHex || !encryptedHex) {
+    if (ivHex === undefined || encryptedHex === undefined) {
         throw new Error("Invalid encrypted format");
     }
     const iv = Buffer.from(ivHex, "hex");
