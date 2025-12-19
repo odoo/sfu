@@ -251,3 +251,23 @@ export const mockFsSyncModule = {
     ),
     mkdirSync: jest.fn((path: string) => mockFs.mkdir(path))
 };
+
+export function mockNodeFS() {
+    jest.mock("node:fs", () => {
+        const { mockFsSyncModule } = jest.requireActual("#tests/utils/disk.ts") as {
+            mockFsSyncModule: typeof import("#tests/utils/disk.ts").mockFsSyncModule;
+        };
+        return {
+            ...(jest.requireActual("node:fs") as Record<string, unknown>),
+            mkdtempSync: mockFsSyncModule.mkdtempSync,
+            rmSync: mockFsSyncModule.rmSync,
+            mkdirSync: mockFsSyncModule.mkdirSync
+        };
+    });
+    jest.mock("node:fs/promises", () => {
+        const { mockFsModule } = jest.requireActual("#tests/utils/disk.ts") as {
+            mockFsModule: typeof import("#tests/utils/disk.ts").mockFsModule;
+        };
+        return mockFsModule;
+    });
+}
