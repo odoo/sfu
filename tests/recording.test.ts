@@ -235,7 +235,7 @@ describe("Media Service", () => {
 
         mockFetch.mockResolvedValue({
             ok: true,
-            json: async () => ({ recording: "http://upload/url" }),
+            json: async () => ({ recording: "!http://upload/url" }),
             statusText: "OK"
         } as Response);
 
@@ -259,7 +259,7 @@ describe("Media Service", () => {
         const recordingDir = `/mock/recordings/${recordingName}`;
         const metadata = {
             channelName: "Test Channel",
-            routingAddress: "http://odoo/routing",
+            routingAddress: "!http://odoo/routing",
             sealedAt: Date.now() - 1000,
             startedAt: 1000,
             stoppedAt: 5000,
@@ -299,7 +299,7 @@ describe("Media Service", () => {
         expect(mockFs.exists(compiledPath)).toBe(true);
 
         expect(mockFetch).toHaveBeenCalledWith(
-            "http://odoo/routing",
+            "!http://odoo/routing",
             expect.objectContaining({
                 method: "GET",
                 headers: expect.objectContaining({ Authorization: "Bearer mock_jwt" })
