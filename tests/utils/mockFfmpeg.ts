@@ -1,8 +1,17 @@
 import { EventEmitter } from "node:events";
-import type { ChildProcess } from "node:child_process";
-import { Readable, Writable } from "node:stream";
+import type { SpawnOptions, ChildProcess } from "node:child_process";
+import { Readable, Writable, PassThrough } from "node:stream";
 import { jest } from "@jest/globals";
 import { mockFs } from "./disk.ts";
+
+export type ChildProcessLike = {
+    stdin: PassThrough;
+    stdout: PassThrough;
+    stderr: PassThrough;
+    kill: (signal?: number | string) => boolean;
+    killed: boolean;
+    pid: number;
+} & ChildProcess;
 
 export class MockChildProcess extends EventEmitter implements ChildProcess {
     stdin: Writable | null = new Writable({ write: (c, e, cb) => cb() });
@@ -67,3 +76,20 @@ export class MockChildProcess extends EventEmitter implements ChildProcess {
 export const mockSpawn = jest.fn((command: string, args: string[], options?: unknown) => {
     return new MockChildProcess(command, args);
 });
+
+export function mockFfmpeg() {
+    jest.mock("node:child_process", () => {
+        const original = jest.requireActual("node:child_process") as {
+            spawn: (command: string, args: string[], options: SpawnOptions) => ChildProcessLike;
+        };
+        return {
+            ...original,
+            spawn: (command: string, args: string[], options: SpawnOptions): ChildProcessLike => {
+                if (command === "ffmpeg") {
+                    return mockSpawn(command, args, options) as unknown as ChildProcessLike;
+                }
+                return original.spawn(command, args, options);
+            }
+        };
+    });
+}

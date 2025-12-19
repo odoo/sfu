@@ -1,4 +1,3 @@
-import type { SpawnOptions, ChildProcess } from "node:child_process";
 import path from "node:path";
 import { PassThrough } from "node:stream";
 import { once } from "node:events";
@@ -11,50 +10,16 @@ import { CLIENT_UPDATE } from "#src/client";
 import { TIME_TAG } from "#src/models/recording/recorder.ts";
 
 import { recordingSetup, setupUnitTestsEnv } from "#tests/utils/testHelpers.ts";
-import { mockSpawn, MockChildProcess } from "#tests/utils/mockFfmpeg.ts";
+import {
+    mockFfmpeg,
+    mockSpawn,
+    ChildProcessLike,
+    MockChildProcess
+} from "#tests/utils/mockFfmpeg.ts";
+import { mockNodeFS } from "#tests/utils/disk.ts";
 
-type ChildProcessLike = {
-    stdin: PassThrough;
-    stdout: PassThrough;
-    stderr: PassThrough;
-    kill: (signal?: number | string) => boolean;
-    killed: boolean;
-    pid: number;
-} & ChildProcess;
-
-jest.mock("node:fs", () => {
-    const { mockFsSyncModule } = jest.requireActual("#tests/utils/disk.ts") as {
-        mockFsSyncModule: typeof import("#tests/utils/disk.ts").mockFsSyncModule;
-    };
-    return {
-        ...(jest.requireActual("node:fs") as Record<string, unknown>),
-        mkdtempSync: mockFsSyncModule.mkdtempSync,
-        rmSync: mockFsSyncModule.rmSync,
-        mkdirSync: mockFsSyncModule.mkdirSync
-    };
-});
-
-jest.mock("node:fs/promises", () => {
-    const { mockFsModule } = jest.requireActual("#tests/utils/disk.ts") as {
-        mockFsModule: typeof import("#tests/utils/disk.ts").mockFsModule;
-    };
-    return mockFsModule;
-});
-
-jest.mock("node:child_process", () => {
-    const original = jest.requireActual("node:child_process") as {
-        spawn: (command: string, args: string[], options: SpawnOptions) => ChildProcessLike;
-    };
-    return {
-        ...original,
-        spawn: (command: string, args: string[], options: SpawnOptions): ChildProcessLike => {
-            if (command === "ffmpeg") {
-                return mockSpawn(command, args, options) as unknown as ChildProcessLike;
-            }
-            return original.spawn(command, args, options);
-        }
-    };
-});
+mockNodeFS();
+mockFfmpeg();
 
 describe("Recording & Transcription", () => {
     test("Does not record when the feature is disabled", async () => {
@@ -122,7 +87,7 @@ describe("Recording & Transcription", () => {
         mockSpawn.mockImplementation((_cmd, args) => {
             const mp = new MockChildProcess("ffmpeg", args || []);
             mp.stdin = new PassThrough();
-            return mp as unknown as MockChildProcess;
+            return mp;
         });
 
         const { restore, network } = await recordingSetup({ RECORDING: "true" });
@@ -175,7 +140,7 @@ describe("Recording & Transcription", () => {
             expect(videoSdp).toBeDefined();
             expect(videoSdp).toContain("s=FFmpeg");
 
-            const callArgs = mockSpawn.mock.calls.map((c) => c[1] as string[]);
+            const callArgs = mockSpawn.mock.calls.map((c) => c[1]);
             const audioArgs = callArgs.find((args) => args.includes("-c:a"));
             const videoArgs = callArgs.find((args) => args.includes("-c:v"));
 
@@ -223,7 +188,7 @@ describe("Recording & Transcription", () => {
             });
 
             expect(mockSpawn).toHaveBeenCalledTimes(1);
-            const args = mockSpawn.mock.calls[0][1] as string[];
+            const args = mockSpawn.mock.calls[0][1];
             expect(args.join(" ")).toContain("-c:a");
             expect(args.join(" ")).not.toContain("-c:v");
 
@@ -245,7 +210,7 @@ describe("Recording & Transcription", () => {
 
             expect(mockSpawn).toHaveBeenCalledTimes(2);
             const calls = mockSpawn.mock.calls;
-            const secondCallArgs = calls[1][1] as string[];
+            const secondCallArgs = calls[1][1];
             expect(secondCallArgs.join(" ")).toContain("-c:v");
         } finally {
             restore();
