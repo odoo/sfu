@@ -72,6 +72,7 @@ const sfu = new SfuClient();
     ```js
     let isRecording = false;
     async function toggleRecording() {
+        // TODO edit doc, no longer returns iRecording, it returns { allowed }, recording state is an event on sfu client.
         if (isRecording) {
             isRecording = await sfuClient.stopRecording();
         } else {
