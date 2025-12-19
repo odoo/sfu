@@ -1,0 +1,255 @@
+import { jest } from "@jest/globals";
+import path from "node:path";
+
+/**
+ * Mock file system to avoid interacting with the disk during tests.
+ */
+export class MockFileSystem {
+    private files = new Map<string, string>();
+    private dirs = new Set<string>();
+
+    constructor() {
+        this.dirs.add("/");
+    }
+
+    reset() {
+        this.files.clear();
+        this.dirs.clear();
+        this.dirs.add("/");
+    }
+
+    async readdir(dirPath: string, options?: { withFileTypes?: boolean }): Promise<unknown[]> {
+        const normalizedDir = path.resolve(dirPath);
+        if (!this.dirs.has(normalizedDir)) {
+            const err = new Error(
+                `ENOENT: no such file or directory, scandir '${normalizedDir}'`
+            ) as NodeJS.ErrnoException;
+            err.code = "ENOENT";
+            throw err;
+        }
+
+        const entries: unknown[] = [];
+        for (const filePath of this.files.keys()) {
+            if (path.dirname(filePath) === normalizedDir) {
+                const name = path.basename(filePath);
+                if (options?.withFileTypes) {
+                    entries.push({
+                        name,
+                        isDirectory: () => false,
+                        isFile: () => true
+                    });
+                } else {
+                    entries.push(name);
+                }
+            }
+        }
+        for (const d of this.dirs) {
+            if (path.dirname(d) === normalizedDir && d !== normalizedDir) {
+                const name = path.basename(d);
+                if (options?.withFileTypes) {
+                    entries.push({
+                        name,
+                        isDirectory: () => true,
+                        isFile: () => false
+                    });
+                } else {
+                    entries.push(name);
+                }
+            }
+        }
+        return entries;
+    }
+
+    async readFile(filePath: string, encoding?: string): Promise<string> {
+        const normalizedPath = path.resolve(filePath);
+        if (!this.files.has(normalizedPath)) {
+            const err = new Error(
+                `ENOENT: no such file or directory, open '${normalizedPath}'`
+            ) as NodeJS.ErrnoException;
+            err.code = "ENOENT";
+            throw err;
+        }
+        return this.files.get(normalizedPath)!;
+    }
+
+    async access(filePath: string): Promise<void> {
+        const normalizedPath = path.resolve(filePath);
+        if (!this.files.has(normalizedPath) && !this.dirs.has(normalizedPath)) {
+            const err = new Error(
+                `ENOENT: no such file or directory, access '${normalizedPath}'`
+            ) as NodeJS.ErrnoException;
+            err.code = "ENOENT";
+            throw err;
+        }
+    }
+
+    async rm(
+        targetPath: string,
+        options?: { recursive?: boolean; force?: boolean }
+    ): Promise<void> {
+        const normalized = path.resolve(targetPath);
+
+        if (this.files.has(normalized)) {
+            this.files.delete(normalized);
+            return;
+        }
+
+        if (this.dirs.has(normalized)) {
+            if (options?.recursive) {
+                for (const f of this.files.keys()) {
+                    if (f.startsWith(normalized + path.sep) || f === normalized) {
+                        this.files.delete(f);
+                    }
+                }
+                for (const d of this.dirs) {
+                    if (d.startsWith(normalized + path.sep) || d === normalized) {
+                        this.dirs.delete(d);
+                    }
+                }
+            } else {
+                this.dirs.delete(normalized);
+            }
+            return;
+        }
+
+        if (!options?.force) {
+            const err = new Error(
+                `ENOENT: no such file or directory, rm '${normalized}'`
+            ) as NodeJS.ErrnoException;
+            err.code = "ENOENT";
+            throw err;
+        }
+    }
+
+    write(filePath: string, content: string) {
+        const normalized = path.resolve(filePath);
+        this.files.set(normalized, content);
+        let parent = path.dirname(normalized);
+        while (parent && parent !== "/" && parent !== ".") {
+            this.dirs.add(parent);
+            parent = path.dirname(parent);
+        }
+        this.dirs.add(path.dirname(normalized));
+    }
+
+    mkdir(dirPath: string) {
+        this.dirs.add(path.resolve(dirPath));
+    }
+
+    mkdtempSync(prefix: string): string {
+        const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+        const tempPath = path.resolve(prefix + uniqueSuffix);
+        this.dirs.add(tempPath);
+        return tempPath;
+    }
+
+    rmSync(targetPath: string, options?: { recursive?: boolean; force?: boolean }): void {
+        const normalized = path.resolve(targetPath);
+
+        if (this.files.has(normalized)) {
+            this.files.delete(normalized);
+            return;
+        }
+
+        if (this.dirs.has(normalized)) {
+            if (options?.recursive) {
+                for (const f of this.files.keys()) {
+                    if (f.startsWith(normalized + path.sep) || f === normalized) {
+                        this.files.delete(f);
+                    }
+                }
+                for (const d of this.dirs) {
+                    if (d.startsWith(normalized + path.sep) || d === normalized) {
+                        this.dirs.delete(d);
+                    }
+                }
+            } else {
+                this.dirs.delete(normalized);
+            }
+            return;
+        }
+
+        if (!options?.force) {
+            const err = new Error(
+                `ENOENT: no such file or directory, rm '${normalized}'`
+            ) as NodeJS.ErrnoException;
+            err.code = "ENOENT";
+            throw err;
+        }
+    }
+
+    rename(oldPath: string, newPath: string) {
+        const normalizedOld = path.resolve(oldPath);
+        const normalizedNew = path.resolve(newPath);
+
+        if (this.files.has(normalizedOld)) {
+            const content = this.files.get(normalizedOld)!;
+            this.files.delete(normalizedOld);
+            this.write(normalizedNew, content);
+            return;
+        }
+
+        if (this.dirs.has(normalizedOld)) {
+            this.dirs.delete(normalizedOld);
+            this.dirs.add(normalizedNew);
+
+            // Move all children
+            const oldPrefix = normalizedOld + path.sep;
+            const newPrefix = normalizedNew + path.sep;
+
+            for (const [f, c] of this.files) {
+                if (f.startsWith(oldPrefix)) {
+                    this.files.delete(f);
+                    this.files.set(f.replace(oldPrefix, newPrefix), c);
+                }
+            }
+            // Move subdirectories
+            for (const d of Array.from(this.dirs)) {
+                if (d.startsWith(oldPrefix)) {
+                    this.dirs.delete(d);
+                    this.dirs.add(d.replace(oldPrefix, newPrefix));
+                }
+            }
+            return;
+        }
+
+        const err = new Error(
+            `ENOENT: no such file or directory, rename '${normalizedOld}' -> '${normalizedNew}'`
+        ) as NodeJS.ErrnoException;
+        err.code = "ENOENT";
+        throw err;
+    }
+
+    exists(filePath: string): boolean {
+        const normalized = path.resolve(filePath);
+        return this.files.has(normalized) || this.dirs.has(normalized);
+    }
+}
+
+export const mockFs = new MockFileSystem();
+
+export const mockFsModule = {
+    readdir: jest.fn((path: string, opts: unknown) =>
+        mockFs.readdir(path, opts as { withFileTypes?: boolean })
+    ),
+    readFile: jest.fn((path: string, enc: unknown) => mockFs.readFile(path, enc as string)),
+    access: jest.fn((path: string) => mockFs.access(path)),
+    rm: jest.fn((path: string, opts: unknown) =>
+        mockFs.rm(path, opts as { recursive?: boolean; force?: boolean })
+    ),
+    mkdir: jest.fn((path: string, opts: unknown) => Promise.resolve(mockFs.mkdir(path))),
+    writeFile: jest.fn((path: string, content: string) =>
+        Promise.resolve(mockFs.write(path, content))
+    ),
+    rename: jest.fn((oldPath: string, newPath: string) =>
+        Promise.resolve(mockFs.rename(oldPath, newPath))
+    )
+};
+
+export const mockFsSyncModule = {
+    mkdtempSync: jest.fn((prefix: string) => mockFs.mkdtempSync(prefix)),
+    rmSync: jest.fn((path: string, opts: unknown) =>
+        mockFs.rmSync(path, opts as { recursive?: boolean; force?: boolean })
+    ),
+    mkdirSync: jest.fn((path: string) => mockFs.mkdir(path))
+};
