@@ -156,6 +156,24 @@ function setupRoutes(routeListener: RouteListener): void {
             }
         }
     });
+    /**
+     * POST /v1/disconnect
+     *
+     * Disconnects specific sessions from their respective channels.
+     * Only the creator of a channel (matching remote address) is authorized to disconnect sessions from it.
+     *
+     * ### Body
+     * - required: A string containing a signed JWT.
+     *
+     * ### JWT Claims
+     * - required: `sessionIdsByChannel: Record<string, SessionId[]>`
+     *      A mapping where keys are channel UUIDs and values are arrays of session IDs to be kicked.
+     *
+     * ### Responses
+     * - `200 OK` sessions successfully processed for disconnection.
+     * - `400 Bad Request` the request body is not a valid string.
+     * - `422 Unprocessable Entity` invalid JWT or error during processing.
+     */
     routeListener.post(`/v${API_VERSION}/disconnect`, {
         callback: async (req, res, { remoteAddress }) => {
             try {
