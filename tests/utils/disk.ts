@@ -193,7 +193,6 @@ export class MockFileSystem {
             this.dirs.delete(normalizedOld);
             this.dirs.add(normalizedNew);
 
-            // Move all children
             const oldPrefix = normalizedOld + path.sep;
             const newPrefix = normalizedNew + path.sep;
 
@@ -203,7 +202,6 @@ export class MockFileSystem {
                     this.files.set(f.replace(oldPrefix, newPrefix), c);
                 }
             }
-            // Move subdirectories
             for (const d of Array.from(this.dirs)) {
                 if (d.startsWith(oldPrefix)) {
                     this.dirs.delete(d);

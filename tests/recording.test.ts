@@ -1,6 +1,4 @@
 import type { SpawnOptions, ChildProcess } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
 import { once } from "node:events";
@@ -12,9 +10,8 @@ import { STREAM_TYPE } from "#src/shared/enums.ts";
 import { CLIENT_UPDATE } from "#src/client";
 import { TIME_TAG } from "#src/models/recording/recorder.ts";
 
-import { withMockEnv } from "#tests/utils/utils";
+import { recordingSetup, setupUnitTestsEnv } from "#tests/utils/testHelpers.ts";
 import { mockSpawn, MockChildProcess } from "#tests/utils/mockFfmpeg.ts";
-import { mockFs } from "#tests/utils/disk.ts";
 
 type ChildProcessLike = {
     stdin: PassThrough;
@@ -58,42 +55,6 @@ jest.mock("node:child_process", () => {
         }
     };
 });
-
-async function recordingSetup(env: Record<string, string | undefined>) {
-    jest.resetModules();
-    mockFs.reset(); // Reset fake FS state
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sfu-test-"));
-    const resourcesPath = path.join(tmpDir, "resources");
-    const recordingPath = path.join(tmpDir, "recordings");
-
-    // Create these directories exist in mock fs
-    // mkdtempSync creates the tmpDir.
-    // We need to create resourcesPath and recordingPath
-    fs.mkdirSync(resourcesPath);
-    fs.mkdirSync(recordingPath);
-
-    // making sure that means during the tests, we don't clog the resources and recordings directories
-    const restoreEnv = withMockEnv({
-        RESOURCES_PATH: resourcesPath,
-        RECORDING_PATH: recordingPath,
-        ...env
-    });
-    const { LocalNetwork } = await import("#tests/utils/network");
-    const { Channel } = await import("#src/models/channel");
-    const network = new LocalNetwork();
-    await network.start("0.0.0.0", 61254);
-    return {
-        restore: () => {
-            restoreEnv();
-            network.close();
-            // fs.rmSync(tmpDir, { recursive: true, force: true });
-            // Mock rmSync will handle cleanup in memory
-            fs.rmSync(tmpDir, { recursive: true, force: true });
-        },
-        getChannel: (uuid: string) => Channel.records.get(uuid),
-        network
-    };
-}
 
 describe("Recording & Transcription", () => {
     test("Does not record when the feature is disabled", async () => {
@@ -296,69 +257,23 @@ describe("Media Service", () => {
     let mediaService: typeof import("#src/services/media.ts");
     let mockFs: typeof import("#tests/utils/disk.ts").mockFs;
     let mockFsModule: typeof import("#tests/utils/disk.ts").mockFsModule;
-    // mockSpawn should use the global variable from top-level import to matches the global jest.mock closure.
 
-    // Mock fetch
     const mockFetch = jest.fn() as jest.MockedFunction<typeof fetch>;
     const originalFetch = global.fetch;
 
     beforeEach(async () => {
-        jest.resetModules();
-        const disk = await import("#tests/utils/disk.ts");
+        const env = await setupUnitTestsEnv();
+        mockFs = env.mockFs;
+        mockFsModule = env.mockFsModule;
 
-        mockFs = disk.mockFs;
-        mockFsModule = disk.mockFsModule;
-        const ffmpeg = await import("#tests/utils/mockFfmpeg.ts");
-        const FreshMockChildProcess = ffmpeg.MockChildProcess;
-
-        mockFs.reset();
-        mockFs.mkdir("/mock/recordings");
         global.fetch = mockFetch;
-        jest.clearAllMocks();
 
-        // Setup default fetch response
         mockFetch.mockResolvedValue({
             ok: true,
             json: async () => ({ recording: "http://upload/url" }),
             statusText: "OK"
         } as Response);
 
-        // Mock config
-        jest.doMock("#src/config.ts", () => ({
-            __esModule: true,
-            recording: {
-                enabled: true,
-                fileTTL: 1000 * 60 * 60, // 1 hour
-                audioCodec: "libopus",
-                audioBitRate: "64k"
-            },
-            RECORDING_PATH: "/mock/recordings",
-            LOG_LEVEL: "none"
-        }));
-
-        // Mock auth
-        jest.doMock("#src/services/auth.ts", () => ({
-            __esModule: true,
-            decrypt: (content: string) => content,
-            sign: () => "mock_jwt"
-        }));
-
-        // Mock logger
-        jest.doMock("#src/utils/utils.ts", () => ({
-            __esModule: true,
-            LogLevel: { DEBUG: "debug" },
-            getAllowedCodecs: () => [],
-            Logger: class {
-                info() {}
-                error() {}
-                warn() {}
-                debug() {}
-                verbose() {}
-            }
-        }));
-        mockSpawn.mockImplementation(
-            (command, args) => new FreshMockChildProcess(command, args as string[])
-        );
         mediaService = await import("#src/services/media.ts");
     });
 
@@ -466,43 +381,8 @@ describe("MediaCompiler Unit Tests", () => {
     // mockSpawn uses global variable
 
     beforeEach(async () => {
-        jest.resetModules();
-        const disk = await import("#tests/utils/disk.ts");
-        mockFs = disk.mockFs;
-        const ffmpeg = await import("#tests/utils/mockFfmpeg.ts");
-        const FreshMockChildProcess = ffmpeg.MockChildProcess;
-
-        mockFs.reset();
-        jest.clearAllMocks();
-
-        // Mock config required for MediaCompiler if any (likely just utils or defaults)
-        jest.doMock("#src/config.ts", () => ({
-            __esModule: true,
-            // Add config mocks if MediaCompiler needs them (it uses config.recording?)
-            recording: {
-                audioCodec: "libopus",
-                audioBitRate: "64k"
-            }
-        }));
-
-        // Logger mock might be needed
-        jest.doMock("#src/utils/utils.ts", () => ({
-            __esModule: true,
-            LogLevel: { DEBUG: "debug" },
-            getAllowedCodecs: () => [],
-            Logger: class {
-                info() {}
-                error() {}
-                warn() {}
-                debug() {}
-                verbose() {}
-            }
-        }));
-
-        // Restore mockSpawn implementation with FRESH MockChildProcess
-        mockSpawn.mockImplementation(
-            (command, args) => new FreshMockChildProcess(command, args as string[])
-        );
+        const env = await setupUnitTestsEnv();
+        mockFs = env.mockFs;
 
         MediaCompiler = (await import("#src/models/recording/media_compiler.ts")).MediaCompiler;
     });
