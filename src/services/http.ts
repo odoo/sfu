@@ -91,24 +91,24 @@ function setupRoutes(routeListener: RouteListener): void {
      * Provides a channel to host a rtc conference between user sessions.
      *
      * ### Headers
-     * - `Authorization: Bearer <JWT>` — required.
-     *   The JWT must include the `iss` (issuer) claim identifying the caller.
-     *   This claim ensures idempotency: only one channel is created per unique issuer.
-     *   To create multiple channels, the caller must provide a distinct `iss` for each request.
+     * - required:`Authorization: Bearer <JWT>`
+     *      The JWT must include the `iss` (issuer) claim identifying the caller.
+     *      `claim.iss` ensures idempotency: only one channel is created per unique issuer.
+     *      To create multiple channels, the caller must provide a distinct `iss` for each request.
      *
      * ### Query Parameters
-     * - `webRTC` — optional, defaults to `"true"`.
-     *   When set to `"false"`, disables WebRTC setup and creates a non-media channel.
-     * - `recordingAddress` — optional.
-     *   If provided, enables recording and specifies the address
-     *   that the SFU can contact to get routing instructions for the recording.
+     * - optional:`webRTC` defaults to `"true"`.
+     *      When set to `"false"`, disables WebRTC setup and creates a non-media channel.
+     * - optional:`recordingAddress`.
+     *      If provided, enables recording and specifies the address
+     *      that the SFU can contact to get routing instructions for the recording.
      *
      * ### Responses
-     * - `200 OK` — returns `{ uuid: string, url: string }`
-     * - `400 Bad Request` — provided a `recordingAddress` without a `key` claim
-     * - `401 Unauthorized` — missing or invalid Authorization header
-     * - `403 Forbidden` — missing `iss` claim
-     * - `500 Internal Server Error` — failed to create the channel
+     * - `200 OK` returns `{ uuid: string, url: string }`
+     * - `400 Bad Request` provided a `recordingAddress` without a `key` claim
+     * - `401 Unauthorized` missing or invalid Authorization header
+     * - `403 Forbidden` missing `iss` claim
+     * - `500 Internal Server Error` failed to create the channel
      */
     routeListener.get(`/v${API_VERSION}/channel`, {
         callback: async (req, res, { host, protocol, remoteAddress, searchParams }) => {
