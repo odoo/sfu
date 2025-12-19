@@ -20,29 +20,8 @@ export class MockFileSystem {
 
     async readdir(dirPath: string, options?: { withFileTypes?: boolean }): Promise<unknown[]> {
         const normalizedDir = path.resolve(dirPath);
-        if (!this.dirs.has(normalizedDir)) {
-            const err = new Error(
-                `ENOENT: no such file or directory, scandir '${normalizedDir}'`
-            ) as NodeJS.ErrnoException;
-            err.code = "ENOENT";
-            throw err;
-        }
-
         const entries: unknown[] = [];
-        for (const filePath of this.files.keys()) {
-            if (path.dirname(filePath) === normalizedDir) {
-                const name = path.basename(filePath);
-                if (options?.withFileTypes) {
-                    entries.push({
-                        name,
-                        isDirectory: () => false,
-                        isFile: () => true
-                    });
-                } else {
-                    entries.push(name);
-                }
-            }
-        }
+
         for (const d of this.dirs) {
             if (path.dirname(d) === normalizedDir && d !== normalizedDir) {
                 const name = path.basename(d);
@@ -83,10 +62,7 @@ export class MockFileSystem {
         }
     }
 
-    async rm(
-        targetPath: string,
-        options?: { recursive?: boolean; force?: boolean }
-    ): Promise<void> {
+    async rm(targetPath: string, options?: { recursive?: boolean }): Promise<void> {
         const normalized = path.resolve(targetPath);
 
         if (this.files.has(normalized)) {
@@ -111,14 +87,6 @@ export class MockFileSystem {
             }
             return;
         }
-
-        if (!options?.force) {
-            const err = new Error(
-                `ENOENT: no such file or directory, rm '${normalized}'`
-            ) as NodeJS.ErrnoException;
-            err.code = "ENOENT";
-            throw err;
-        }
     }
 
     write(filePath: string, content: string) {
@@ -134,13 +102,6 @@ export class MockFileSystem {
 
     mkdir(dirPath: string) {
         this.dirs.add(path.resolve(dirPath));
-    }
-
-    mkdtempSync(prefix: string): string {
-        const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-        const tempPath = path.resolve(prefix + uniqueSuffix);
-        this.dirs.add(tempPath);
-        return tempPath;
     }
 
     rmSync(targetPath: string, options?: { recursive?: boolean; force?: boolean }): void {
@@ -181,13 +142,6 @@ export class MockFileSystem {
     rename(oldPath: string, newPath: string) {
         const normalizedOld = path.resolve(oldPath);
         const normalizedNew = path.resolve(newPath);
-
-        if (this.files.has(normalizedOld)) {
-            const content = this.files.get(normalizedOld)!;
-            this.files.delete(normalizedOld);
-            this.write(normalizedNew, content);
-            return;
-        }
 
         if (this.dirs.has(normalizedOld)) {
             this.dirs.delete(normalizedOld);
@@ -245,7 +199,6 @@ export const mockFsModule = {
 };
 
 export const mockFsSyncModule = {
-    mkdtempSync: jest.fn((prefix: string) => mockFs.mkdtempSync(prefix)),
     rmSync: jest.fn((path: string, opts: unknown) =>
         mockFs.rmSync(path, opts as { recursive?: boolean; force?: boolean })
     ),
@@ -259,7 +212,6 @@ export function mockNodeFS() {
         };
         return {
             ...(jest.requireActual("node:fs") as Record<string, unknown>),
-            mkdtempSync: mockFsSyncModule.mkdtempSync,
             rmSync: mockFsSyncModule.rmSync,
             mkdirSync: mockFsSyncModule.mkdirSync
         };
