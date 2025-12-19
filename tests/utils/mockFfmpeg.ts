@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import type { SpawnOptions, ChildProcess } from "node:child_process";
 import { Readable, Writable, PassThrough } from "node:stream";
 import { jest } from "@jest/globals";
-import { mockFs } from "./disk.ts";
+import { mockFs } from "./mockFileSystem.ts";
 
 export type ChildProcessLike = {
     stdin: PassThrough;

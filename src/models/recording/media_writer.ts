@@ -17,9 +17,8 @@ const FFMPEG_KILL_TIMEOUT = 30_000;
 
 /**
  * Abstraction for a FFMPEG child process
- * TODO maybe rename to something like "raw file writer", another different ffmpeg process is used during compilation (media_compiler).
  */
-export class FFMPEG {
+export class MediaWriter {
     readonly extension: string;
     readonly filename: string;
     private readonly _rtp: rtpData;

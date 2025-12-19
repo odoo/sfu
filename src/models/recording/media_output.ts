@@ -10,7 +10,7 @@ import type {
 
 import { DynamicPort } from "#src/services/resources.ts";
 import { recording, rtc } from "#src/config.ts";
-import { FFMPEG } from "#src/models/recording/ffmpeg.ts";
+import { MediaWriter } from "#src/models/recording/media_writer.ts";
 import { Logger } from "#src/utils/utils.ts";
 
 const logger = new Logger("MEDIA_OUTPUT");
@@ -43,7 +43,7 @@ export class MediaOutput extends EventEmitter {
     private _producer: Producer;
     private _transport?: PlainTransport;
     private _consumer?: Consumer;
-    private _ffmpeg?: FFMPEG;
+    private _mediaWriter?: MediaWriter;
     private _rtpData?: rtpData;
     private _port?: DynamicPort;
     private _isClosed = false;
@@ -121,7 +121,7 @@ export class MediaOutput extends EventEmitter {
     }
 
     /**
-     * Refreshes the FFMPEG process based on the producer state.
+     * Refreshes the MediaWriter process based on the producer state.
      */
     private async _refreshProcess() {
         if (this._isClosed || !this._rtpData) {
@@ -129,35 +129,35 @@ export class MediaOutput extends EventEmitter {
         }
         if (this._producer.paused) {
             this._consumer?.pause();
-            if (this._ffmpeg) {
+            if (this._mediaWriter) {
                 this.emit(MediaOutput.Events.FILE_STATE_CHANGE, {
                     active: false,
-                    filename: this._ffmpeg.filename
+                    filename: this._mediaWriter.filename
                 });
             }
         } else {
-            if (!this._ffmpeg) {
+            if (!this._mediaWriter) {
                 const fileName = `${this.name}-${Date.now()}`;
                 logger.verbose(`new recording file${this._directory}/${fileName}`);
-                this._ffmpeg = new FFMPEG(this._rtpData, this._directory, fileName);
+                this._mediaWriter = new MediaWriter(this._rtpData, this._directory, fileName);
             }
             this._consumer?.resume();
             this.emit(MediaOutput.Events.FILE_STATE_CHANGE, {
                 active: true,
-                filename: this._ffmpeg.filename
+                filename: this._mediaWriter.filename
             });
         }
     }
 
     private async _cleanup() {
-        if (this._ffmpeg) {
+        if (this._mediaWriter) {
             this.emit(MediaOutput.Events.FILE_STATE_CHANGE, {
                 active: false,
-                filename: this._ffmpeg.filename,
+                filename: this._mediaWriter.filename,
                 eof: true
             });
         }
-        const prom = this._ffmpeg?.close();
+        const prom = this._mediaWriter?.close();
         this._consumer?.close();
         this._transport?.close();
         this._port?.release();

@@ -207,8 +207,8 @@ export const mockFsSyncModule = {
 
 export function mockNodeFS() {
     jest.mock("node:fs", () => {
-        const { mockFsSyncModule } = jest.requireActual("#tests/utils/disk.ts") as {
-            mockFsSyncModule: typeof import("#tests/utils/disk.ts").mockFsSyncModule;
+        const { mockFsSyncModule } = jest.requireActual("#tests/utils/mockFileSystem.ts") as {
+            mockFsSyncModule: typeof import("#tests/utils/mockFileSystem").mockFsSyncModule;
         };
         return {
             ...(jest.requireActual("node:fs") as Record<string, unknown>),
@@ -217,8 +217,8 @@ export function mockNodeFS() {
         };
     });
     jest.mock("node:fs/promises", () => {
-        const { mockFsModule } = jest.requireActual("#tests/utils/disk.ts") as {
-            mockFsModule: typeof import("#tests/utils/disk.ts").mockFsModule;
+        const { mockFsModule } = jest.requireActual("#tests/utils/mockFileSystem.ts") as {
+            mockFsModule: typeof import("#tests/utils/mockFileSystem").mockFsModule;
         };
         return mockFsModule;
     });
