@@ -17,11 +17,11 @@ flowchart TB
     RT2 -- screen --> MOS2["MediaOutput <br> Screen"]
     RT2 -- camera --> MOC2["MediaOutput <br> Camera"]
     RT2 -- audio --> MOA2["MediaOutput <br> Audio"]
-    MOA1 --> FFA1["FFMPEG <br> Audio Process"]
-    MOS1 --> FFS1["FFMPEG <br> Screen Process"]
-    MOA2 --> FFA2["FFMPEG <br> Audio Process"]
-    MOS2 --> FFS2["FFMPEG <br> Screen Process"]
-    MOC2 --> FFC2["FFMPEG <br> Camera Process"]
+    MOA1 --> FFA1["MediaWriter <br> Audio Process"]
+    MOS1 --> FFS1["MediaWriter <br> Screen Process"]
+    MOA2 --> FFA2["MediaWriter <br> Audio Process"]
+    MOS2 --> FFS2["MediaWriter <br> Screen Process"]
+    MOC2 --> FFC2["MediaWriter <br> Camera Process"]
     FFS1 --> DIR[("Recording Directory")]
     FFA1 --> DIR
     FFS2 --> DIR
@@ -42,9 +42,9 @@ flowchart TB
 
 3.  **MediaOutput (Stream Level / RTP)**
     *   **Scope:** Handles a single stream type (e.g., just the camera) for a session.
-    *   **Responsibility:** Bridges the Mediasoup `Producer` (source) to the `FFMPEG` process (sink), and manages the lifecycle of the port, transport, consumer, and ffmpeg process.
+    *   **Responsibility:** Bridges the Mediasoup `Producer` (source) to the `MediaWriter` (ffmpeg) process (sink), and manages the lifecycle of the port, transport, consumer, and ffmpeg process.
 
-4.  **FFMPEG (Process Level)**
+4.  **MediaWriter (Process Level)**
     *   **Scope:** Represents a single child process writing to a file.
     *   **Responsibility:** Receives RTP packets on a specified port and writes them to a file container. Essentially a wrapper around the ffmpeg API.
 

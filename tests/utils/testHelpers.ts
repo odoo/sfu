@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { withMockEnv } from "#tests/utils/utils";
-import { mockFs } from "#tests/utils/disk.ts";
+import { mockFs } from "#tests/utils/mockFileSystem";
 import { mockSpawn } from "#tests/utils/mockFfmpeg.ts";
 
 export async function recordingSetup(env: Record<string, string | undefined>) {
@@ -47,7 +47,7 @@ export async function recordingSetup(env: Record<string, string | undefined>) {
 export async function setupUnitTestsEnv() {
     jest.resetModules();
 
-    const disk = await import("#tests/utils/disk.ts");
+    const disk = await import("#tests/utils/mockFileSystem");
     const ffmpeg = await import("#tests/utils/mockFfmpeg.ts");
     const FreshMockChildProcess = ffmpeg.MockChildProcess;
 

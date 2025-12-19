@@ -16,7 +16,7 @@ import {
     ChildProcessLike,
     MockChildProcess
 } from "#tests/utils/mockFfmpeg.ts";
-import { mockNodeFS } from "#tests/utils/disk.ts";
+import { mockNodeFS } from "#tests/utils/mockFileSystem.ts";
 
 mockNodeFS();
 mockFfmpeg();
@@ -220,8 +220,8 @@ describe("Recording & Transcription", () => {
 
 describe("Media Service", () => {
     let mediaService: typeof import("#src/services/media.ts");
-    let mockFs: typeof import("#tests/utils/disk.ts").mockFs;
-    let mockFsModule: typeof import("#tests/utils/disk.ts").mockFsModule;
+    let mockFs: typeof import("#tests/utils/mockFileSystem").mockFs;
+    let mockFsModule: typeof import("#tests/utils/mockFileSystem").mockFsModule;
 
     const mockFetch = jest.fn() as jest.MockedFunction<typeof fetch>;
     const originalFetch = global.fetch;
@@ -342,7 +342,7 @@ describe("Media Service", () => {
 
 describe("MediaCompiler Unit Tests", () => {
     let MediaCompiler: typeof import("#src/models/recording/media_compiler.ts").MediaCompiler;
-    let mockFs: typeof import("#tests/utils/disk.ts").mockFs;
+    let mockFs: typeof import("#tests/utils/mockFileSystem").mockFs;
     // mockSpawn uses global variable
 
     beforeEach(async () => {

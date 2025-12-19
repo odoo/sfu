@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "@jest/globals";
 import path from "node:path";
 
-import { mockFs, mockNodeFS } from "./utils/disk";
+import { mockFs, mockNodeFS } from "./utils/mockFileSystem.ts";
 mockNodeFS();
 
-import * as resources from "#src/services/resources";
-import * as config from "#src/config";
+import * as resources from "#src/services/resources.ts";
+import * as config from "#src/config.ts";
 
 describe("resources service", () => {
     beforeEach(async () => {
