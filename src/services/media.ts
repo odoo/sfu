@@ -139,10 +139,12 @@ async function uploadFiles(
 ) {
     logger.debug(`Uploading files to ${metadata.routingAddress}`);
     try {
+        const nowSeconds = Date.now() / 1000;
         const jwt = sign(
             {
                 aud: metadata.routingAddress,
-                exp: Date.now() / 1000 + 120
+                exp: nowSeconds + 120,
+                iat: nowSeconds
             },
             metadata.channelKey
         );
