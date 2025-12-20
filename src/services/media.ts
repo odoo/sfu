@@ -102,7 +102,7 @@ async function processRecording(folderName: string) {
     try {
         const content = await fs.readFile(metadataPath, "utf-8");
         const metadata: SealedMetaData = JSON.parse(decrypt(content));
-        const expirationDate = (metadata.sealedAt || 0) + recording.fileTTL;
+        const expirationDate = (metadata.stoppedAt || 0) + recording.fileTTL;
         if (expirationDate < Date.now()) {
             logger.debug(`Recording ${folderName} is older than ${recording.fileTTL}ms, removing`);
             throw new Error("expired recording");
