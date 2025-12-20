@@ -15,11 +15,7 @@ import type { SessionId } from "#src/models/session.ts";
 export enum TIME_TAG {
     FILE_STATE_CHANGE = "file_state_change"
 }
-export enum RECORDER_STATE {
-    STARTED = "started",
-    STOPPING = "stopping",
-    STOPPED = "stopped"
-}
+
 export type TimeTagInfo = {
     filename: string;
     type: STREAM_TYPE;
@@ -44,14 +40,13 @@ export type Metadata = {
     channelName: string;
     routingAddress: string;
     startedAt?: number;
-    stoppedAt?: number;
     timeStamps: TimeStampData[];
 };
 
 export type SealedMetaData = Metadata & {
-    sealedAt: number;
     channelKey: string;
     video: boolean;
+    stoppedAt?: number;
     transcription: boolean;
 };
 
@@ -108,7 +103,6 @@ export class Recorder extends EventEmitter {
      * Whether transcription is desired (metadata flag)
      **/
     transcription: boolean = false;
-    private _state: RECORDER_STATE = RECORDER_STATE.STOPPED;
     private _folder?: Folder;
     private _timeout?: NodeJS.Timeout;
     private readonly _channel: Channel;
@@ -119,10 +113,6 @@ export class Recorder extends EventEmitter {
         routingAddress: "",
         timeStamps: []
     };
-
-    get isActive(): boolean {
-        return this._state === RECORDER_STATE.STARTED;
-    }
 
     get state(): RecordingState {
         return {
@@ -173,11 +163,6 @@ export class Recorder extends EventEmitter {
     }
 
     async stop() {
-        if (!this.isRecording) {
-            return;
-        }
-        this.isRecording = false;
-        this._metaData.stoppedAt = Date.now();
         this.terminate();
         this._emitStatus();
     }
@@ -196,20 +181,20 @@ export class Recorder extends EventEmitter {
      * @param param0.save - whether to save the recording
      */
     terminate({ save = true }: { save?: boolean } = {}) {
-        if (!this.isActive) {
+        if (!this.isRecording) {
             return;
         }
-        this._state = RECORDER_STATE.STOPPING;
+        this.isRecording = false;
         clearTimeout(this._timeout);
         this._timeout = undefined;
         logger.verbose(`terminating recorder for channel ${this._channel.name}`);
         this._channel.off(Channel.Events.SESSION_JOIN, this._onSessionJoin);
         this._channel.off(Channel.Events.SESSION_LEAVE, this._onSessionLeave);
-        this.isRecording = false;
+        const metaData = this._sealMetaData();
         this.video = false;
         this.transcription = false;
         const currentFolder = this._folder;
-        const metaData = this._sealMetaData();
+        this._folder = undefined;
         /**
          * Not awaiting as FFMPEG can take arbitrarily long to complete
          * (several seconds, or more), and we don't want to block the
@@ -234,8 +219,6 @@ export class Recorder extends EventEmitter {
                     `Failed to save recording for channel ${this._channel.name}: ${error}`
                 );
             });
-        this._folder = undefined;
-        this._state = RECORDER_STATE.STOPPED;
     }
 
     /**
@@ -249,10 +232,9 @@ export class Recorder extends EventEmitter {
             video: this.video,
             transcription: this.transcription,
             channelKey: this._channel.key,
-            sealedAt: Date.now()
+            stoppedAt: Date.now()
         });
         this._metaData.timeStamps = [];
-        this._metaData.stoppedAt = undefined;
         this._metaData.startedAt = undefined;
         /**
          * As the metadata can contain sensitive information, like routing
@@ -287,7 +269,6 @@ export class Recorder extends EventEmitter {
         });
     }
     private async _init() {
-        this._state = RECORDER_STATE.STARTED;
         this._folder = await getFolder(["audio", "camera", "screen"]);
         clearTimeout(this._timeout);
         this._timeout = setTimeout(() => {

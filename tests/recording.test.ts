@@ -260,9 +260,8 @@ describe("Media Service", () => {
         const metadata = {
             channelName: "Test Channel",
             routingAddress: "!http://odoo/routing",
-            sealedAt: Date.now() - 1000,
+            stoppedAt: Date.now() - 1000,
             startedAt: 1000,
-            stoppedAt: 5000,
             timeStamps: [
                 {
                     tag: TIME_TAG.FILE_STATE_CHANGE,
@@ -326,7 +325,7 @@ describe("Media Service", () => {
         const recordingName = "expired_session";
         const recordingDir = `/mock/recordings/${recordingName}`;
         const metadata = {
-            sealedAt: Date.now() - 1000 * 60 * 60 * 24,
+            stoppedAt: Date.now() - 1000 * 60 * 60 * 24,
             timeStamps: []
         };
 
