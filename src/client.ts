@@ -32,31 +32,31 @@ import type {
 } from "#src/shared/types";
 import type { TransportConfig, SessionId, SessionInfo } from "#src/models/session";
 
-interface Consumers {
+type Consumers = {
     audio: Consumer | null;
     camera: Consumer | null;
     screen: Consumer | null;
-}
-interface Producers {
+};
+type Producers = {
     audio: Producer | null;
     camera: Producer | null;
     screen: Producer | null;
-}
-interface ProducerRecoveryTimeouts {
+};
+type ProducerRecoveryTimeouts = {
     audio?: number;
     camera?: number;
     screen?: number;
-}
-interface ConnectOptions {
+};
+type ConnectOptions = {
     /** Channel UUID to connect to */
     channelUUID?: string;
     /** ICE servers for WebRTC connection */
     iceServers?: RTCIceServer[];
-}
-interface UpdateInfoOptions {
+};
+type UpdateInfoOptions = {
     /** Whether server should refresh local info from all sessions */
     needRefresh?: boolean;
-}
+};
 export type DownloadStates = Partial<Record<StreamType, boolean>>;
 export enum CLIENT_UPDATE {
     /** A new track has been received */
@@ -80,14 +80,14 @@ type ClientUpdatePayload =
           track: MediaStreamTrack;
           active: boolean;
       };
-interface SfuStats {
+type SfuStats = {
     /** Upload transport statistics */
     uploadStats?: RTCStatsReport;
     /** Download transport statistics */
     downloadStats?: RTCStatsReport;
     /** Producer statistics by stream type */
     [key: string]: RTCStatsReport | undefined;
-}
+};
 
 const INITIAL_RECONNECT_DELAY = 1_000;
 const MAXIMUM_RECONNECT_DELAY = 30_000;

@@ -9,17 +9,17 @@ import type { StringLike } from "#src/shared/types.ts";
  * JsonWebToken (JOSE) header
  * @see https://datatracker.ietf.org/doc/html/rfc7519#section-5
  */
-interface JWTHeader {
+type JWTHeader = {
     /** Algorithm used to sign the token */
     alg: string;
     /** Type of the token, usually "JWT" */
     typ: string;
-}
+};
 /**
  * JsonWebToken claims
  * @see https://datatracker.ietf.org/doc/html/rfc7519#section-4
  */
-export interface JWTClaims {
+export type JWTClaims = {
     /** Expiration time (in seconds since epoch) */
     exp?: number;
     /** Issued at (in seconds since epoch) */
@@ -34,9 +34,9 @@ export interface JWTClaims {
     aud?: string;
     /** JWT ID */
     jti?: string;
-}
+};
 
-interface ParsedJWT<T> {
+type ParsedJWT<T> = {
     /** JWT header */
     header: JWTHeader;
     /** JWT claims/payload */
@@ -45,14 +45,14 @@ interface ParsedJWT<T> {
     signature: Buffer;
     /** Data that was signed (header.payload) */
     signedData: string;
-}
+};
 /**
  * JWT signing options
  */
-interface SignOptions {
+type SignOptions = {
     /** Algorithm to use for signing */
     algorithm?: ALGORITHM;
-}
+};
 /**
  * Supported signing algorithms
  */

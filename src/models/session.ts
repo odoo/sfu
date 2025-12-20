@@ -62,11 +62,11 @@ export enum SESSION_CLOSE_CODE {
     KICKED = "kicked",
     ERROR = "error"
 }
-export interface SessionPermissions {
+export type SessionPermissions = {
     recording?: boolean;
     videoRecording?: boolean;
-}
-export interface TransportConfig {
+};
+export type TransportConfig = {
     /** Transport identifier */
     id: string;
     /** ICE parameters for connection establishment */
@@ -77,37 +77,37 @@ export interface TransportConfig {
     dtlsParameters: DtlsParameters;
     /** SCTP parameters for data channel support */
     sctpParameters: SctpParameters;
-}
-interface Consumers {
+};
+type Consumers = {
     /** Audio consumer */
     [STREAM_TYPE.AUDIO]: Consumer | null;
     /** Camera video consumer */
     [STREAM_TYPE.CAMERA]: Consumer | null;
     /** Screen sharing consumer */
     [STREAM_TYPE.SCREEN]: Consumer | null;
-}
-interface Producers {
+};
+type Producers = {
     /** Audio producer */
     [STREAM_TYPE.AUDIO]: Producer | null;
     /** Camera video producer */
     [STREAM_TYPE.CAMERA]: Producer | null;
     /** Screen sharing producer */
     [STREAM_TYPE.SCREEN]: Producer | null;
-}
-interface SessionCloseOptions {
+};
+type SessionCloseOptions = {
     /** Close code indicating reason for termination */
     code?: SESSION_CLOSE_CODE;
     /** Human-readable cause description */
     cause?: string;
-}
-interface ProducerBitRates {
+};
+type ProducerBitRates = {
     /** Audio bitrate in bps */
     [STREAM_TYPE.AUDIO]?: number;
     /** Camera video bitrate in bps */
     [STREAM_TYPE.CAMERA]?: number;
     /** Screen sharing bitrate in bps */
     [STREAM_TYPE.SCREEN]?: number;
-}
+};
 
 const logger = new Logger("SESSION");
 
