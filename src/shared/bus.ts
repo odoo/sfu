@@ -8,34 +8,34 @@ import type {
     ResponseFrom
 } from "./types";
 
-export interface Payload {
+export type Payload = {
     /** The actual message content */
     message: BusMessage | JSONSerializable;
     /** Request ID if this message expects a response */
     needResponse?: string;
     /** Response ID if this message is responding to a request */
     responseTo?: string;
-}
-interface PendingRequest {
+};
+type PendingRequest = {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolve: (value: any) => void;
     reject: (error: Error | string) => void;
     timeout: NodeJS.Timeout;
-}
-interface BusOptions {
+};
+type BusOptions = {
     /** Batch delay in milliseconds */
     batchDelay?: number;
-}
-interface RequestOptions {
+};
+type RequestOptions = {
     /** Request timeout in milliseconds */
     timeout?: number;
     /** Whether to batch this request */
     batch?: boolean;
-}
-interface SendOptions {
+};
+type SendOptions = {
     /** Whether to batch this message */
     batch?: boolean;
-}
+};
 type WebSocketLike = WebSocket | NodeWebSocket;
 type WSHandler<K extends keyof WebSocketEventMap> = (ev: WebSocketEventMap[K]) => void;
 

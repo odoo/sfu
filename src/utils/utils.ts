@@ -26,15 +26,15 @@ export enum LogLevel {
     VERBOSE = "verbose"
 }
 
-export interface LoggerOptions {
+export type LoggerOptions = {
     logLevel?: LogLevel | string;
     timestamp?: boolean;
     useColors?: boolean;
-}
+};
 
 type LogFunction = (message: string) => void;
 
-export interface RequestInfo {
+export type RequestInfo = {
     /** Server host and port */
     host: string;
     pathname: string;
@@ -42,12 +42,12 @@ export interface RequestInfo {
     /** Remote client address */
     remoteAddress: string;
     searchParams: URLSearchParams;
-}
+};
 
-export interface ParseBodyOptions {
+export type ParseBodyOptions = {
     /** Whether to JSON parse the response */
     json?: boolean;
-}
+};
 
 /**
  * @deprecated Use Promise.withResolvers() when available

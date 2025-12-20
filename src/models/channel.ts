@@ -21,7 +21,7 @@ const logger = new Logger("CHANNEL");
 
 const mediaCodecs = getAllowedCodecs();
 
-export interface SessionsStats {
+export type SessionsStats = {
     incomingBitRate: {
         /** Total bitrate across all media types */
         total: number;
@@ -38,8 +38,8 @@ export interface SessionsStats {
     cameraCount: number;
     /** Number of sessions with screen sharing enabled */
     screenCount: number;
-}
-export interface ChannelStats {
+};
+export type ChannelStats = {
     /** Channel creation timestamp */
     createDate: string;
     /** Unique channel identifier */
@@ -50,20 +50,20 @@ export interface ChannelStats {
     sessionsStats: SessionsStats;
     /** Whether WebRTC functionality is enabled */
     webRtcEnabled: boolean;
-}
-interface ChannelCreateOptions {
+};
+type ChannelCreateOptions = {
     /** Optional encryption key for channel authentication */
     key?: string;
     /** Whether to enable WebRTC functionality */
     useWebRtc?: boolean;
     recordingAddress?: string | null;
-}
-interface JoinResult {
+};
+type JoinResult = {
     /** The channel instance */
     channel: Channel;
     /** The created session */
     session: Session;
-}
+};
 
 /**
  * @fires Channel#sessionJoin

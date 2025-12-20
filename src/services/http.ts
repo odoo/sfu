@@ -7,39 +7,39 @@ import { Logger, parseBody, extractRequestInfo } from "#src/utils/utils.ts";
 import { SESSION_CLOSE_CODE, type SessionId } from "#src/models/session.ts";
 import { Channel, type ChannelStats } from "#src/models/channel.ts";
 
-interface RequestInfo {
+type RequestInfo = {
     /** Remote client address */
     remoteAddress: string;
     protocol: "http" | "https";
     /** Host header value */
     host: string;
     searchParams: URLSearchParams;
-}
+};
 type RouteCallback = (
     req: IncomingMessage,
     res: ServerResponse,
     info: RequestInfo
 ) => Promise<ServerResponse> | ServerResponse;
-interface RouteOptions {
+type RouteOptions = {
     /** CORS origin header value */
     cors?: string;
     /** Route handler callback */
     callback?: RouteCallback;
-}
+};
 type HttpChannelClaims = {
     key?: string;
 };
 type HttpDisconnectClaims = {
     sessionIdsByChannel: Record<string, SessionId[]>;
 };
-interface RouteEntry extends RouteOptions {
+type RouteEntry = RouteOptions & {
     /** Allowed HTTP methods for this route */
     methods: string;
-}
-interface HttpStartOptions {
+};
+type HttpStartOptions = {
     httpInterface?: string;
     port?: number;
-}
+};
 
 export const API_VERSION = 1;
 const logger = new Logger("HTTP");

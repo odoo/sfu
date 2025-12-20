@@ -200,7 +200,7 @@ export const LOG_COLOR: boolean = process.env.LOG_COLOR
 /**
  * Timeout configuration interface
  */
-export interface TimeoutConfig {
+export type TimeoutConfig = {
     /** how long a session can take to respond (to a ping or to a connection attempt) */
     readonly session: number;
     /** how long the websocket service waits for the authentication of a new websocket */
@@ -213,7 +213,7 @@ export interface TimeoutConfig {
     readonly channel: number;
     /** how long to wait to gather messages before sending through the bus */
     readonly busBatch: number;
-}
+};
 
 // timeouts in milliseconds
 export const timeouts: TimeoutConfig = Object.freeze({
@@ -271,7 +271,7 @@ const baseProducerOptions: ProducerOptions = {
 /**
  * RTC configuration interface
  */
-export interface RtcConfig {
+type RtcConfig = {
     readonly workerSettings: WorkerSettings;
     readonly rtcServerOptions: WebRtcServerOptions;
     readonly plainTransportOptions: PlainTransportOptions;
@@ -283,7 +283,7 @@ export interface RtcConfig {
         readonly audio: ProducerOptions;
         readonly video: ProducerOptions;
     };
-}
+};
 
 export const rtc: RtcConfig = Object.freeze({
     // https://mediasoup.org/documentation/v3/mediasoup/api/#WorkerSettings

@@ -35,14 +35,14 @@ export function makeJwt<T extends object>(
 /**
  * Connection result containing session and client instances
  */
-interface ConnectionResult {
+type ConnectionResult = {
     /** Server-side session instance */
     session: Session;
     /** Client-side SFU client instance */
     sfuClient: SfuClient;
     /** Promise resolving to true when client is connected */
     isConnected: Deferred<boolean>;
-}
+};
 
 /**
  * This class represents a local network for testing the complete stack
