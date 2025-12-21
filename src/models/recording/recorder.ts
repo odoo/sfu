@@ -20,14 +20,15 @@ export type TimeTagInfo = {
     filename: string;
     type: STREAM_TYPE;
     /**
-     * The file lasts for the whole duration of the client producer, which means that
-     * it can represent a sequence of streams, with periods of inactivity (no packets).
-     * active is set to true when the stream is active, which means that the producer is
+     * The file lasts for the whole duration of the client producer,
+     * which means that it can represent a sequence of streams,
+     * with periods of inactivity (no packets). active is set to true
+     * when the stream is active, which means that the producer is
      * actively broadcasting data, and false when it is not.
      */
     active: boolean;
     /**
-     * marks the end of file, could instead of active: undefined/null, but not clear.
+     * marks the end of file
      */
     eof?: boolean;
 };
@@ -56,58 +57,24 @@ const logger = new Logger("RECORDER");
  * The recorder generates a "raw" file bundle, of recordings of individual
  * audio and video streams, accompanied with a metadata file describing the
  * recording (timestamps, ids,...).
- *
- * These raw recordings can then be used for further processing (transcription, compilation,...).
- *
- * {@link Recorder} acts at the channel level, managing the creation and closure
- * of sessions in that channel, whereas the {@link RecordingTask} acts at the
- * session level, managing the recording of an individual session and following
- * its producer lifecycle.
- *
- * Architecture Schematic:
- *
- * Recorder (Channel Level)
- *   |
- *   +-- RecordingTask (Session Level) [1 per Session]
- *         |
- *         +-- MediaOutput (Stream Level) [1 per Stream type: AUDIO, CAMERA, SCREEN]
- *               |
- *               +-- FFMPEG (Process Level) [1 per Active Stream Segment]
- *
- * - **Recorder**: Orchestrates the recording for a whole channel. It manages
- *   the lifecycle of `RecordingTask`s as users join or leave the channel.
- *
- * - **RecordingTask**: Bound to a specific `Session` (user). It monitors the
- *   user's streams (audio, camera, screen) and manages `MediaOutput` instances for each type.
- *
- * - **MediaOutput**: Handles a single media stream type for a session. It sets
- *   up the transport/consumer to receive RTP data and manages the `FFMPEG` wrapper.
- *
- * - **FFMPEG**: Represents the actual ffmpeg process that writes the RTP stream
- *   to a file. It is created when valid RTP data is available and the producer is active.
  */
 export class Recorder extends EventEmitter {
     static Events = {
         UPDATE: "update"
     };
-
-    /**
-     * Plain recording means that we mark the recording to be saved as a audio/video file
-     **/
     isRecording: boolean = false;
     /**
      * Whether video is recorded (camera and screen sharing)
-     **/
+     */
     video: boolean = false;
     /**
      * Whether transcription is desired (metadata flag)
-     **/
+     */
     transcription: boolean = false;
     private _folder?: Folder;
     private _timeout?: NodeJS.Timeout;
     private readonly _channel: Channel;
     private readonly _tasks = new Map<SessionId, RecordingTask>();
-    /** Path to which the final recording will be uploaded to */
     private readonly _metaData: Metadata = {
         channelName: "",
         routingAddress: "",
@@ -296,6 +263,22 @@ export class Recorder extends EventEmitter {
     }
 
     private _getRecordingStates(): RecordingStates {
+        /**
+         * TODO
+         * This will need to be much smarter. When recording video, we should
+         * only record the latest screen, and record cameras only if there is no
+         * screen being shared. That is because in the compiled version, the screen
+         * takes precedence over the camera, and all the visual space. That is
+         * because when a screen is shared it should be the focus of the attention
+         * and is only useful when taking all of the visual space (it wouldn't make
+         * sense to divide the space available in the final video between multiple
+         * screens, or between screens and cameras).
+         *
+         * Therefore a mechanism to track the latest screen shared should be
+         * implemented. We can extract that information from the
+         * TIME_TAG.FILE_STATE_CHANGE events, where `type` and `active` is all
+         * we need to know when and if a screen is being shared.
+         */
         return {
             audio: this.isRecording,
             camera: this.isRecording && this.video,

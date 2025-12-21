@@ -152,7 +152,6 @@ export class MediaWriter {
 
             case "pcmu":
             case "pcma":
-                // G.711 codecs - use WAV container for raw PCM audio
                 return "wav";
 
             default:
