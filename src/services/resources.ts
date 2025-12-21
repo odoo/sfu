@@ -50,7 +50,8 @@ export async function start(): Promise<void> {
     );
     /**
      * FIXME: Moving ports in steps of 2 because FFMPEG may use their allocated port + 1 for RTCP,
-     * need to verify if FFMPEG can be configured to use muxed ports
+     * TODO: need to verify if FFMPEG can be configured to use muxed ports,
+     * but seems to take 2 ports even with mux param to investigate more later
      */
     for (let i = config.DYNAMIC_MIN_PORT; i <= config.DYNAMIC_MAX_PORT; i += 2) {
         availablePorts.push(i);
