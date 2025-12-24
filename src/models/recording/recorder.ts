@@ -173,7 +173,7 @@ export class Recorder extends EventEmitter {
             .then((results) => {
                 const failed = results.some((result) => result.status === "rejected");
                 if (save && !failed) {
-                    currentFolder!.add("metadata.json", metaData);
+                    currentFolder!.add(recording.metadataFileName, metaData);
                     currentFolder!.seal(
                         path.join(recording.directory, `${Date.now()}-${this._channel.name}`)
                     );
@@ -189,7 +189,7 @@ export class Recorder extends EventEmitter {
     }
 
     /**
-     * Adds the final entries to the metadata and encrypts it.
+     * Adds the final entries to the metadata, encrypts it and resets its state.
      *
      * @returns encrypted metadata
      */
