@@ -280,7 +280,7 @@ describe("Media Service", () => {
 
         mockFs.mkdir(recordingDir);
         mockFs.mkdir(path.join(recordingDir, "audio"));
-        mockFs.write(path.join(recordingDir, "metadata.json"), JSON.stringify(metadata));
+        mockFs.write(path.join(recordingDir, "metadata.bin"), JSON.stringify(metadata));
         mockFs.write(path.join(recordingDir, "audio", "audio_1.ogg"), "dummy audio content");
 
         await mediaService.start();
@@ -315,7 +315,7 @@ describe("Media Service", () => {
         await new Promise((r) => setTimeout(r, 50));
 
         expect(mockFsModule.readFile).toHaveBeenCalledWith(
-            path.join(recordingDir, "metadata.json"),
+            path.join(recordingDir, "metadata.bin"),
             "utf-8"
         );
         expect(mockFsModule.rm).toHaveBeenCalledWith(recordingDir, { recursive: true });
@@ -330,7 +330,7 @@ describe("Media Service", () => {
         };
 
         mockFs.mkdir(recordingDir);
-        mockFs.write(path.join(recordingDir, "metadata.json"), JSON.stringify(metadata));
+        mockFs.write(path.join(recordingDir, "metadata.bin"), JSON.stringify(metadata));
 
         await mediaService.start();
         await new Promise((r) => setTimeout(r, 50));

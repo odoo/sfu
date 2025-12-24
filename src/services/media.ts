@@ -98,7 +98,7 @@ async function processRecordings() {
  */
 async function processRecording(folderName: string) {
     const dir = path.join(RECORDING_PATH, folderName);
-    const metadataPath = path.join(dir, "metadata.json");
+    const metadataPath = path.join(dir, recording.metadataFileName);
     try {
         const content = await fs.readFile(metadataPath, "utf-8");
         const metadata: SealedMetaData = JSON.parse(decrypt(content));

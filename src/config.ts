@@ -236,6 +236,7 @@ export const recording = Object.freeze({
     routingInterface: "127.0.0.1",
     directory: RECORDING_PATH,
     enabled: RECORDING,
+    metadataFileName: "metadata.bin",
     maxDuration: 1000 * 60 * 60, // 1 hour, could be a env-var.
     fileTTL: 1000 * 60 * 60 * 24, // 24 hours
     videoCodec: "libx264", // TODO to implement
