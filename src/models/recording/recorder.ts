@@ -175,7 +175,7 @@ export class Recorder extends EventEmitter {
                 if (save && !failed) {
                     currentFolder!.add("metadata.json", metaData);
                     currentFolder!.seal(
-                        path.join(recording.directory, `${this._channel.name}_${Date.now()}`)
+                        path.join(recording.directory, `${Date.now()}-${this._channel.name}`)
                     );
                 } else {
                     currentFolder!.delete();

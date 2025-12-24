@@ -99,11 +99,9 @@ sequenceDiagram
 
 The Resources service acts as the interface to the underlying system and Mediasoup library. It manages the pool of worker processes and system resources.
 
-**Responsibilities:**
-- **Worker Management**: Maintains a pool of Mediasoup workers. Automatically replaces workers if they crash.
-- **Load Balancing**: `getWorker()` returns the worker with the lowest memory usage (`ru_maxrss`).
-- **File System**: Manages temporary folders for recordings via the `Folder` class.
-- **Port Management**: Allocates dynamic ports for media transport using the `DynamicPort` class.
+-  Managers the pool of Mediasoup workers and balanse their load.
+-  Manages temporary folders.
+-  Manages dynamic ports for media transport.
 
 ### 5. Media Service ([`media.ts`](../src/services/media.ts))
 more at [recording.md](./recording.md)

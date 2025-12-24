@@ -64,21 +64,22 @@ The recording feature is configured via environment variables in `src/config.ts`
 
 ## Output Structure
 
-Recordings are saved in a directory named `{channelName}_{timestamp}` inside `RECORDING_PATH`.
+Recordings are saved in a directory named `{timestamp}_{channelName}` inside `RECORDING_PATH`.
 
 ```text
-{channelName}_{timestamp}/
+{timestamp}_{channelName}/
 ├── metadata.json
 ├── audio/
-│   └── {sessionID}-{streamType}-{timestamp}.webm
-│   └── 987-audio-1765292341216.webm
-│   └── 988-audio-1765292441216.webm
+│   └── {timestamp}-{sessionID}-{streamType}.webm
+│   └── 1765292341216-987-audio.webm
+│   └── 1765292441216-988-audio.webm
 ├── video/
-│   └── 989-video-1765492341216.mp4 // extension depends on codec
-│   └── 987-video-1765292341216.webm
-│   └── 987-video-1765292341216.log // if LOG_LEVEL=debug
+│   └── {timestamp}-{sessionID}-{streamType}.webm
+│   └── 1765292341216-985-video.mp4 // extension depends on codec
+│   └── 1765292341219-987-video.webm
+│   └── 1765292341219-987-video.log // if LOG_LEVEL=debug
 └── screen/
-    └── 987-screen-1765592341216.webm
+    └── 1765292341216-987-screen.mp4
 ```
 
 #### Contents:
