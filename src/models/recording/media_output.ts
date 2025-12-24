@@ -137,7 +137,7 @@ export class MediaOutput extends EventEmitter {
             }
         } else {
             if (!this._mediaWriter) {
-                const fileName = `${this.name}-${Date.now()}`;
+                const fileName = `${Date.now()}-${this.name}`;
                 logger.verbose(`new recording file${this._directory}/${fileName}`);
                 this._mediaWriter = new MediaWriter(this._rtpData, this._directory, fileName);
             }
