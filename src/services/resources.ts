@@ -31,10 +31,20 @@ function clearResourcesDir() {
         logger.error(`Failed to delete resources folder ${config.RESOURCES_PATH}: ${error}`);
     }
 }
+
+const workers = new Set<RtcWorker>();
+
 /**
- * Exported for testing purposes
+ * Helpers exposed for testing purposes
  */
-export const workers = new Set<RtcWorker>();
+export const testing = {
+    hasWorker(worker: RtcWorker) {
+        return workers.has(worker);
+    },
+    get workerCount() {
+        return workers.size;
+    }
+};
 
 export async function start(): Promise<void> {
     logger.info("starting...");
