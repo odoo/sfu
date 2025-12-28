@@ -115,6 +115,7 @@ async function processRecording(folderName: string) {
         if (file) {
             await uploadFiles(file, {
                 metadata,
+                folderName,
                 video: Boolean(metadata.video),
                 transcription: Boolean(metadata.transcription)
             });
@@ -129,10 +130,12 @@ async function uploadFiles(
     file: string,
     {
         metadata,
+        folderName,
         video,
         transcription
     }: {
         metadata: SealedMetaData;
+        folderName: string;
         video?: boolean;
         transcription?: boolean;
     }
@@ -144,7 +147,8 @@ async function uploadFiles(
             {
                 aud: metadata.routingAddress,
                 exp: nowSeconds + 120,
-                iat: nowSeconds
+                iat: nowSeconds,
+                sub: folderName
             },
             metadata.channelKey
         );
