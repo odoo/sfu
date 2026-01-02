@@ -14,6 +14,11 @@ const logger = new Logger("MEDIA");
 const CHECK_INTERVAL = 10 * 60 * 1000; // 10 minutes
 const CPU_LOAD_THRESHOLD = 0.8;
 
+/**
+ * Nice-to-have feature, if the server provides a on-demand transcriptino
+ */
+const IMBED_TRANSCRIPTION = false;
+
 let interval: NodeJS.Timeout | undefined;
 
 function makeJwt(key: string) {
@@ -127,12 +132,16 @@ async function processRecording(folderName: string) {
             stoppedAt: metadata.stoppedAt,
             timeStamps: metadata.timeStamps
         });
-        if (metadata.transcription) {
+        if (metadata.transcription && IMBED_TRANSCRIPTION) {
             const filePath = await compiler.compileAudio();
             if (filePath) {
                 srt = await fetchTranscription(filePath, metadata);
             }
         }
+        /**
+         *  todo should maybe flag if we already did the transcription.
+         *  or we expect the remote server to keep track of that
+         */
         const file = await compiler.compileVideo(srt);
         if (file) {
             await upload(file, metadata);
@@ -182,7 +191,7 @@ async function upload(file: string, metadata: SealedMetaData) {
             const response = await fetch(jsonResponse.destination, {
                 method: "POST",
                 headers: {
-                    "Content-Type": "video/mp4"
+                    "Content-Type": "video/av1"
                 },
                 // @ts-expect-error: Node fetch supports ReadStream
                 // "duplex" must be set to "half" when using a ReadableStream as the body.

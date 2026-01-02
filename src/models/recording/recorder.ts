@@ -19,6 +19,7 @@ export enum TIME_TAG {
 export type TimeTagInfo = {
     filename: string;
     type: STREAM_TYPE;
+    sessionId: SessionId;
     /**
      * The file lasts for the whole duration of the client producer,
      * which means that it can represent a sequence of streams,
@@ -42,6 +43,7 @@ export type Metadata = {
     routingAddress: string;
     startedAt?: number;
     timeStamps: TimeStampData[];
+    labels: Record<SessionId, string>;
 };
 
 export type SealedMetaData = Metadata & {
@@ -78,7 +80,8 @@ export class Recorder extends EventEmitter {
     private readonly _metaData: Metadata = {
         channelName: "",
         routingAddress: "",
-        timeStamps: []
+        timeStamps: [],
+        labels: {}
     };
 
     get state(): RecordingState {
@@ -133,14 +136,33 @@ export class Recorder extends EventEmitter {
         this.terminate();
         this._emitStatus();
     }
-    /* eslint-disable no-dupe-class-members */ // overloads
-    mark(tag: TIME_TAG.FILE_STATE_CHANGE, info: TimeTagInfo): void;
-    mark(tag: TIME_TAG, info?: TimeTagInfo) {
+
+    mark(tag: TIME_TAG, info: TimeTagInfo) {
         this._metaData.timeStamps.push({
             tag,
             timestamp: Date.now(),
             info
         } as TimeStampData);
+        if (info.type === STREAM_TYPE.SCREEN) {
+            this._refreshScreenSharingSessionIds(info.sessionId, info.active);
+        }
+    }
+
+    private _refreshScreenSharingSessionIds(sessionId: SessionId, active: boolean) {
+        logger.debug(`screen session ${sessionId} ${active ? "started" : "stopped"}`);
+        /**
+         * Should use a "this._screenSharingSessionIds" array to keep track of the screen sharing
+         * sessions. This should be a stack, and the one at the top of the stack should be the
+         * session for which the screen is recorded, if there is such a session, all the other
+         * sessions screen/camera streams should not be recorded. This is done with
+         * _getRecordingStates, which will check if sessionId is the only one that should record video (its screen)
+         */
+        for (const [sessionId, task] of this._tasks.entries()) {
+            const { audio, camera, screen } = this._getRecordingStates(sessionId);
+            task.audio = audio;
+            task.camera = camera;
+            task.screen = screen;
+        }
     }
 
     /**
@@ -157,7 +179,10 @@ export class Recorder extends EventEmitter {
         logger.verbose(`terminating recorder for channel ${this._channel.name}`);
         this._channel.off(Channel.Events.SESSION_JOIN, this._onSessionJoin);
         this._channel.off(Channel.Events.SESSION_LEAVE, this._onSessionLeave);
-        const metaData = this._sealMetaData();
+        const metaData = save ? this._sealMetaData() : undefined;
+        this._metaData.timeStamps = [];
+        this._metaData.startedAt = undefined;
+        this._metaData.labels = {};
         this.video = false;
         this.transcription = false;
         const currentFolder = this._folder;
@@ -173,7 +198,7 @@ export class Recorder extends EventEmitter {
             .then((results) => {
                 const failed = results.some((result) => result.status === "rejected");
                 if (save && !failed) {
-                    currentFolder!.add(recording.metadataFileName, metaData);
+                    currentFolder!.add(recording.metadataFileName, metaData!);
                     currentFolder!.seal(
                         path.join(recording.directory, `${Date.now()}-${this._channel.name}`)
                     );
@@ -201,8 +226,6 @@ export class Recorder extends EventEmitter {
             channelKey: this._channel.key,
             stoppedAt: Date.now()
         });
-        this._metaData.timeStamps = [];
-        this._metaData.startedAt = undefined;
         /**
          * As the metadata can contain sensitive information, like routing
          * with tokens, or the channel key, it is encrypted before being
@@ -216,7 +239,11 @@ export class Recorder extends EventEmitter {
         if (!session) {
             return;
         }
-        this._tasks.set(session.id, new RecordingTask(this, session, this._getRecordingStates()));
+        this._metaData.labels[id] = session.label || "unknown";
+        this._tasks.set(
+            session.id,
+            new RecordingTask(this, session, this._getRecordingStates(session.id))
+        );
     }
 
     private _onSessionLeave(id: SessionId) {
@@ -244,9 +271,10 @@ export class Recorder extends EventEmitter {
         }, recording.maxDuration);
         logger.verbose(`Initializing recorder for channel: ${this._channel.name}`);
         for (const [sessionId, session] of this._channel.sessions) {
+            this._metaData.labels[sessionId] = session.label || "unknown";
             this._tasks.set(
                 sessionId,
-                new RecordingTask(this, session, this._getRecordingStates())
+                new RecordingTask(this, session, this._getRecordingStates(sessionId))
             );
         }
         this._channel.on(Channel.Events.SESSION_JOIN, this._onSessionJoin);
@@ -262,7 +290,7 @@ export class Recorder extends EventEmitter {
         return Promise.allSettled(proms);
     }
 
-    private _getRecordingStates(): RecordingStates {
+    private _getRecordingStates(sessionId: SessionId): RecordingStates {
         /**
          * TODO
          * This will need to be much smarter. When recording video, we should
@@ -279,6 +307,7 @@ export class Recorder extends EventEmitter {
          * TIME_TAG.FILE_STATE_CHANGE events, where `type` and `active` is all
          * we need to know when and if a screen is being shared.
          */
+        logger.debug(`Getting recording states for session ${sessionId}`);
         return {
             audio: this.isRecording,
             camera: this.isRecording && this.video,

@@ -360,12 +360,22 @@ describe("MediaCompiler Unit Tests", () => {
                 {
                     tag: TIME_TAG.FILE_STATE_CHANGE,
                     timestamp: 1000,
-                    info: { type: STREAM_TYPE.AUDIO, active: true, filename: "file1.ogg" }
+                    info: {
+                        type: STREAM_TYPE.AUDIO,
+                        sessionId: 1,
+                        active: true,
+                        filename: "file1.ogg"
+                    }
                 },
                 {
                     tag: TIME_TAG.FILE_STATE_CHANGE,
                     timestamp: 2000,
-                    info: { type: STREAM_TYPE.AUDIO, active: true, filename: "file2.ogg" }
+                    info: {
+                        type: STREAM_TYPE.AUDIO,
+                        sessionId: 1,
+                        active: true,
+                        filename: "file2.ogg"
+                    }
                 }
             ]
         });
@@ -399,7 +409,12 @@ describe("MediaCompiler Unit Tests", () => {
                 {
                     tag: TIME_TAG.FILE_STATE_CHANGE,
                     timestamp: 1000,
-                    info: { type: STREAM_TYPE.AUDIO, active: true, filename: "file1.ogg" }
+                    info: {
+                        type: STREAM_TYPE.AUDIO,
+                        active: true,
+                        sessionId: 3,
+                        filename: "file1.ogg"
+                    }
                 }
             ]
         });

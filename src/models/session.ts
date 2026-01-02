@@ -130,6 +130,8 @@ export class Session extends EventEmitter {
 
     /** Communication bus for WebSocket messaging */
     public bus?: Bus;
+    /** A human-friendly way to identify the session, optionally provided by the remote server */
+    public label?: string;
     /** Unique session identifier */
     public readonly id: SessionId;
     /** Session information visible to other participants */

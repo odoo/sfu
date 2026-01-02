@@ -132,6 +132,7 @@ export class RecordingTask extends EventEmitter {
                             active,
                             filename,
                             type,
+                            sessionId: this._session.id,
                             eof
                         });
                     }
