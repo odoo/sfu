@@ -25,7 +25,7 @@ export type rtpData = {
 };
 
 /**
- * Bridges a mediasoup producer to an FFMPEG recording process.
+ * Bridges a mediasoup producer through a RTP to an FFMPEG recording process.
  *
  * The class opens a plain transport/consumer pair on a dynamic port,
  * extracts the RTP parameters, and spawns FFMPEG when the producer is active.
