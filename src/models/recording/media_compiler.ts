@@ -33,24 +33,30 @@ export class MediaCompiler {
         const audioFiles = new Map<string, number>();
         for (const timestamp of this._timeStamps) {
             if (timestamp.tag === TIME_TAG.FILE_STATE_CHANGE) {
-                if (timestamp.info && timestamp.info.type === "audio" && timestamp.info.active) {
-                    if (!audioFiles.has(timestamp.info.filename)) {
-                        logger.debug(`Found audio file ${timestamp.info.filename}`);
-                        audioFiles.set(timestamp.info.filename, timestamp.timestamp);
+                if (timestamp.info && timestamp.info.active) {
+                    switch (timestamp.info.type) {
+                        case "audio":
+                            if (!audioFiles.has(timestamp.info.filename)) {
+                                logger.debug(`Found audio file ${timestamp.info.filename}`);
+                                audioFiles.set(timestamp.info.filename, timestamp.timestamp);
+                            }
+                            break;
+                        case "camera":
+                        case "screen":
+                            /**
+                             * TODO in the case of videoFiles, we cannot just take active and add the file,
+                             * because when they are active=false (and that state can alternate many times),
+                             * over the course of the recording) we need to compile a new segment without
+                             * them (otherwise we will show a black screen on the final recording).
+                             */
+                            break;
+                        default:
+                            break;
                     }
                 }
             }
         }
-        /**
-         * TODO Do the same for video, but needs cameraFiles and screenFiles,
-         * then make a much more complex logic on what to display.
-         * Will probably need Odoo to provide labels for rtc sessions
-         * so that these labels can be passed to timestamp info.
-         * The recorder may have to update _getRecordingStates() based on if there is
-         * at least one screen (because if there is a screen that's what we show,
-         * and maybe just the video of the sharer if there is)
-         * then iterate recording tasks to update them with the new parameters.
-         */
+        // If no camera and screen stream, it's a pure audio file.
         return this._compileAudio(audioFiles, startedAt, stoppedAt);
     }
 
