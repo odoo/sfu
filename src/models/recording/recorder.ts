@@ -143,26 +143,6 @@ export class Recorder extends EventEmitter {
             timestamp: Date.now(),
             info
         } as TimeStampData);
-        if (info.type === STREAM_TYPE.SCREEN) {
-            this._refreshScreenSharingSessionIds(info.sessionId, info.active);
-        }
-    }
-
-    private _refreshScreenSharingSessionIds(sessionId: SessionId, active: boolean) {
-        logger.debug(`screen session ${sessionId} ${active ? "started" : "stopped"}`);
-        /**
-         * Should use a "this._screenSharingSessionIds" array to keep track of the screen sharing
-         * sessions. This should be a stack, and the one at the top of the stack should be the
-         * session for which the screen is recorded, if there is such a session, all the other
-         * sessions screen/camera streams should not be recorded. This is done with
-         * _getRecordingStates, which will check if sessionId is the only one that should record video (its screen)
-         */
-        for (const [sessionId, task] of this._tasks.entries()) {
-            const { audio, camera, screen } = this._getRecordingStates(sessionId);
-            task.audio = audio;
-            task.camera = camera;
-            task.screen = screen;
-        }
     }
 
     /**
@@ -240,10 +220,7 @@ export class Recorder extends EventEmitter {
             return;
         }
         this._metaData.labels[id] = session.label || "unknown";
-        this._tasks.set(
-            session.id,
-            new RecordingTask(this, session, this._getRecordingStates(session.id))
-        );
+        this._tasks.set(session.id, new RecordingTask(this, session, this._getRecordingStates()));
     }
 
     private _onSessionLeave(id: SessionId) {
@@ -274,7 +251,7 @@ export class Recorder extends EventEmitter {
             this._metaData.labels[sessionId] = session.label || "unknown";
             this._tasks.set(
                 sessionId,
-                new RecordingTask(this, session, this._getRecordingStates(sessionId))
+                new RecordingTask(this, session, this._getRecordingStates())
             );
         }
         this._channel.on(Channel.Events.SESSION_JOIN, this._onSessionJoin);
@@ -290,7 +267,7 @@ export class Recorder extends EventEmitter {
         return Promise.allSettled(proms);
     }
 
-    private _getRecordingStates(sessionId: SessionId): RecordingStates {
+    private _getRecordingStates(): RecordingStates {
         /**
          * TODO
          * This will need to be much smarter. When recording video, we should
@@ -304,10 +281,10 @@ export class Recorder extends EventEmitter {
          *
          * Therefore a mechanism to track the latest screen shared should be
          * implemented. We can extract that information from the
-         * TIME_TAG.FILE_STATE_CHANGE events, where `type` and `active` is all
-         * we need to know when and if a screen is being shared.
+         * TIME_TAG.FILE_STATE_CHANGE events, where `type` and `available` is all
+         * we need to know when and if a screen is being shared, then we can swap the "allowed" flag
+         * of the media outputs that should be on or off.
          */
-        logger.debug(`Getting recording states for session ${sessionId}`);
         return {
             audio: this.isRecording,
             camera: this.isRecording && this.video,
