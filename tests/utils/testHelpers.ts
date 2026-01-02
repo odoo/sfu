@@ -2,6 +2,7 @@ import { jest } from "@jest/globals";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+
 import { withMockEnv } from "#tests/utils/utils";
 import { mockFs } from "#tests/utils/mockFileSystem";
 import { mockSpawn } from "#tests/utils/mockFfmpeg.ts";
@@ -64,7 +65,8 @@ export async function setupUnitTestsEnv() {
             enabled: true,
             fileTTL: 1000 * 60 * 60,
             audioCodec: "libopus",
-            audioBitRate: "64k"
+            audioBitRate: "64k",
+            metadataFileName: "metadata.bin"
         },
         RECORDING_PATH: "/mock/recordings",
         LOG_LEVEL: "none"

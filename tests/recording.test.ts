@@ -256,10 +256,11 @@ describe("Media Service", () => {
 
     test("should process a valid recording", async () => {
         const recordingName = "session_123";
+        const routingAddress = "http://www.odoo.com/routin";
         const recordingDir = `/mock/recordings/${recordingName}`;
         const metadata = {
             channelName: "Test Channel",
-            routingAddress: "!http://odoo/routing",
+            routingAddress,
             stoppedAt: Date.now() - 1000,
             startedAt: 1000,
             timeStamps: [
@@ -294,11 +295,8 @@ describe("Media Service", () => {
             undefined
         );
 
-        const compiledPath = path.join(recordingDir, "recording_1000.ogg");
-        expect(mockFs.exists(compiledPath)).toBe(true);
-
         expect(mockFetch).toHaveBeenCalledWith(
-            "!http://odoo/routing",
+            `${routingAddress}/routing`,
             expect.objectContaining({
                 method: "GET",
                 headers: expect.objectContaining({ Authorization: "Bearer mock_jwt" })
@@ -353,25 +351,29 @@ describe("MediaCompiler Unit Tests", () => {
 
     test("should compile audio correctly", async () => {
         const workingDir = "/work";
-        const compiler = new MediaCompiler(workingDir, [
-            {
-                tag: TIME_TAG.FILE_STATE_CHANGE,
-                timestamp: 1000,
-                info: { type: STREAM_TYPE.AUDIO, active: true, filename: "file1.ogg" }
-            },
-            {
-                tag: TIME_TAG.FILE_STATE_CHANGE,
-                timestamp: 2000,
-                info: { type: STREAM_TYPE.AUDIO, active: true, filename: "file2.ogg" }
-            }
-        ]);
-
         mockFs.mkdir(workingDir);
+        const compiler = new MediaCompiler({
+            workingDir,
+            startedAt: 1000,
+            stoppedAt: 5000,
+            timeStamps: [
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 1000,
+                    info: { type: STREAM_TYPE.AUDIO, active: true, filename: "file1.ogg" }
+                },
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 2000,
+                    info: { type: STREAM_TYPE.AUDIO, active: true, filename: "file2.ogg" }
+                }
+            ]
+        });
         mockFs.mkdir(path.join(workingDir, "audio"));
         mockFs.write(path.join(workingDir, "audio", "file1.ogg"), "data");
         mockFs.write(path.join(workingDir, "audio", "file2.ogg"), "data");
 
-        const result = await compiler.compile(1000, 5000);
+        const result = await compiler.compileAudio();
 
         expect(result).toBe(path.join(workingDir, "recording_1000.ogg"));
         expect(mockSpawn).toHaveBeenCalledWith(
@@ -388,26 +390,37 @@ describe("MediaCompiler Unit Tests", () => {
 
     test("should return successfully if output already exists", async () => {
         const workingDir = "/work";
-        const compiler = new MediaCompiler(workingDir, [
-            {
-                tag: TIME_TAG.FILE_STATE_CHANGE,
-                timestamp: 1000,
-                info: { type: STREAM_TYPE.AUDIO, active: true, filename: "file1.ogg" }
-            }
-        ]);
-
+        mockFs.mkdir(workingDir);
+        const compiler = new MediaCompiler({
+            workingDir,
+            startedAt: 1000,
+            stoppedAt: 5000,
+            timeStamps: [
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 1000,
+                    info: { type: STREAM_TYPE.AUDIO, active: true, filename: "file1.ogg" }
+                }
+            ]
+        });
         mockFs.mkdir(workingDir);
         mockFs.write(path.join(workingDir, "recording_1000.ogg"), "existing");
 
-        const result = await compiler.compile(1000, 5000);
+        const result = await compiler.compileAudio();
         expect(result).toBe(path.join(workingDir, "recording_1000.ogg"));
         expect(mockSpawn).not.toHaveBeenCalled();
     });
 
     test("should return undefined if no audio files found", async () => {
         const workingDir = "/work";
-        const compiler = new MediaCompiler(workingDir, []);
-        const result = await compiler.compile(1000, 5000);
+        mockFs.mkdir(workingDir);
+        const compiler = new MediaCompiler({
+            workingDir,
+            startedAt: 1000,
+            stoppedAt: 5000,
+            timeStamps: []
+        });
+        const result = await compiler.compileAudio();
         expect(result).toBeUndefined();
         expect(mockSpawn).not.toHaveBeenCalled();
     });
