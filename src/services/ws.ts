@@ -14,7 +14,8 @@ import type { WebSocketCredentials } from "#src/shared/types.ts";
 type WSConnectClaims = {
     sfu_channel_uuid: string;
     session_id: string;
-    permissions: SessionPermissions;
+    label?: string;
+    permissions?: SessionPermissions;
 };
 type AuthenticationPayload = WebSocketCredentials | string;
 
@@ -115,7 +116,7 @@ function connect(webSocket: WebSocket, credentials: WebSocketCredentials): Sessi
     const { channelUUID, jwt } = credentials;
     let channel = channelUUID ? Channel.records.get(channelUUID) : undefined;
     const authResult = verify<WSConnectClaims>(jwt, channel?.key);
-    const { sfu_channel_uuid, session_id, permissions } = authResult;
+    const { sfu_channel_uuid, session_id, label, permissions } = authResult;
     if (!channelUUID && sfu_channel_uuid) {
         // Cases where the channelUUID is not provided in the credentials for backwards compatibility with version 1.1 and earlier.
         channel = Channel.records.get(sfu_channel_uuid);
@@ -134,6 +135,7 @@ function connect(webSocket: WebSocket, credentials: WebSocketCredentials): Sessi
     const bus = new Bus(webSocket, { batchDelay: config.timeouts.busBatch });
     const { session } = Channel.join(channel.uuid, session_id);
     session.updatePermissions(permissions);
+    session.label = label;
     webSocket.send(JSON.stringify(session.startupData)); // client can start using ws after this message.
     session.once(Session.Events.CLOSE, ({ code }: { code: string }) => {
         let wsCloseCode = WS_CLOSE_CODE.CLEAN;
