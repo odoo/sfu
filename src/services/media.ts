@@ -1,4 +1,6 @@
 import fs from "node:fs/promises";
+import { createReadStream } from "node:fs";
+
 import path from "node:path";
 import os from "node:os";
 
@@ -12,12 +14,18 @@ const logger = new Logger("MEDIA");
 const CHECK_INTERVAL = 10 * 60 * 1000; // 10 minutes
 const CPU_LOAD_THRESHOLD = 0.8;
 
-type RoutingInformation = {
-    recording?: string;
-    transcription?: string;
-};
-
 let interval: NodeJS.Timeout | undefined;
+
+function makeJwt(key: string) {
+    const nowSeconds = Date.now() / 1000;
+    return sign(
+        {
+            exp: nowSeconds + 120,
+            iat: nowSeconds
+        },
+        key
+    );
+}
 
 /**
  * Service responsible for post-processing of media recordings.
@@ -102,60 +110,66 @@ async function processRecording(folderName: string) {
     try {
         const content = await fs.readFile(metadataPath, "utf-8");
         const metadata: SealedMetaData = JSON.parse(decrypt(content));
-        const expirationDate = (metadata.stoppedAt || 0) + recording.fileTTL;
+        if (!metadata.startedAt || !metadata.stoppedAt) {
+            throw new Error("No startedAt or stoppedAt found in metadata");
+        }
+        const expirationDate = metadata.stoppedAt + recording.fileTTL;
         if (expirationDate < Date.now()) {
             logger.debug(`Recording ${folderName} is older than ${recording.fileTTL}ms, removing`);
             throw new Error("expired recording");
         }
         logger.debug(`Read metadata for recording ${folderName}: ${metadata.channelName}`);
         logger.debug(`Expected to be delivered at ${metadata.routingAddress}`);
-        const comp = new MediaCompiler(dir, metadata.timeStamps);
-        const file = await comp.compile(metadata.startedAt || 0, metadata.stoppedAt || 0);
-
+        let srt: string | undefined;
+        const compiler = new MediaCompiler({
+            workingDir: dir,
+            startedAt: metadata.startedAt,
+            stoppedAt: metadata.stoppedAt,
+            timeStamps: metadata.timeStamps
+        });
+        if (metadata.transcription) {
+            const filePath = await compiler.compileAudio();
+            if (filePath) {
+                srt = await fetchTranscription(filePath, metadata);
+            }
+        }
+        const file = await compiler.compileVideo(srt);
         if (file) {
-            await uploadFiles(file, {
-                metadata,
-                folderName,
-                video: Boolean(metadata.video),
-                transcription: Boolean(metadata.transcription)
-            });
+            await upload(file, metadata);
         }
     } catch (error) {
         logger.error(`Failed to process recording ${folderName}: ${error}`);
-        fs.rm(dir, { recursive: true });
     }
+    fs.rm(dir, { recursive: true });
 }
 
-async function uploadFiles(
-    file: string,
-    {
-        metadata,
-        folderName,
-        video,
-        transcription
-    }: {
-        metadata: SealedMetaData;
-        folderName: string;
-        video?: boolean;
-        transcription?: boolean;
+async function fetchTranscription(filePath: string, metadata: SealedMetaData) {
+    const response = await fetch(`${metadata.routingAddress}/transcription`, {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${makeJwt(metadata.channelKey)}`,
+            "Content-Type": "audio/mpeg"
+        },
+        // @ts-expect-error: Node fetch supports ReadStream
+        // "duplex" must be set to "half" when using a ReadableStream as the body.
+        // See: https://developer.mozilla.org/en-US/docs/Web/API/Request/duplex
+        body: createReadStream(filePath),
+        duplex: "half"
+    });
+    if (!response.ok) {
+        logger.warn(`Failed to obtain transcription for recording`);
+        return;
     }
-) {
+    return await response.text();
+}
+
+async function upload(file: string, metadata: SealedMetaData) {
     logger.debug(`Uploading files to ${metadata.routingAddress}`);
     try {
-        const nowSeconds = Date.now() / 1000;
-        const jwt = sign(
-            {
-                aud: metadata.routingAddress,
-                exp: nowSeconds + 120,
-                iat: nowSeconds,
-                sub: folderName
-            },
-            metadata.channelKey
-        );
-        const response = await fetch(metadata.routingAddress, {
+        const response = await fetch(`${metadata.routingAddress}/routing`, {
             method: "GET",
             headers: {
-                Authorization: `Bearer ${jwt}`
+                Authorization: `Bearer ${makeJwt(metadata.channelKey)}`
             }
         });
         if (!response.ok) {
@@ -163,12 +177,26 @@ async function uploadFiles(
                 `Failed to obtain routing from ${metadata.routingAddress}: ${response.statusText}`
             );
         }
-        const routing = (await response.json()) as RoutingInformation;
-        logger.debug(
-            `Obtained routing from ${metadata.routingAddress}: ${JSON.stringify(routing)}`
-        );
-        // TODO implement upload
+        const jsonResponse = await response.json();
+        if (jsonResponse.destination) {
+            const response = await fetch(jsonResponse.destination, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "video/mp4"
+                },
+                // @ts-expect-error: Node fetch supports ReadStream
+                // "duplex" must be set to "half" when using a ReadableStream as the body.
+                // See: https://developer.mozilla.org/en-US/docs/Web/API/Request/duplex
+                body: createReadStream(file),
+                duplex: "half"
+            });
+            if (!response.ok) {
+                throw new Error(
+                    `Failed to upload files to ${metadata.routingAddress}: ${response.statusText}`
+                );
+            }
+        }
     } catch (e) {
-        logger.error(`Failed to obtain routing from ${metadata.routingAddress}: ${e}`);
+        logger.error(`Failed to upload files to ${metadata.routingAddress}: ${e}`);
     }
 }

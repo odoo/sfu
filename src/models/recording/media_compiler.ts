@@ -2,75 +2,84 @@ import { spawn } from "node:child_process";
 import { access } from "node:fs/promises";
 import path from "node:path";
 
-import { type Metadata, TIME_TAG } from "#src/models/recording/recorder.ts";
+import { TIME_TAG, type TimeStampData } from "#src/models/recording/recorder.ts";
 import { recording } from "#src/config.ts";
 import { Logger } from "#src/utils/utils.ts";
+import { STREAM_TYPE } from "#src/shared/enums.ts";
 
 const logger = new Logger("MEDIA_COMPILER");
 
 export class MediaCompiler {
     private readonly _workingDir: string;
-    private readonly _timeStamps: Metadata["timeStamps"];
+    private readonly _startedAt: number;
+    private readonly _stoppedAt: number;
+    private readonly _timeStamps: TimeStampData[];
+    private _audioPath?: string;
 
-    constructor(workingDir: string, timeStamps: Metadata["timeStamps"]) {
+    constructor({
+        workingDir,
+        startedAt,
+        stoppedAt,
+        timeStamps
+    }: {
+        workingDir: string;
+        startedAt: number;
+        stoppedAt: number;
+        timeStamps: TimeStampData[];
+    }) {
         this._workingDir = workingDir;
+        this._startedAt = startedAt;
+        this._stoppedAt = stoppedAt;
         this._timeStamps = timeStamps;
     }
 
     /**
-     * Compiles the raw recording into compiled files.
-     * @returns The paths to the compiled files.
-     */
-    /**
      * Compiles the raw recording into a single file.
-     * @param startedAt - The start timestamp of the recording.
-     * @param stoppedAt - The stop timestamp of the recording.
-     * @returns The path to the compiled file, or undefined if no audio files were found.
+     * @returns The full path to the compiled file, or undefined if no audio files were found.
      */
-    async compile(startedAt: number, stoppedAt: number): Promise<string | undefined> {
+    async compileAudio(): Promise<string | undefined> {
         logger.debug(`Working dir: ${this._workingDir}`);
 
         const audioFiles = new Map<string, number>();
         for (const timestamp of this._timeStamps) {
             if (timestamp.tag === TIME_TAG.FILE_STATE_CHANGE) {
-                if (timestamp.info && timestamp.info.active) {
-                    switch (timestamp.info.type) {
-                        case "audio":
-                            if (!audioFiles.has(timestamp.info.filename)) {
-                                logger.debug(`Found audio file ${timestamp.info.filename}`);
-                                audioFiles.set(timestamp.info.filename, timestamp.timestamp);
-                            }
-                            break;
-                        case "camera":
-                        case "screen":
-                            /**
-                             * TODO in the case of videoFiles, we cannot just take active and add the file,
-                             * because when they are active=false (and that state can alternate many times),
-                             * over the course of the recording) we need to compile a new segment without
-                             * them (otherwise we will show a black screen on the final recording).
-                             */
-                            break;
-                        default:
-                            break;
+                if (
+                    timestamp.info &&
+                    timestamp.info.type === STREAM_TYPE.AUDIO &&
+                    timestamp.info.active
+                ) {
+                    if (!audioFiles.has(timestamp.info.filename)) {
+                        logger.debug(`Found audio file ${timestamp.info.filename}`);
+                        audioFiles.set(timestamp.info.filename, timestamp.timestamp);
                     }
                 }
             }
         }
+        /**
+         * TODO in the case of videoFiles, we cannot just take active and add the file,
+         * because when they are active=false (and that state can alternate many times),
+         * over the course of the recording) we need to compile a new segment without
+         * them (otherwise we will show a black screen on the final recording).
+         */
         // If no camera and screen stream, it's a pure audio file.
-        return this._compileAudio(audioFiles, startedAt, stoppedAt);
+        this._audioPath = await this._compile(audioFiles);
+        return this._audioPath;
     }
 
-    private async _compileAudio(
-        files: Map<string, number>,
-        startedAt: number,
-        stoppedAt: number
-    ): Promise<string | undefined> {
+    async compileVideo(srtFile?: string): Promise<string | undefined> {
+        // if no video, and no srtFile, no need to redo work, just return the audio file
+        // should be checked in _compile()
+        return this._audioPath || this.compileAudio();
+    }
+
+    // TODO should be refactored to take video files, and a srt file, and build a full video file, with subtitles.
+    private async _compile(audioFiles: Map<string, number>): Promise<string | undefined> {
         const relevantFiles: { path: string; offset: number }[] = [];
-        for (const [filename, startTime] of files) {
-            if (startTime < stoppedAt) {
+        for (const [filename, startTime] of audioFiles) {
+            if (startTime < this._stoppedAt) {
                 relevantFiles.push({
                     path: path.join(this._workingDir, "audio", filename),
-                    offset: startTime - startedAt
+                    offset: startTime - this._startedAt
                 });
             }
         }
@@ -80,7 +89,7 @@ export class MediaCompiler {
             return;
         }
 
-        const outputName = path.join(this._workingDir, `recording_${startedAt}.ogg`);
+        const outputName = path.join(this._workingDir, `recording_${this._startedAt}.ogg`);
         try {
             await access(outputName);
             logger.info(`Output file ${outputName} already exists, skipping compilation`);
@@ -91,7 +100,7 @@ export class MediaCompiler {
 
         const inputs: string[] = [];
         const filterComplex: string[] = [];
-        const duration = (stoppedAt - startedAt) / 1000;
+        const duration = (this._stoppedAt - this._startedAt) / 1000;
 
         relevantFiles.forEach((file, index) => {
             const delay = file.offset > 0 ? file.offset : 0;

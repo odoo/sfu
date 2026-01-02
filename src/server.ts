@@ -24,14 +24,6 @@ async function run(): Promise<void> {
     logger.debug(`* Media compiler write tests`);
     logger.debug(`* Choose format for recording (AV1)`);
     logger.debug(`* Only one recording per channel lifetime, merge at channel end`);
-    /**
-     * AV1
-     */
-    logger.debug(`* Routing Address`);
-    /**
-     * the address passed to the recorder should maybe be a routing address, the SFU asks at this address what to do with the files
-     * can auth with a JWT and just be something like odoo/discuss/recording/routing/<channelId/channelUUID> + Signed JWT in auth header (or payload)
-     */
 }
 
 function cleanup(): void {
