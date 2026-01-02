@@ -128,25 +128,37 @@ export class MediaOutput extends EventEmitter {
             return;
         }
         if (this._producer.paused) {
-            this._consumer?.pause();
-            if (this._mediaWriter) {
-                this.emit(MediaOutput.Events.FILE_STATE_CHANGE, {
-                    active: false,
-                    filename: this._mediaWriter.filename
-                });
-            }
+            this._updateConsumer(false);
         } else {
             if (!this._mediaWriter) {
                 const fileName = `${Date.now()}-${this.name}`;
                 logger.verbose(`new recording file${this._directory}/${fileName}`);
                 this._mediaWriter = new MediaWriter(this._rtpData, this._directory, fileName);
             }
-            this._consumer?.resume();
-            this.emit(MediaOutput.Events.FILE_STATE_CHANGE, {
-                active: true,
-                filename: this._mediaWriter.filename
-            });
+            this._updateConsumer(true);
         }
+    }
+
+    private _updateConsumer(available: boolean, allowed = true) {
+        const active = available && allowed;
+        if (active) {
+            this._consumer?.resume();
+        } else {
+            this._consumer?.pause();
+        }
+        if (!this._mediaWriter) {
+            return;
+        }
+        this.emit(MediaOutput.Events.FILE_STATE_CHANGE, {
+            active,
+            /**
+             * this should be used by the recorder to know
+             * when someone starts screen sharing.
+             * then update this.allowed accordingly
+             */
+            available,
+            filename: this._mediaWriter.filename
+        });
     }
 
     private async _cleanup() {
