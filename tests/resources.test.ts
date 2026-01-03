@@ -43,8 +43,8 @@ describe("resources service", () => {
         await new Promise<void>((resolve) => {
             const interval = setInterval(() => {
                 if (
-                    resources.testing.workerCount === config.NUM_WORKERS &&
-                    !resources.testing.hasWorker(worker)
+                    resources.__testing__.workerCount === config.NUM_WORKERS &&
+                    !resources.__testing__.hasWorker(worker)
                 ) {
                     clearInterval(interval);
                     resolve();
@@ -54,7 +54,7 @@ describe("resources service", () => {
 
         const newWorker = await resources.getWorker();
         expect(newWorker.pid).not.toBe(pid);
-        expect(resources.testing.workerCount).toBe(config.NUM_WORKERS);
+        expect(resources.__testing__.workerCount).toBe(config.NUM_WORKERS);
     });
     test("getAllowedCodecs should respect environment variables", async () => {
         const { withMockEnv } = await import("./utils/utils");

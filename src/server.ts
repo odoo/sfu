@@ -11,8 +11,8 @@ async function run(): Promise<void> {
     auth.start();
     await resources.start();
     await http.start();
-    await media.start();
     logger.info(`ready - PID: ${process.pid}`);
+    await media.start();
     logger.debug(`TO IMPLEMENT: `);
     logger.debug(`* get session labels from the odoo server`);
     // probably need names associated to rtc sessions (passed in JWT) so that we can add those labels to the compiled video

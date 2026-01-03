@@ -285,8 +285,7 @@ describe("Media Service", () => {
         mockFs.write(path.join(recordingDir, "audio", "audio_1.ogg"), "dummy audio content");
 
         await mediaService.start();
-
-        await new Promise((r) => setTimeout(r, 50));
+        await mediaService.processingQueue;
 
         expect(mockFsModule.readdir).toHaveBeenCalled();
         expect(mockSpawn).toHaveBeenCalledWith(
@@ -310,7 +309,7 @@ describe("Media Service", () => {
         mockFs.mkdir(recordingDir);
 
         await mediaService.start();
-        await new Promise((r) => setTimeout(r, 50));
+        await mediaService.processingQueue;
 
         expect(mockFsModule.readFile).toHaveBeenCalledWith(
             path.join(recordingDir, "metadata.bin"),
@@ -331,7 +330,7 @@ describe("Media Service", () => {
         mockFs.write(path.join(recordingDir, "metadata.bin"), JSON.stringify(metadata));
 
         await mediaService.start();
-        await new Promise((r) => setTimeout(r, 50));
+        await mediaService.processingQueue;
 
         expect(mockFsModule.rm).toHaveBeenCalledWith(recordingDir, { recursive: true });
     });
