@@ -37,7 +37,7 @@ const workers = new Set<RtcWorker>();
 /**
  * Helpers exposed for testing purposes
  */
-export const testing = {
+export const __testing__ = {
     hasWorker(worker: RtcWorker) {
         return workers.has(worker);
     },

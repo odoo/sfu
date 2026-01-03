@@ -21,6 +21,12 @@ const IMBED_TRANSCRIPTION = false;
 
 let interval: NodeJS.Timeout | undefined;
 
+/**
+ * Promise that resolves when all queued processing is complete.
+ * Tests can await this to avoid arbitrary setTimeout delays.
+ */
+export let processingQueue: Promise<void> = Promise.resolve();
+
 function makeJwt(key: string) {
     const nowSeconds = Date.now() / 1000;
     return sign(
@@ -51,7 +57,7 @@ export async function start(): Promise<void> {
         return;
     }
     logger.info("Starting media service");
-    checkSystemAndProcess();
+    await checkSystemAndProcess();
     // TODO maybe use fs.watch(dir)
     // may need local knowledge of which files are being processed
     // read folder at startup, then listen for change, build a queue of folders to process
@@ -66,15 +72,19 @@ export function close() {
 }
 
 async function checkSystemAndProcess() {
-    try {
-        if (!isCpuLoaded()) {
-            await processRecordings();
-        } else {
-            logger.warn("CPU is too loaded, skipping recording processing");
+    const work = (async () => {
+        try {
+            if (!isCpuLoaded()) {
+                await processRecordings();
+            } else {
+                logger.warn("CPU is too loaded, skipping recording processing");
+            }
+        } catch (error) {
+            logger.error(`Error in media service check: ${error}`);
         }
-    } catch (error) {
-        logger.error(`Error in media service check: ${error}`);
-    }
+    })();
+    processingQueue = processingQueue.then(() => work);
+    await work;
 }
 
 function isCpuLoaded(): boolean {
