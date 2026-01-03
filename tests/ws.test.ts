@@ -3,7 +3,7 @@ import { WebSocket } from "ws";
 import { once } from "node:events";
 
 import { LocalNetwork, makeJwt } from "#tests/utils/network";
-import { Channel } from "#src/models/channel";
+import { Channel } from "#src/core/models/channel";
 import { WS_CLOSE_CODE } from "#src/shared/enums";
 import { OvercrowdedError } from "#src/utils/errors";
 import { timeouts } from "#src/config";

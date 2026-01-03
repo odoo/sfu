@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { access } from "node:fs/promises";
 import path from "node:path";
 
-import { TIME_TAG, type TimeStampData } from "#src/models/recording/recorder.ts";
+import { TIME_TAG, type TimeStampData } from "#src/recording/models/recorder.ts";
 import { recording } from "#src/config.ts";
 import { Logger } from "#src/utils/utils.ts";
 import { STREAM_TYPE } from "#src/shared/enums.ts";

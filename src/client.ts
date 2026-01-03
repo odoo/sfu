@@ -30,7 +30,7 @@ import type {
     RecordingState,
     RecordingStateUpdate
 } from "#src/shared/types";
-import type { TransportConfig, SessionId, SessionInfo } from "#src/models/session";
+import type { TransportConfig, SessionId, SessionInfo } from "#src/core/models/session.ts";
 
 type Consumers = {
     audio: Consumer | null;

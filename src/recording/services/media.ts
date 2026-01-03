@@ -5,9 +5,9 @@ import path from "node:path";
 import os from "node:os";
 
 import { recording, RECORDING_PATH } from "#src/config.ts";
-import { decrypt, sign } from "#src/services/auth.ts";
-import { MediaCompiler } from "#src/models/recording/media_compiler.ts";
-import type { SealedMetaData } from "#src/models/recording/recorder.ts";
+import { decrypt, sign } from "#src/core/services/auth.ts";
+import { MediaCompiler } from "#src/recording/models/media_compiler.ts";
+import type { SealedMetaData } from "#src/recording/models/recorder.ts";
 import { Logger } from "#src/utils/utils.ts";
 
 const logger = new Logger("MEDIA");

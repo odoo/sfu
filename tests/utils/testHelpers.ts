@@ -22,7 +22,7 @@ export async function recordingSetup(env: Record<string, string | undefined>) {
         ...env
     });
     const { LocalNetwork } = await import("#tests/utils/network");
-    const { Channel } = await import("#src/models/channel");
+    const { Channel } = await import("#src/core/models/channel");
     const network = new LocalNetwork();
     await network.start("0.0.0.0", 61254);
     return {
@@ -72,7 +72,7 @@ export async function setupUnitTestsEnv() {
         LOG_LEVEL: "none"
     }));
 
-    jest.doMock("#src/services/auth.ts", () => ({
+    jest.doMock("#src/core/services/auth.ts", () => ({
         __esModule: true,
         decrypt: (content: string) => content,
         sign: () => "mock_jwt"

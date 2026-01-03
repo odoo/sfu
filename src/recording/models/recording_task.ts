@@ -3,10 +3,10 @@ import { EventEmitter } from "node:events";
 
 import type { Producer } from "mediasoup/node/lib/types";
 
-import { MediaOutput } from "#src/models/recording/media_output.ts";
-import { Session } from "#src/models/session.ts";
+import { MediaOutput } from "#src/recording/models/media_output.ts";
+import { Session } from "#src/core/models/session.ts";
 import { Logger } from "#src/utils/utils.ts";
-import { TIME_TAG, type Recorder } from "#src/models/recording/recorder.ts";
+import { TIME_TAG, type Recorder } from "#src/recording/models/recorder.ts";
 import { STREAM_TYPE } from "#src/shared/enums.ts";
 import { PortLimitReachedError } from "#src/utils/errors.ts";
 

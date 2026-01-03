@@ -5,7 +5,7 @@ import { Readable } from "node:stream";
 
 import { Logger, LogLevel } from "#src/utils/utils.ts";
 import { recording, LOG_LEVEL } from "#src/config.ts";
-import type { rtpData } from "#src/models/recording/media_output.ts";
+import type { rtpData } from "#src/recording/models/media_output.ts";
 
 const logger = new Logger("FFMPEG");
 const isDebug = LOG_LEVEL === LogLevel.DEBUG;

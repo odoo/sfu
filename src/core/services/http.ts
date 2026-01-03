@@ -1,11 +1,11 @@
 import http, { IncomingMessage, ServerResponse } from "node:http";
 
-import * as ws from "#src/services/ws.ts";
-import * as auth from "#src/services/auth.ts";
+import * as ws from "#src/core/services/ws.ts";
+import * as auth from "#src/core/services/auth.ts";
 import * as config from "#src/config.ts";
 import { Logger, parseBody, extractRequestInfo } from "#src/utils/utils.ts";
-import { SESSION_CLOSE_CODE, type SessionId } from "#src/models/session.ts";
-import { Channel, type ChannelStats } from "#src/models/channel.ts";
+import { SESSION_CLOSE_CODE, type SessionId } from "#src/core/models/session.ts";
+import { Channel, type ChannelStats } from "#src/core/models/channel.ts";
 
 type RequestInfo = {
     /** Remote client address */

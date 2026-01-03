@@ -3,7 +3,7 @@ import { once } from "node:events";
 import { WebSocket } from "ws";
 import { describe, beforeEach, afterEach, expect, jest } from "@jest/globals";
 
-import { Channel } from "#src/models/channel";
+import { Channel } from "#src/core/models/channel";
 import { WS_CLOSE_CODE } from "#src/shared/enums";
 import { timeouts } from "#src/config";
 
