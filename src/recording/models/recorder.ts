@@ -2,15 +2,15 @@ import path from "node:path";
 import { EventEmitter } from "node:events";
 
 import { recording } from "#src/config.ts";
-import { getFolder, type Folder } from "#src/services/resources.ts";
-import { RecordingTask, type RecordingStates } from "#src/models/recording/recording_task.ts";
-import { encrypt } from "#src/services/auth.ts";
+import { getFolder, type Folder } from "#src/core/services/resources.ts";
+import { RecordingTask, type RecordingStates } from "#src/recording/models/recording_task.ts";
+import { encrypt } from "#src/core/services/auth.ts";
 import { Logger } from "#src/utils/utils.ts";
 
-import { Channel } from "#src/models/channel.ts";
+import { Channel } from "#src/core/models/channel.ts";
 import { STREAM_TYPE } from "#src/shared/enums.ts";
 import type { RecordingState } from "#src/shared/types.ts";
-import type { SessionId } from "#src/models/session.ts";
+import type { SessionId } from "#src/core/models/session.ts";
 
 export enum TIME_TAG {
     FILE_STATE_CHANGE = "file_state_change"

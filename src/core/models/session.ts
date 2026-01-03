@@ -28,7 +28,7 @@ import type {
     StreamType
 } from "#src/shared/types";
 import type { Bus } from "#src/shared/bus.ts";
-import type { Channel } from "#src/models/channel.ts";
+import type { Channel } from "#src/core/models/channel.ts";
 
 export type SessionId = number | string;
 export type SessionInfo = {

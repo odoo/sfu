@@ -7,7 +7,7 @@ import { FakeMediaStreamTrack } from "fake-mediastreamtrack";
 
 import { STREAM_TYPE } from "#src/shared/enums.ts";
 import { CLIENT_UPDATE } from "#src/client";
-import { TIME_TAG } from "#src/models/recording/recorder.ts";
+import { TIME_TAG } from "#src/recording/models/recorder.ts";
 
 import { recordingSetup, setupUnitTestsEnv } from "#tests/utils/testHelpers.ts";
 import {
@@ -219,7 +219,7 @@ describe("Recording & Transcription", () => {
 });
 
 describe("Media Service", () => {
-    let mediaService: typeof import("#src/services/media.ts");
+    let mediaService: typeof import("#src/recording/services/media");
     let mockFs: typeof import("#tests/utils/mockFileSystem").mockFs;
     let mockFsModule: typeof import("#tests/utils/mockFileSystem").mockFsModule;
 
@@ -239,7 +239,7 @@ describe("Media Service", () => {
             statusText: "OK"
         } as Response);
 
-        mediaService = await import("#src/services/media.ts");
+        mediaService = await import("#src/recording/services/media");
     });
 
     afterEach(() => {
@@ -337,7 +337,7 @@ describe("Media Service", () => {
 });
 
 describe("MediaCompiler Unit Tests", () => {
-    let MediaCompiler: typeof import("#src/models/recording/media_compiler.ts").MediaCompiler;
+    let MediaCompiler: typeof import("#src/recording/models/media_compiler.ts").MediaCompiler;
     let mockFs: typeof import("#tests/utils/mockFileSystem").mockFs;
     // mockSpawn uses global variable
 
@@ -345,7 +345,7 @@ describe("MediaCompiler Unit Tests", () => {
         const env = await setupUnitTestsEnv();
         mockFs = env.mockFs;
 
-        MediaCompiler = (await import("#src/models/recording/media_compiler.ts")).MediaCompiler;
+        MediaCompiler = (await import("#src/recording/models/media_compiler.ts")).MediaCompiler;
     });
 
     test("should compile audio correctly", async () => {

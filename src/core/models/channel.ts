@@ -9,10 +9,10 @@ import { AuthenticationError, OvercrowdedError } from "#src/utils/errors.ts";
 import {
     Session,
     SESSION_CLOSE_CODE,
-    type SessionId,
-} from "#src/models/session.ts";
-import { Recorder } from "#src/models/recording/recorder.ts";
-import { getWorker, type RtcWorker } from "#src/services/resources.ts";
+    type SessionId
+} from "#src/core/models/session.ts";
+import { Recorder } from "#src/recording/models/recorder.ts";
+import { getWorker, type RtcWorker } from "#src/core/services/resources.ts";
 import { SERVER_MESSAGE } from "#src/shared/enums.ts";
 import type { RecordingState } from "#src/shared/types.ts";
 

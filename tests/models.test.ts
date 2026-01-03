@@ -1,7 +1,7 @@
 import { describe, beforeEach, afterEach, expect, jest } from "@jest/globals";
 
-import * as resources from "#src/services/resources";
-import { Channel } from "#src/models/channel";
+import * as resources from "#src/core/services/resources";
+import { Channel } from "#src/core/models/channel";
 import { timeouts, CHANNEL_SIZE } from "#src/config";
 import { OvercrowdedError } from "#src/utils/errors";
 

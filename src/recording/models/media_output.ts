@@ -8,9 +8,9 @@ import type {
     MediaKind
 } from "mediasoup/node/lib/types";
 
-import { DynamicPort } from "#src/services/resources.ts";
+import { DynamicPort } from "#src/core/services/resources.ts";
 import { recording, rtc } from "#src/config.ts";
-import { MediaWriter } from "#src/models/recording/media_writer.ts";
+import { MediaWriter } from "#src/recording/models/media_writer.ts";
 import { Logger } from "#src/utils/utils.ts";
 
 const logger = new Logger("MEDIA_OUTPUT");

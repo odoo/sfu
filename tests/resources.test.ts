@@ -4,7 +4,7 @@ import path from "node:path";
 import { mockFs, mockNodeFS } from "./utils/mockFileSystem.ts";
 mockNodeFS();
 
-import * as resources from "#src/services/resources.ts";
+import * as resources from "#src/core/services/resources.ts";
 import * as config from "#src/config.ts";
 
 describe("resources service", () => {
@@ -106,7 +106,7 @@ describe("resources service", () => {
             DYNAMIC_MAX_PORT: "10004"
         });
 
-        const resources = await import("#src/services/resources");
+        const resources = await import("#src/core/services/resources.ts");
         await resources.start();
 
         const port1 = new resources.DynamicPort();

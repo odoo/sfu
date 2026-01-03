@@ -6,9 +6,9 @@ import { WS_CLOSE_CODE } from "#src/shared/enums.ts";
 import { Bus } from "#src/shared/bus.ts";
 import { Logger, extractRequestInfo } from "#src/utils/utils.ts";
 import { AuthenticationError, OvercrowdedError } from "#src/utils/errors.ts";
-import { Session, SESSION_CLOSE_CODE, type SessionPermissions } from "#src/models/session.ts";
-import { Channel } from "#src/models/channel.ts";
-import { verify } from "#src/services/auth.ts";
+import { Session, SESSION_CLOSE_CODE, type SessionPermissions } from "#src/core/models/session.ts";
+import { Channel } from "#src/core/models/channel.ts";
+import { verify } from "#src/core/services/auth.ts";
 import type { WebSocketCredentials } from "#src/shared/types.ts";
 
 type WSConnectClaims = {

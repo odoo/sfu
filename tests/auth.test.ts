@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { describe, beforeEach, afterEach, expect } from "@jest/globals";
 
-import * as auth from "#src/services/auth";
+import * as auth from "#src/core/services/auth";
 import { AuthenticationError } from "#src/utils/errors";
 
 describe("Auth Service", () => {

@@ -37,7 +37,7 @@ export type AvailableFeatures = {
 };
 
 import type { DownloadStates } from "#src/client.ts";
-import type { SessionId, SessionInfo, TransportConfig } from "#src/models/session.ts";
+import type { SessionId, SessionInfo, TransportConfig } from "#src/core/models/session.ts";
 
 import type {
     DtlsParameters,

@@ -1,13 +1,13 @@
 import { WebSocket } from "ws";
 import { Device, FakeHandler, testFakeParameters } from "mediasoup-client";
 
-import * as auth from "#src/services/auth";
-import * as http from "#src/services/http";
-import * as resources from "#src/services/resources";
+import * as auth from "#src/core/services/auth";
+import * as http from "#src/core/services/http";
+import * as resources from "#src/core/services/resources";
 import { Deferred } from "#src/utils/utils";
 import { SfuClient, SfuClientState } from "#src/client";
-import { Channel } from "#src/models/channel";
-import type { Session } from "#src/models/session";
+import { Channel } from "#src/core/models/channel";
+import type { Session } from "#src/core/models/session";
 import { StringLike } from "#src/shared/types.ts";
 
 /**

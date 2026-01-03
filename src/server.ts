@@ -1,9 +1,9 @@
-import * as resources from "#src/services/resources.ts";
-import * as http from "#src/services/http.ts";
-import * as auth from "#src/services/auth.ts";
-import * as media from "#src/services/media.ts";
+import * as resources from "#src/core/services/resources.ts";
+import * as http from "#src/core/services/http.ts";
+import * as auth from "#src/core/services/auth.ts";
+import * as media from "#src/recording/services/media.ts";
 import { Logger } from "#src/utils/utils.ts";
-import { Channel } from "#src/models/channel.ts";
+import { Channel } from "#src/core/models/channel.ts";
 
 const logger = new Logger("SERVER", { logLevel: "all" });
 
@@ -14,16 +14,10 @@ async function run(): Promise<void> {
     logger.info(`ready - PID: ${process.pid}`);
     await media.start();
     logger.debug(`TO IMPLEMENT: `);
-    logger.debug(`* get session labels from the odoo server`);
-    // probably need names associated to rtc sessions (passed in JWT) so that we can add those labels to the compiled video
-    logger.debug(`* zip the recording files`);
-    // using node:zlib
-    logger.debug(`* should recording when alone be disallowed?`);
-    logger.debug(`* Media service / Recording compiler (also manages the folder cleanup)`);
-    logger.debug(`* Media service write tests`);
-    logger.debug(`* Media compiler write tests`);
     logger.debug(`* Choose format for recording (AV1)`);
-    logger.debug(`* Only one recording per channel lifetime, merge at channel end`);
+    logger.debug(`* Video compiler`);
+    logger.debug(`* Out of SFU flow (artifact, cloud,...)`);
+    logger.debug(`* Investigate imbeded transcription flow`);
 }
 
 function cleanup(): void {
