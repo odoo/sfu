@@ -143,7 +143,7 @@ async function processRecording(folderName: string) {
             timeStamps: metadata.timeStamps
         });
         if (metadata.transcription && IMBED_TRANSCRIPTION) {
-            const filePath = await compiler.compileAudio();
+            const filePath = await compiler.compile({ video: false });
             if (filePath) {
                 srt = await fetchTranscription(filePath, metadata);
             }
@@ -152,7 +152,7 @@ async function processRecording(folderName: string) {
          *  todo should maybe flag if we already did the transcription.
          *  or we expect the remote server to keep track of that
          */
-        const file = await compiler.compileVideo(srt);
+        const file = await compiler.compile({ video: metadata.video, srt });
         if (file) {
             await upload(file, metadata);
         }
