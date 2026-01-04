@@ -1,5 +1,5 @@
 # HTTP API
-see [http.js](./src/services/http.js) for more details.
+see [http.ts](./src/core/services/http.ts) for more details.
 
 - GET `/v1/noop`: health check endpoint.
 - GET `/v1/stats`: returns the server statistics as an array with one entry per channel, in JSON:
