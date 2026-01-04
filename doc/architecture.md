@@ -1,6 +1,6 @@
 # Architecture
 
-The SFU is divided into [services](../src/services), each responsible for a specific functionality of the server. And models [models](../src/models) for the data structures used by the services.
+The SFU is divided into [services](../src/core/services), each responsible for a specific functionality of the server. And models [models](../src/core/models) for the data structures used by the services.
 
 ## Overview
 
@@ -61,16 +61,16 @@ flowchart TB
 
 ## Service Modules
 
-### 1. Auth Service ([`auth.ts`](../src/services/auth.ts))
+### 1. Auth Service ([`auth.ts`](../src/core/services/auth.ts))
 
 The Authentication service is responsible for the security of the application. It handles the signing and verification of JSON Web Tokens (JWT).
 
-### 2. HTTP Service ([`http.ts`](../src/services/http.ts))
+### 2. HTTP Service ([`http.ts`](../src/core/services/http.ts))
 more at [http.md](./http.md)
 
 The HTTP service provides the REST API for the SFU. It handles channel creation, status checks, and session management.
 
-### 3. WebSocket Service ([`ws.ts`](../src/services/ws.ts))
+### 3. WebSocket Service ([`ws.ts`](../src/core/services/ws.ts))
 
 The WebSocket service manages real-time, persistent connections with clients. It is the primary transport for signaling data once a session is established.
 
@@ -95,7 +95,7 @@ sequenceDiagram
     end
 ```
 
-### 4. Resources Service ([`resources.ts`](../src/services/resources.ts))
+### 4. Resources Service ([`resources.ts`](../src/core/services/resources.ts))
 
 The Resources service acts as the interface to the underlying system and Mediasoup library. It manages the pool of worker processes and system resources.
 
@@ -103,14 +103,14 @@ The Resources service acts as the interface to the underlying system and Mediaso
 -  Manages temporary folders.
 -  Manages dynamic ports for media transport.
 
-### 5. Media Service ([`media.ts`](../src/services/media.ts))
+### 5. Media Service ([`media.ts`](../src/recording/services/media.ts))
 more at [recording.md](./recording.md)
 
 The Media service is responsible for the processing and dispatching of media files (recordings) and the scheduling of these tasks.
 
 ## Models
 
-### 1. Channel ([`channel.ts`](../src/models/channel.ts))
+### 1. Channel ([`channel.ts`](../src/core/models/channel.ts))
 
 The `Channel` represents a room or lobby where multiple users can connect. It acts as the central hub for a group of participants.
 
@@ -119,7 +119,7 @@ The `Channel` represents a room or lobby where multiple users can connect. It ac
 - **Recording**: Manages the `Recorder` instance if recording is enabled.
 - **Signaling**: Serves as a relay for signaling messages between clients.
 
-### 2. Session ([`session.ts`](../src/models/session.ts))
+### 2. Session ([`session.ts`](../src/core/models/session.ts))
 
 The `Session` represents a single connected user/client within a `Channel`. It encapsulates the state and resources associated with a specific participant.
 

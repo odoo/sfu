@@ -1,5 +1,5 @@
 # Recording
-see [media.ts](../src/services/media.ts) and [recording/*](../src/models/recording) for more details.
+see [media.ts](../src/recording/services/media.ts) and [recording/*](../src/recording/models) for more details.
 
 The recording feature in the SFU allows for capturing audio, video from camera, and screen sharing streams from a channel. It is designed to handle each stream independently to produce raw recording files that can be processed later (e.g., for transcription, composition, or playback).
 
@@ -121,15 +121,11 @@ each file can have any arbitrary amount of state changes, when not active the co
 
 While the **Recorder** handles the real-time capture of streams, the **Media Service** is responsible for the asynchronous post-processing of these raw files.
 
-### 1. Service Workflow (`src/services/media.ts`)
+### 1. [Media Service](../src/recording/services/media.ts)
 
-The Media Service runs as a background maintenance task:
-1.  **Monitoring**: It wakes up periodically (default: every 10 minutes).
-2.  **System Check**: It checks the system CPU load. If the load is too high, it skips that cycle to avoid affecting active real-time sessions.
-3.  **Discovery**: It scans the `RECORDING_PATH` for recording directories.
-4.  **Processing**: It delegates the actual file manipulation to the `MediaCompiler`.
+TODO
 
-### 2. Media Compiler (`src/models/recording/media_compiler.ts`)
+### 2. [Media Compiler](../src/recording/models/media_compiler.ts)
 
 The compiler transforms raw recording files into compiled recordings.
 
