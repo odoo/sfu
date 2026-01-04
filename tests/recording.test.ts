@@ -382,7 +382,7 @@ describe("MediaCompiler Unit Tests", () => {
         mockFs.write(path.join(workingDir, "audio", "file1.ogg"), "data");
         mockFs.write(path.join(workingDir, "audio", "file2.ogg"), "data");
 
-        const result = await compiler.compileAudio();
+        const result = await compiler.compile();
 
         expect(result).toBe(path.join(workingDir, "recording_1000.ogg"));
         expect(mockSpawn).toHaveBeenCalledWith(
@@ -420,7 +420,7 @@ describe("MediaCompiler Unit Tests", () => {
         mockFs.mkdir(workingDir);
         mockFs.write(path.join(workingDir, "recording_1000.ogg"), "existing");
 
-        const result = await compiler.compileAudio();
+        const result = await compiler.compile();
         expect(result).toBe(path.join(workingDir, "recording_1000.ogg"));
         expect(mockSpawn).not.toHaveBeenCalled();
     });
@@ -434,7 +434,7 @@ describe("MediaCompiler Unit Tests", () => {
             stoppedAt: 5000,
             timeStamps: []
         });
-        const result = await compiler.compileAudio();
+        const result = await compiler.compile();
         expect(result).toBeUndefined();
         expect(mockSpawn).not.toHaveBeenCalled();
     });
