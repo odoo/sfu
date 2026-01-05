@@ -362,6 +362,7 @@ describe("MediaCompiler Unit Tests", () => {
                     info: {
                         type: STREAM_TYPE.AUDIO,
                         sessionId: 1,
+                        available: true,
                         active: true,
                         filename: "file1.ogg"
                     }
@@ -372,6 +373,7 @@ describe("MediaCompiler Unit Tests", () => {
                     info: {
                         type: STREAM_TYPE.AUDIO,
                         sessionId: 1,
+                        available: true,
                         active: true,
                         filename: "file2.ogg"
                     }
@@ -411,6 +413,7 @@ describe("MediaCompiler Unit Tests", () => {
                     info: {
                         type: STREAM_TYPE.AUDIO,
                         active: true,
+                        available: true,
                         sessionId: 3,
                         filename: "file1.ogg"
                     }

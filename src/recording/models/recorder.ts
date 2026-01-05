@@ -24,10 +24,16 @@ export type TimeTagInfo = {
      * The file lasts for the whole duration of the client producer,
      * which means that it can represent a sequence of streams,
      * with periods of inactivity (no packets). active is set to true
-     * when the stream is active, which means that the producer is
-     * actively broadcasting data, and false when it is not.
+     * when the stream is active, which means that the recording
+     * consumer is writing actual data on the file.
      */
     active: boolean;
+    /**
+     * Whether the stream is available, a rule may deny the recording
+     * of a stream (active=false), but it may still be available
+     * for recording if the rules were to change.
+     */
+    available: boolean;
     /**
      * marks the end of file
      */
@@ -269,7 +275,14 @@ export class Recorder extends EventEmitter {
 
     private _getRecordingStates(): RecordingStates {
         /**
-         * TODO
+         * TODO, version 2.
+         *
+         * A recording that has multiple screen share is not useful, as the
+         * content of the screen may become unreadable due to the lowered resolution.
+         * Thus, a logic that decides which screen share to keep, and that stops
+         * the recording of the superfluous streams (other cameras and screens)
+         * should be implemented.
+         *
          * This will need to be much smarter. When recording video, we should
          * only record the latest screen, and record cameras only if there is no
          * screen being shared. That is because in the compiled version, the screen

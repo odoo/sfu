@@ -48,6 +48,15 @@ export class MediaOutput extends EventEmitter {
     private _port?: DynamicPort;
     private _isClosed = false;
     private _directory: string;
+    private _allowed = true;
+
+    set allowed(value: boolean) {
+        if (this._allowed === value) {
+            return;
+        }
+        this._allowed = value;
+        this._refreshProcess();
+    }
 
     get port() {
         return this._port?.number;
@@ -139,8 +148,8 @@ export class MediaOutput extends EventEmitter {
         }
     }
 
-    private _updateConsumer(available: boolean, allowed = true) {
-        const active = available && allowed;
+    private _updateConsumer(available: boolean) {
+        const active = available && this._allowed;
         if (active) {
             this._consumer?.resume();
         } else {

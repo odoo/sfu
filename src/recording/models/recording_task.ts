@@ -121,15 +121,18 @@ export class RecordingTask extends EventEmitter {
                     MediaOutput.Events.FILE_STATE_CHANGE,
                     ({
                         active,
+                        available,
                         filename,
                         eof
                     }: {
                         active: boolean;
+                        available: boolean;
                         filename: string;
                         eof?: boolean;
                     }) => {
                         this._recorder.mark(TIME_TAG.FILE_STATE_CHANGE, {
                             active,
+                            available,
                             filename,
                             type,
                             sessionId: this._session.id,
