@@ -441,4 +441,202 @@ describe("MediaCompiler Unit Tests", () => {
         expect(result).toBeUndefined();
         expect(mockSpawn).not.toHaveBeenCalled();
     });
+
+    test("should compile video with single camera", async () => {
+        const workingDir = "/work";
+        mockFs.mkdir(workingDir);
+        mockFs.mkdir(path.join(workingDir, "camera"));
+        mockFs.mkdir(path.join(workingDir, "audio"));
+        mockFs.write(path.join(workingDir, "camera", "cam1.mp4"), "video");
+        mockFs.write(path.join(workingDir, "audio", "audio1.ogg"), "audio");
+
+        const compiler = new MediaCompiler({
+            workingDir,
+            startedAt: 1000,
+            stoppedAt: 5000,
+            timeStamps: [
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 1000,
+                    info: {
+                        type: STREAM_TYPE.CAMERA,
+                        sessionId: 1,
+                        available: true,
+                        active: true,
+                        filename: "cam1.mp4"
+                    }
+                },
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 1000,
+                    info: {
+                        type: STREAM_TYPE.AUDIO,
+                        sessionId: 1,
+                        available: true,
+                        active: true,
+                        filename: "audio1.ogg"
+                    }
+                }
+            ]
+        });
+
+        const result = await compiler.compile({ video: true });
+        expect(result).toBe(path.join(workingDir, "recording_1000.mp4"));
+
+        const calls = mockSpawn.mock.calls;
+        const videoCall = calls.find((c) => (c[1] as string[]).join(" ").includes("-c:v"));
+        expect(videoCall).toBeDefined();
+    });
+
+    test("should compile video with multiple cameras in grid layout", async () => {
+        const workingDir = "/work";
+        mockFs.mkdir(workingDir);
+        mockFs.mkdir(path.join(workingDir, "camera"));
+        mockFs.mkdir(path.join(workingDir, "audio"));
+        mockFs.write(path.join(workingDir, "camera", "cam1.mp4"), "video1");
+        mockFs.write(path.join(workingDir, "camera", "cam2.mp4"), "video2");
+        mockFs.write(path.join(workingDir, "audio", "audio1.ogg"), "audio");
+
+        const compiler = new MediaCompiler({
+            workingDir,
+            startedAt: 1000,
+            stoppedAt: 5000,
+            timeStamps: [
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 1000,
+                    info: {
+                        type: STREAM_TYPE.CAMERA,
+                        sessionId: 1,
+                        available: true,
+                        active: true,
+                        filename: "cam1.mp4"
+                    }
+                },
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 1000,
+                    info: {
+                        type: STREAM_TYPE.CAMERA,
+                        sessionId: 2,
+                        available: true,
+                        active: true,
+                        filename: "cam2.mp4"
+                    }
+                },
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 1000,
+                    info: {
+                        type: STREAM_TYPE.AUDIO,
+                        sessionId: 1,
+                        available: true,
+                        active: true,
+                        filename: "audio1.ogg"
+                    }
+                }
+            ]
+        });
+
+        const result = await compiler.compile({ video: true });
+        expect(result).toBe(path.join(workingDir, "recording_1000.mp4"));
+
+        const calls = mockSpawn.mock.calls;
+        const segmentCall = calls.find((c) => (c[1] as string[]).join(" ").includes("hstack"));
+        expect(segmentCall).toBeDefined();
+    });
+
+    test("should show screen and cameras together when both are active", async () => {
+        const workingDir = "/work";
+        mockFs.mkdir(workingDir);
+        mockFs.mkdir(path.join(workingDir, "screen"));
+        mockFs.mkdir(path.join(workingDir, "camera"));
+        mockFs.mkdir(path.join(workingDir, "audio"));
+        mockFs.write(path.join(workingDir, "screen", "screen1.mp4"), "screen");
+        mockFs.write(path.join(workingDir, "camera", "cam1.mp4"), "video");
+        mockFs.write(path.join(workingDir, "audio", "audio1.ogg"), "audio");
+
+        const compiler = new MediaCompiler({
+            workingDir,
+            startedAt: 1000,
+            stoppedAt: 5000,
+            timeStamps: [
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 1000,
+                    info: {
+                        type: STREAM_TYPE.SCREEN,
+                        sessionId: 1,
+                        available: true,
+                        active: true,
+                        filename: "screen1.mp4"
+                    }
+                },
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 1000,
+                    info: {
+                        type: STREAM_TYPE.CAMERA,
+                        sessionId: 2,
+                        available: true,
+                        active: true,
+                        filename: "cam1.mp4"
+                    }
+                },
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 1000,
+                    info: {
+                        type: STREAM_TYPE.AUDIO,
+                        sessionId: 1,
+                        available: true,
+                        active: true,
+                        filename: "audio1.ogg"
+                    }
+                }
+            ]
+        });
+
+        const result = await compiler.compile({ video: true });
+        expect(result).toBe(path.join(workingDir, "recording_1000.mp4"));
+
+        const calls = mockSpawn.mock.calls;
+        // Both screen and camera should be in input
+        const segmentCall = calls.find(
+            (c) =>
+                (c[1] as string[]).join(" ").includes("screen1.mp4") &&
+                (c[1] as string[]).join(" ").includes("cam1.mp4")
+        );
+        expect(segmentCall).toBeDefined();
+    });
+
+    test("should fall back to audio when no video files", async () => {
+        const workingDir = "/work";
+        mockFs.mkdir(workingDir);
+        mockFs.mkdir(path.join(workingDir, "audio"));
+        mockFs.write(path.join(workingDir, "audio", "audio1.ogg"), "audio");
+
+        const compiler = new MediaCompiler({
+            workingDir,
+            startedAt: 1000,
+            stoppedAt: 5000,
+            timeStamps: [
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 1000,
+                    info: {
+                        type: STREAM_TYPE.AUDIO,
+                        sessionId: 1,
+                        available: true,
+                        active: true,
+                        filename: "audio1.ogg"
+                    }
+                }
+            ]
+        });
+
+        const result = await compiler.compile({ video: true });
+        // Falls back to audio file
+        expect(result).toBe(path.join(workingDir, "recording_1000.ogg"));
+    });
 });
