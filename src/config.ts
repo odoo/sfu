@@ -231,7 +231,6 @@ export const timeouts: TimeoutConfig = Object.freeze({
     busBatch: testingMode ? 10 : 300
 });
 
-// TODO cleanup
 export const recording = Object.freeze({
     routingInterface: "127.0.0.1",
     directory: RECORDING_PATH,
@@ -239,11 +238,21 @@ export const recording = Object.freeze({
     metadataFileName: "metadata.bin",
     maxDuration: 1000 * 60 * 60, // 1 hour, could be a env-var.
     fileTTL: 1000 * 60 * 60 * 24, // 24 hours
-    videoCodec: "libx264", // TODO to implement
+    // TODO could be env variables
+    videoCodec: "libsvtav1",
+    videoPreset: "10",
     audioCodec: "libopus",
-    audioLimit: 20, // TODO to implement
     audioBitRate: "8k",
-    cameraLimit: 4, // how many camera can be merged into one recording
+    /*
+     * TODO below rules are currently not enforced
+     * should limit the amount of streams that are recorded
+     * expensive and essentially useless to show too many cameras.
+     * showing multiple share screens is also not useful as it will
+     * make them unreadable.
+     *
+     * see comment in recorder.ts ( mark() )
+     */
+    cameraLimit: 4,
     screenLimit: 1
 });
 // check for overlap in ports

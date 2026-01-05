@@ -66,6 +66,8 @@ export async function setupUnitTestsEnv() {
             fileTTL: 1000 * 60 * 60,
             audioCodec: "libopus",
             audioBitRate: "64k",
+            videoCodec: "libx264",
+            cameraLimit: 4,
             metadataFileName: "metadata.bin"
         },
         RECORDING_PATH: "/mock/recordings",

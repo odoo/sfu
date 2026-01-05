@@ -195,7 +195,8 @@ export const mockFsModule = {
     ),
     rename: jest.fn((oldPath: string, newPath: string) =>
         Promise.resolve(mockFs.rename(oldPath, newPath))
-    )
+    ),
+    unlink: jest.fn((path: string) => mockFs.rm(path))
 };
 
 export const mockFsSyncModule = {

@@ -149,6 +149,45 @@ export class Recorder extends EventEmitter {
             timestamp: Date.now(),
             info
         } as TimeStampData);
+        /**
+         * TODO, version 2.
+         *
+         * Enforce config.recording.cameraLimit and config.recording.screenLimit.
+         * screen limit is at 1:
+         *
+         * A recording that has multiple screen share is not useful, as the
+         * content of the screen may become unreadable due to the lowered resolution.
+         * Thus, a logic that decides which screen share to keep, and that stops
+         * the recording of the superfluous streams (other cameras and screens)
+         * should be implemented.
+         *
+         * When recording video, we should
+         * only record the latest x screens, and record cameras only if there is no
+         * screen being shared (and only up to the limit). That is because in the compiled
+         * version, the screen takes precedence over the camera, and all the visual space.
+         * That is because when a screen is shared it should be the focus of the attention
+         * and is only useful when taking all of the visual space (it wouldn't make
+         * sense to divide the space available in the final video between multiple
+         * screens, or between screens and cameras).
+         *
+         * Therefore a mechanism to track the latest screens/cameras produced should be
+         * implemented. We can extract that information from the
+         * TIME_TAG.FILE_STATE_CHANGE events, where `type` and `available` is all
+         * we need to know when and if a screen or a camera is being shared, then we can
+         * control which streams are recorded by swapping the "allowed" flag of the MediaOutput
+         * of each stream.
+         *
+         * example: someone starts screen sharing => his session id is added to a stack of screensharing sessions
+         *          someone starts camera sharing => his session id is added to a stack of camerasharing sessions
+         * if screen sharing stack is not empty, then all camera have allowed set to false. and only the last N
+         * (config.recording.screenLimit) have the allowed flag for their screen share.
+         * if screen sharing stack is empty, then we can consider cameras, and only the N
+         * (config.recording.cameraLimit) have the allowed flag for their camera share.
+         *
+         * A new nechanism to control that allowed flag should be implemented, similar to _getRecordingStates
+         * but it's not the same as it acts in parallel and does not cut the output (otherwise we couldn't know
+         * if a stream becomes available if it is not allowed, that's what dinstinguishes allowed and active)
+         */
     }
 
     /**
@@ -274,30 +313,6 @@ export class Recorder extends EventEmitter {
     }
 
     private _getRecordingStates(): RecordingStates {
-        /**
-         * TODO, version 2.
-         *
-         * A recording that has multiple screen share is not useful, as the
-         * content of the screen may become unreadable due to the lowered resolution.
-         * Thus, a logic that decides which screen share to keep, and that stops
-         * the recording of the superfluous streams (other cameras and screens)
-         * should be implemented.
-         *
-         * This will need to be much smarter. When recording video, we should
-         * only record the latest screen, and record cameras only if there is no
-         * screen being shared. That is because in the compiled version, the screen
-         * takes precedence over the camera, and all the visual space. That is
-         * because when a screen is shared it should be the focus of the attention
-         * and is only useful when taking all of the visual space (it wouldn't make
-         * sense to divide the space available in the final video between multiple
-         * screens, or between screens and cameras).
-         *
-         * Therefore a mechanism to track the latest screen shared should be
-         * implemented. We can extract that information from the
-         * TIME_TAG.FILE_STATE_CHANGE events, where `type` and `available` is all
-         * we need to know when and if a screen is being shared, then we can swap the "allowed" flag
-         * of the media outputs that should be on or off.
-         */
         return {
             audio: this.isRecording,
             camera: this.isRecording && this.video,
