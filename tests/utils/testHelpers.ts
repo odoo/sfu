@@ -3,6 +3,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { recording } from "#src/config.ts";
+
 import { withMockEnv } from "#tests/utils/utils";
 import { mockFs } from "#tests/utils/mockFileSystem";
 import { mockSpawn } from "#tests/utils/mockFfmpeg.ts";
@@ -62,13 +64,8 @@ export async function setupUnitTestsEnv() {
     jest.doMock("#src/config.ts", () => ({
         __esModule: true,
         recording: {
-            enabled: true,
-            fileTTL: 1000 * 60 * 60,
-            audioCodec: "libopus",
-            audioBitRate: "64k",
-            videoCodec: "libx264",
-            cameraLimit: 4,
-            metadataFileName: "metadata.bin"
+            ...recording,
+            enabled: true
         },
         RECORDING_PATH: "/mock/recordings",
         LOG_LEVEL: "none"

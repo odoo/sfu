@@ -115,7 +115,10 @@ export class MediaCompiler {
             return;
         }
 
-        const outputName = path.join(this._workingDir, `recording_${this._startedAt}.ogg`);
+        const outputName = path.join(
+            this._workingDir,
+            `recording_${this._startedAt}.${recording.audioExt}`
+        );
         try {
             await access(outputName);
             logger.info(`Output file ${outputName} already exists, skipping compilation`);
@@ -210,7 +213,10 @@ export class MediaCompiler {
             return this._compileAudio();
         }
 
-        const outputName = path.join(this._workingDir, `recording_${this._startedAt}.mp4`);
+        const outputName = path.join(
+            this._workingDir,
+            `recording_${this._startedAt}.${recording.videoExt}`
+        );
         try {
             await access(outputName);
             logger.info(`Output file ${outputName} already exists, skipping compilation`);
@@ -326,7 +332,7 @@ export class MediaCompiler {
             return undefined;
         }
 
-        const outputPath = path.join(this._workingDir, `segment_${index}.mp4`);
+        const outputPath = path.join(this._workingDir, `segment_${index}.${recording.videoExt}`);
         const duration = (segment.endTime - segment.startTime) / 1000;
 
         const screenFiles = files.filter((f) => f.type === STREAM_TYPE.SCREEN);
@@ -407,6 +413,8 @@ export class MediaCompiler {
             outputLabel,
             "-t",
             duration.toFixed(3),
+            "-r",
+            "30", // 30 fps
             "-c:v",
             recording.videoCodec,
             "-preset",
