@@ -252,9 +252,10 @@ export class Recorder extends EventEmitter {
             stoppedAt: Date.now()
         });
         /**
-         * As the metadata can contain sensitive information, like routing
-         * with tokens, or the channel key, it is encrypted before being
-         * saved on the disk.
+         * As the metadata can contain sensitive information,
+         * like routing with tokens, or the channel key,
+         * or information (names) on the call participants,
+         * it is encrypted before being saved on the disk.
          */
         return encrypt(metadata);
     }

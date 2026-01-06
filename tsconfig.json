@@ -5,7 +5,6 @@
     "tests/**/*"
   ],
   "compilerOptions": {
-    // Custom
     "target": "ES2022",
     "lib": [
       "ES2022",
