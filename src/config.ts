@@ -1,6 +1,5 @@
 import os from "node:os";
 import path from "node:path";
-import fs from "node:fs";
 
 import type {
     RtpCodecCapability,
@@ -258,12 +257,6 @@ export const recording = Object.freeze({
 // check for overlap in ports
 if (recording.enabled && !(DYNAMIC_MAX_PORT < RTC_MIN_PORT || DYNAMIC_MIN_PORT > RTC_MAX_PORT)) {
     throw new Error("Dynamic ports overlap with RTC ports");
-}
-if (recording.enabled) {
-    fs.mkdirSync(RECORDING_PATH, { recursive: true });
-}
-if (recording.enabled) {
-    fs.mkdirSync(RESOURCES_PATH, { recursive: true });
 }
 
 // how many errors can occur before the session is closed, recovery attempts will be made until this limit is reached
