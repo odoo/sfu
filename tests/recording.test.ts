@@ -639,4 +639,85 @@ describe("MediaCompiler Unit Tests", () => {
         // Falls back to audio file
         expect(result).toBe(path.join(workingDir, "recording_1000.ogg"));
     });
+
+    test("should coalesce timestamps within threshold into same segment", async () => {
+        const workingDir = "/work";
+        mockFs.mkdir(workingDir);
+        mockFs.mkdir(path.join(workingDir, "camera"));
+        mockFs.mkdir(path.join(workingDir, "audio"));
+        mockFs.write(path.join(workingDir, "camera", "cam1.mp4"), "video1");
+        mockFs.write(path.join(workingDir, "camera", "cam2.mp4"), "video2");
+        mockFs.write(path.join(workingDir, "camera", "cam3.mp4"), "video3");
+        mockFs.write(path.join(workingDir, "audio", "audio1.ogg"), "audio");
+
+        // Timestamps within 500ms threshold should be coalesced
+        // cam1 at 1000, cam2 at 1200 (200ms apart) => same segment
+        // cam3 at 3000 (1800ms after cam2) => new segment
+        const compiler = new MediaCompiler({
+            workingDir,
+            startedAt: 1000,
+            stoppedAt: 5000,
+            timeStamps: [
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 1000,
+                    info: {
+                        type: STREAM_TYPE.CAMERA,
+                        sessionId: 1,
+                        available: true,
+                        active: true,
+                        filename: "cam1.mp4"
+                    }
+                },
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 1200,
+                    info: {
+                        type: STREAM_TYPE.CAMERA,
+                        sessionId: 2,
+                        available: true,
+                        active: true,
+                        filename: "cam2.mp4"
+                    }
+                },
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 3000,
+                    info: {
+                        type: STREAM_TYPE.CAMERA,
+                        sessionId: 3,
+                        available: true,
+                        active: true,
+                        filename: "cam3.mp4"
+                    }
+                },
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 1000,
+                    info: {
+                        type: STREAM_TYPE.AUDIO,
+                        sessionId: 1,
+                        available: true,
+                        active: true,
+                        filename: "audio1.ogg"
+                    }
+                }
+            ]
+        });
+
+        await compiler.compile({ video: true });
+
+        // The _buildVideoSegments method is private, so we verify indirectly
+        // by checking that ffmpeg was called with the expected segment pattern.
+        // With coalescing: segment 1 (cam1+cam2 from 1000-3000), segment 2 (cam1+cam2+cam3 from 3000-5000)
+        // This should produce 2 intermediate segment files plus a final concat.
+        const calls = mockSpawn.mock.calls;
+        const segmentCalls = calls.filter((c) => {
+            const args = c[1] as string[] | undefined;
+            return args?.some((arg) => arg?.includes("segment_"));
+        });
+
+        // Should have 2 segment compilations (one for each distinct segment)
+        expect(segmentCalls.length).toBe(2);
+    });
 });

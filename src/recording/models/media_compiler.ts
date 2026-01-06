@@ -274,7 +274,10 @@ export class MediaCompiler {
                 continue;
             }
 
-            // Coalesceing: if change is far enough from last, flush the current segment
+            /**
+             * Coalesceing: if change is far enough from last, flush the current segment.
+             * This is to prevent creating too many small segments.
+             */
             if (timestamp - lastChangeTime > SEGMENT_COALESCE_THRESHOLD && activeFiles.size > 0) {
                 flushSegment(timestamp);
             }
