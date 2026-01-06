@@ -1,14 +1,16 @@
+import fs from "node:fs";
 import { spawn } from "node:child_process";
 import { access, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 
 import { TIME_TAG, type TimeStampData } from "#src/recording/models/recorder.ts";
-import { recording } from "#src/config.ts";
-import { Logger } from "#src/utils/utils.ts";
+import { recording, LOG_LEVEL } from "#src/config.ts";
+import { Logger, LogLevel } from "#src/utils/utils.ts";
 import { STREAM_TYPE } from "#src/shared/enums.ts";
 import type { SessionId } from "#src/core/models/session.ts";
 
 const logger = new Logger("MEDIA_COMPILER");
+const isDebug = LOG_LEVEL === LogLevel.DEBUG;
 
 /**
  * Minimum time gap (ms) between segment boundaries. Changes occurring within
@@ -162,12 +164,16 @@ export class MediaCompiler {
 
         return new Promise<string>((resolve, reject) => {
             const proc = spawn("ffmpeg", args);
+            let logStream: fs.WriteStream | undefined;
 
-            proc.stderr.on("data", (data) => {
-                // logger.debug(`FFMPEG stderr: ${data}`); // Too noisy
-            });
+            if (isDebug) {
+                logStream = fs.createWriteStream(`${outputName}.log`);
+                proc.stderr?.pipe(logStream, { end: false });
+                proc.stdout?.pipe(logStream, { end: false });
+            }
 
             proc.on("close", (code) => {
+                logStream?.end();
                 if (code === 0) {
                     logger.info(`Compiled ${outputName}`);
                     resolve(outputName);
@@ -178,6 +184,7 @@ export class MediaCompiler {
             });
 
             proc.on("error", (err) => {
+                logStream?.end();
                 logger.error(`Failed to spawn FFMPEG: ${err}`);
                 reject(err);
             });
@@ -411,8 +418,16 @@ export class MediaCompiler {
 
         return new Promise<string>((resolve, reject) => {
             const proc = spawn("ffmpeg", args);
+            let logStream: fs.WriteStream | undefined;
+
+            if (isDebug) {
+                logStream = fs.createWriteStream(`${outputPath}.log`);
+                proc.stderr?.pipe(logStream, { end: false });
+                proc.stdout?.pipe(logStream, { end: false });
+            }
 
             proc.on("close", (code) => {
+                logStream?.end();
                 if (code === 0) {
                     resolve(outputPath);
                 } else {
@@ -422,6 +437,7 @@ export class MediaCompiler {
             });
 
             proc.on("error", (err) => {
+                logStream?.end();
                 logger.error(`Failed to spawn FFmpeg for segment ${index}: ${err}`);
                 reject(err);
             });
@@ -539,8 +555,16 @@ export class MediaCompiler {
 
         return new Promise<string>((resolve, reject) => {
             const proc = spawn("ffmpeg", args);
+            let logStream: fs.WriteStream | undefined;
+
+            if (isDebug) {
+                logStream = fs.createWriteStream(`${outputPath}.log`);
+                proc.stderr?.pipe(logStream, { end: false });
+                proc.stdout?.pipe(logStream, { end: false });
+            }
 
             proc.on("close", async (code) => {
+                logStream?.end();
                 try {
                     await unlink(concatListPath);
                     if (srtPath) {
@@ -563,6 +587,7 @@ export class MediaCompiler {
             });
 
             proc.on("error", (err) => {
+                logStream?.end();
                 logger.error(`Failed to spawn FFmpeg for concatenation: ${err}`);
                 reject(err);
             });
