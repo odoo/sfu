@@ -28,7 +28,8 @@ function clearResourcesDir() {
     try {
         rmSync(config.RESOURCES_PATH, { recursive: true });
     } catch (error) {
-        logger.error(`Failed to delete resources folder ${config.RESOURCES_PATH}: ${error}`);
+        // probably does not exist
+        logger.debug(`Failed to delete resources folder ${config.RESOURCES_PATH}: ${error}`);
     }
 }
 

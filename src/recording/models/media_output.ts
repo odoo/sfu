@@ -136,7 +136,8 @@ export class MediaOutput extends EventEmitter {
         if (this._isClosed || !this._rtpData) {
             return;
         }
-        if (this._producer.paused) {
+        // equivalent to this._producer.paused, but the producer state seems to update after the event.
+        if (this._consumer!.producerPaused) {
             this._updateConsumer(false);
         } else {
             if (!this._mediaWriter) {

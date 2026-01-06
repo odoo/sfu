@@ -162,7 +162,8 @@ async function processRecording(folderName: string) {
     } catch (error) {
         logger.error(`Failed to process recording ${folderName}: ${error}`);
     }
-    fs.rm(dir, { recursive: true });
+    // TODO uncomment when done testing
+    //fs.rm(dir, { recursive: true });
 }
 
 async function fetchTranscription(filePath: string, metadata: SealedMetaData) {
