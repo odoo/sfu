@@ -126,7 +126,7 @@ function base64Decode(str: string): Buffer {
  * @throws {AuthenticationError} If signing fails
  */
 export function sign<T>(
-    claims: JWTClaims & T, // TODO: this should be a 'or' type of unions between core claims and the custom claims of each specific call site.
+    claims: JWTClaims & T,
     key: StringLike = jwtKey!,
     { algorithm = ALGORITHM.HS256 }: SignOptions = {}
 ): string {
