@@ -240,8 +240,10 @@ export const recording = Object.freeze({
     // TODO could be env variables
     videoCodec: "libsvtav1",
     videoPreset: "10",
+    videoExt: "mp4",
     audioCodec: "libopus",
     audioBitRate: "8k",
+    audioExt: "ogg",
     /*
      * TODO below rules are currently not enforced
      * should limit the amount of streams that are recorded
