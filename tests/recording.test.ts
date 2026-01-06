@@ -216,6 +216,121 @@ describe("Recording & Transcription", () => {
             restore();
         }
     });
+    test("Records streams from users who join mid-recording", async () => {
+        mockSpawn.mockImplementation((_cmd, args) => {
+            const mp = new MockChildProcess("ffmpeg", args || []);
+            mp.stdin = new PassThrough();
+            return mp;
+        });
+
+        const { restore, network } = await recordingSetup({ RECORDING: "true" });
+
+        try {
+            const channelUUID = await network.getChannelUUID();
+            const user1 = await network.connect(channelUUID, 1);
+            await user1.isConnected;
+
+            await user1.sfuClient.startRecording();
+            expect(user1.sfuClient.recordingState.recording).toBe(true);
+
+            const user2 = await network.connect(channelUUID, 2);
+            await user2.isConnected;
+
+            const audioTrack = new FakeMediaStreamTrack({ kind: "audio" });
+            await user2.sfuClient.updateUpload(STREAM_TYPE.AUDIO, audioTrack);
+
+            await new Promise<void>((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    clearInterval(interval);
+                    reject(new Error("Timeout waiting for spawn call"));
+                }, 2000);
+                const interval = setInterval(() => {
+                    const calls = mockSpawn.mock.calls;
+                    const hasAudio = calls.some((c) => (c[1] as string[]).includes("-c:a"));
+                    if (hasAudio) {
+                        clearInterval(interval);
+                        clearTimeout(timeout);
+                        resolve();
+                    }
+                }, 100);
+            });
+
+            expect(mockSpawn).toHaveBeenCalled();
+            const calls = mockSpawn.mock.calls;
+            const audioCall = calls.find((c) => (c[1] as string[]).includes("-c:a"));
+            expect(audioCall).toBeDefined();
+        } finally {
+            restore();
+        }
+    });
+
+    test("Records streams started after recording begins", async () => {
+        mockSpawn.mockClear();
+        mockSpawn.mockImplementation((_cmd, args) => {
+            const mp = new MockChildProcess("ffmpeg", args || []);
+            mp.stdin = new PassThrough();
+            return mp;
+        });
+
+        const { restore, network } = await recordingSetup({ RECORDING: "true" });
+
+        try {
+            const channelUUID = await network.getChannelUUID();
+            const user = await network.connect(channelUUID, 1);
+            await user.isConnected;
+
+            await user.sfuClient.startRecording({ video: true });
+            expect(user.sfuClient.recordingState.recording).toBe(true);
+
+            expect(mockSpawn).not.toHaveBeenCalled();
+
+            const audioTrack = new FakeMediaStreamTrack({ kind: "audio" });
+            await user.sfuClient.updateUpload(STREAM_TYPE.AUDIO, audioTrack);
+
+            await new Promise<void>((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    clearInterval(interval);
+                    reject(new Error("Timeout waiting for audio spawn"));
+                }, 2000);
+                const interval = setInterval(() => {
+                    const calls = mockSpawn.mock.calls;
+                    const hasAudio = calls.some((c) => (c[1] as string[]).includes("-c:a"));
+                    if (hasAudio) {
+                        clearInterval(interval);
+                        clearTimeout(timeout);
+                        resolve();
+                    }
+                }, 100);
+            });
+
+            expect(mockSpawn).toHaveBeenCalledTimes(1);
+            let args = mockSpawn.mock.calls[0][1];
+            expect(args.join(" ")).toContain("-c:a");
+
+            const videoTrack = new FakeMediaStreamTrack({ kind: "video" });
+            await user.sfuClient.updateUpload(STREAM_TYPE.CAMERA, videoTrack);
+
+            await new Promise<void>((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    clearInterval(interval);
+                    reject(new Error("Timeout waiting for video spawn"));
+                }, 2000);
+                const interval = setInterval(() => {
+                    if (mockSpawn.mock.calls.length >= 2) {
+                        clearInterval(interval);
+                        clearTimeout(timeout);
+                        resolve();
+                    }
+                }, 100);
+            });
+
+            expect(mockSpawn).toHaveBeenCalledTimes(2);
+            args = mockSpawn.mock.calls[1][1];
+            expect(args.join(" ")).toContain("-c:v");
+        } finally {
+            restore();
+        }
+    });
 });
 
 describe("Media Service", () => {

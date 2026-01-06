@@ -11,7 +11,7 @@ import type { SealedMetaData } from "#src/recording/models/recorder.ts";
 import { Logger } from "#src/utils/utils.ts";
 
 const logger = new Logger("MEDIA");
-const CHECK_INTERVAL = 10 * 60 * 1000; // 10 minutes
+const CHECK_INTERVAL = 2 * 60 * 1000; // 2 minutes
 const CPU_LOAD_THRESHOLD = 0.8;
 
 /**
@@ -162,8 +162,7 @@ async function processRecording(folderName: string) {
     } catch (error) {
         logger.error(`Failed to process recording ${folderName}: ${error}`);
     }
-    // TODO uncomment when done testing
-    //fs.rm(dir, { recursive: true });
+    fs.rm(dir, { recursive: true });
 }
 
 async function fetchTranscription(filePath: string, metadata: SealedMetaData) {
@@ -205,7 +204,7 @@ async function upload(file: string, metadata: SealedMetaData) {
             const response = await fetch(jsonResponse.destination, {
                 method: "POST",
                 headers: {
-                    "Content-Type": "video/av1"
+                    "Content-Type": "video/av1" // TODO should depend on config
                 },
                 // @ts-expect-error: Node fetch supports ReadStream
                 // "duplex" must be set to "half" when using a ReadableStream as the body.
