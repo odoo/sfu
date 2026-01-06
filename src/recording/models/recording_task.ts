@@ -68,13 +68,13 @@ export class RecordingTask extends EventEmitter {
 
     constructor(recorder: Recorder, session: Session, { audio, camera, screen }: RecordingStates) {
         super();
-        this._onSessionProducer = this._onSessionProducer.bind(this);
         this._session = session;
         this._recorder = recorder;
-        this._session.on(Session.Events.PRODUCER, this._onSessionProducer);
         this.audio = audio;
         this.camera = camera;
         this.screen = screen;
+        this._onSessionProducer = this._onSessionProducer.bind(this);
+        this._session.on(Session.Events.PRODUCER, this._onSessionProducer);
     }
 
     private async _setRecording(type: STREAM_TYPE, state: boolean) {
@@ -98,9 +98,6 @@ export class RecordingTask extends EventEmitter {
         producer: Producer;
     }) {
         const data = this.recordingDataByStreamType[type];
-        if (!data.active) {
-            return;
-        }
         this._updateProcess(data, producer, type);
     }
 
@@ -167,7 +164,7 @@ export class RecordingTask extends EventEmitter {
     }
 
     async stop() {
-        this._session.off("producer", this._onSessionProducer);
+        this._session.off(Session.Events.PRODUCER, this._onSessionProducer);
         const proms = [];
         for (const type of Object.values(STREAM_TYPE)) {
             proms.push(this._clearData(type));
