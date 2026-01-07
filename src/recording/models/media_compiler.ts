@@ -454,7 +454,16 @@ export class MediaCompiler {
 
     /**
      * Builds a dynamic grid layout filter for cameras.
-     * Arranges cameras in rows, with the number of columns based on camera count.
+     *
+     * The process:
+     * 1. Calculates optimal rows/cols based on camera count.
+     * 2. Scales and pads each camera stream into a "cell" ([v0], [v1], etc.).
+     * 3. Horizontal stacks (hstack) cells into "rows" ([row0], [row1], etc.).
+     * 4. Vertical stacks (vstack) rows into the final output ([vout]).
+     *
+     * @returns The FFmpeg filter label for the final combined video stream.
+     * - Returns "[vout]" for a single camera or when multiple rows are stacked vertically.
+     * - Returns "[row0]" when there is only one row of cameras (as no vstack is needed).
      */
     private _buildCameraGrid(cameraCount: number, filterComplex: string[]): string {
         if (cameraCount === 1) {
@@ -494,11 +503,8 @@ export class MediaCompiler {
             }
             rowLabels.push(`[row${row}]`);
         }
-
         if (rows === 1) {
-            return rowLabels[0].replace("[", "").replace("]", "") === "row0"
-                ? "[row0]"
-                : rowLabels[0];
+            return rowLabels[0];
         }
         filterComplex.push(`${rowLabels.join("")}vstack=inputs=${rows}[vout]`);
         return "[vout]";
