@@ -368,6 +368,7 @@ export class MediaCompiler {
             const barHeight = 140;
             const camWidth = Math.floor(1280 / cameraFiles.length);
 
+            // TODO write more docstring for the filter complex
             filterComplex.push(
                 `[0:v]scale=1280:${screenHeight}:force_original_aspect_ratio=decrease,` +
                     `pad=1280:${screenHeight}:(ow-iw)/2:(oh-ih)/2[screen]`
@@ -455,7 +456,6 @@ export class MediaCompiler {
     /**
      * Builds a dynamic grid layout filter for cameras.
      *
-     * The process:
      * 1. Calculates optimal rows/cols based on camera count.
      * 2. Scales and pads each camera stream into a "cell" ([v0], [v1], etc.).
      * 3. Horizontal stacks (hstack) cells into "rows" ([row0], [row1], etc.).
