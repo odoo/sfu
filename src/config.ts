@@ -241,6 +241,7 @@ export const recording = Object.freeze({
     videoCodec: "libsvtav1",
     videoPreset: "10",
     videoExt: "mp4",
+    frameRate: "30",
     audioCodec: "libopus",
     audioBitRate: "8k",
     audioExt: "ogg",
