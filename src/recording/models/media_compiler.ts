@@ -414,7 +414,7 @@ export class MediaCompiler {
             "-t",
             duration.toFixed(3),
             "-r",
-            "30", // 30 fps
+            recording.frameRate,
             "-c:v",
             recording.videoCodec,
             "-preset",

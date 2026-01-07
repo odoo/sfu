@@ -1,9 +1,5 @@
 # Architecture
 
-The SFU is divided into [services](../src/core/services), each responsible for a specific functionality of the server. And models [models](../src/core/models) for the data structures used by the services.
-
-## Overview
-
 ```mermaid
 flowchart TB
  subgraph s1["SFU"]
@@ -68,7 +64,7 @@ The Authentication service is responsible for the security of the application. I
 ### 2. HTTP Service ([`http.ts`](../src/core/services/http.ts))
 more at [http.md](./http.md)
 
-The HTTP service provides the REST API for the SFU. It handles channel creation, status checks, and session management.
+The HTTP service provides the REST API for the SFU, intended to be used by other (odoo) servers. It handles channel creation, status checks, and session management.
 
 ### 3. WebSocket Service ([`ws.ts`](../src/core/services/ws.ts))
 
