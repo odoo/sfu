@@ -17,6 +17,11 @@ const FFMPEG_KILL_TIMEOUT = 30_000;
 
 /**
  * Abstraction for a FFMPEG child process
+ *
+ * TODO fix resolution and timestamps issue:
+ * when looking at the output it seems that the resolution is quite low and that the timestamps are buggy.
+ * could be ffmpeg or could be the media_output (rtp) that is incorrectly configured?
+ * we use multiple encodings per producer (simulcast with multiple spatial layers), maybe we're taking the wrong one?
  */
 export class MediaWriter {
     readonly extension: string;
