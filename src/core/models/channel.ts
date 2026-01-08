@@ -6,12 +6,7 @@ import type { Router, WebRtcServer } from "mediasoup/node/lib/types";
 import * as config from "#src/config.ts";
 import { getAllowedCodecs, Logger } from "#src/utils/utils.ts";
 import { AuthenticationError, OvercrowdedError } from "#src/utils/errors.ts";
-import {
-    Session,
-    SESSION_CLOSE_CODE,
-    type SessionId,
-    type SessionInfo
-} from "#src/core/models/session.ts";
+import { Session, SESSION_CLOSE_CODE, type SessionId } from "#src/core/models/session.ts";
 import { Recorder } from "#src/recording/models/recorder.ts";
 import { getWorker, type RtcWorker } from "#src/core/services/resources.ts";
 import { SERVER_MESSAGE } from "#src/shared/enums.ts";
@@ -222,14 +217,6 @@ export class Channel extends EventEmitter {
 
     get recordingState(): RecordingState {
         return this.recorder?.state || {};
-    }
-
-    get sessionsInfo(): Record<SessionId, SessionInfo> {
-        const sessionsInfo: Record<SessionId, SessionInfo> = {};
-        for (const session of this.sessions.values()) {
-            sessionsInfo[session.id] = session.info;
-        }
-        return sessionsInfo;
     }
 
     get webRtcServer(): WebRtcServer | undefined {
