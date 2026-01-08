@@ -52,11 +52,11 @@ function makeJwt(key: string) {
  * run as a separate worker or service in the future to offload heavy media processing.
  */
 export async function start(): Promise<void> {
-    if (!recording.enabled) {
+    if (recording.enabled) {
+        await fs.mkdir(RECORDING_PATH, { recursive: true });
+    } else {
         logger.info("Recording is disabled, media service will not start");
         return;
-    } else {
-        await fs.mkdir(RECORDING_PATH, { recursive: true });
     }
     logger.info("Starting media service");
     await checkSystemAndProcess();
