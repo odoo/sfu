@@ -8,10 +8,10 @@ import { Channel } from "#src/core/models/channel.ts";
 const logger = new Logger("SERVER", { logLevel: "all" });
 
 async function run(): Promise<void> {
+    logger.info(`starting server - PID: ${process.pid}`);
     auth.start();
     await resources.start();
     await http.start();
-    logger.info(`ready - PID: ${process.pid}`);
     await media.start();
     logger.debug(`===== TO IMPLEMENT =====`);
     logger.debug(`* Choose format for recording (AV vs H264)`);

@@ -55,8 +55,7 @@ export async function start(): Promise<void> {
     if (!recording.enabled) {
         logger.info("Recording is disabled, media service will not start");
         return;
-    }
-    if (recording.enabled) {
+    } else {
         await fs.mkdir(RECORDING_PATH, { recursive: true });
     }
     logger.info("Starting media service");
