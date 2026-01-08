@@ -484,16 +484,16 @@ export class MediaCompiler {
     /**
      * Builds a dynamic grid layout filter for cameras.
      *
-     * 1. Calculates optimal rows/cols based on camera count.
-     * 2. Scales and pads each camera stream into a "cell" ([v0], [v1], etc.).
-     * 3. Horizontal stacks (hstack) cells into "rows" ([row0], [row1], etc.).
-     * 4. Vertical stacks (vstack) rows into the final output ([vout]).
-     *
      * @returns The FFmpeg filter label for the final combined video stream.
-     * - Returns "[vout]" for a single camera or when multiple rows are stacked vertically.
-     * - Returns "[row0]" when there is only one row of cameras (as no vstack is needed).
      */
     private _buildCameraGrid(cameraCount: number, filterComplex: string[]): string {
+        /**
+         * Single camera shortcut:
+         *   - If only one camera, scale it to fill the entire 1280x720 frame
+         *   - `force_original_aspect_ratio=decrease`: preserves aspect ratio
+         *   - `pad`: centers the video with black bars if needed
+         *   - Returns `[vout]` immediately, no grid logic needed
+         */
         if (cameraCount === 1) {
             filterComplex.push(
                 `[0:v]scale=1280:720:force_original_aspect_ratio=decrease,` +
@@ -502,11 +502,25 @@ export class MediaCompiler {
             return "[vout]";
         }
 
+        /**
+         * Calculate grid dimensions:
+         *   - `cols = ceil(sqrt(cameraCount))`: optimal columns for near-square grid
+         *   - `rows = ceil(cameraCount / cols)`: rows needed to fit all cameras
+         *   - Example: 5 cameras → 3 cols × 2 rows (last row has 2 cameras)
+         *   - Cell dimensions divide 1280x720 evenly among grid cells
+         */
         const cols = Math.ceil(Math.sqrt(cameraCount));
         const rows = Math.ceil(cameraCount / cols);
         const cellWidth = Math.floor(1280 / cols);
         const cellHeight = Math.floor(720 / rows);
 
+        /**
+         * Scale each camera into a cell:
+         *   - `[i:v]`: selects video stream from input i
+         *   - Scales to cell dimensions while preserving aspect ratio
+         *   - Pads with black bars to center within the cell
+         *   - Labels output as `[v0]`, `[v1]`, etc.
+         */
         for (let i = 0; i < cameraCount; i++) {
             filterComplex.push(
                 `[${i}:v]scale=${cellWidth}:${cellHeight}:force_original_aspect_ratio=decrease,` +
@@ -514,6 +528,13 @@ export class MediaCompiler {
             );
         }
 
+        /**
+         * Assemble cells into rows:
+         *   - Groups cells by row and combines them horizontally
+         *   - Single cell in row: pads to full width (1280px) and centers
+         *   - Multiple cells: uses `hstack` to join side-by-side
+         *   - Each row labeled as `[row0]`, `[row1]`, etc.
+         */
         const rowLabels: string[] = [];
         for (let row = 0; row < rows; row++) {
             const startIdx = row * cols;
@@ -531,6 +552,12 @@ export class MediaCompiler {
             }
             rowLabels.push(`[row${row}]`);
         }
+
+        /**
+         * Stack rows vertically:
+         *   - If only one row exists, return `[row0]` directly (no vstack needed)
+         *   - Otherwise, `vstack` all rows into final `[vout]`
+         */
         if (rows === 1) {
             return rowLabels[0];
         }
