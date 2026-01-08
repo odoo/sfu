@@ -368,12 +368,28 @@ export class MediaCompiler {
             const barHeight = 140;
             const camWidth = Math.floor(1280 / cameraFiles.length);
 
-            // TODO write more docstring for the filter complex
+            /**
+             * Stage 1 - Scale screen share:
+             *   - `[0:v]`: selects video stream from the first input (screen share)
+             *   - `scale=1280:580:force_original_aspect_ratio=decrease`: scales to fit within
+             *     1280x580 while preserving aspect ratio (may be smaller on one axis)
+             *   - `pad=1280:580:(ow-iw)/2:(oh-ih)/2`: adds black bars to center the video
+             *     within the target 1280x580 area. `(ow-iw)/2` and `(oh-ih)/2` compute
+             *     horizontal and vertical offsets for centering
+             *   - `[screen]`: labels the output for later reference
+             */
             filterComplex.push(
                 `[0:v]scale=1280:${screenHeight}:force_original_aspect_ratio=decrease,` +
                     `pad=1280:${screenHeight}:(ow-iw)/2:(oh-ih)/2[screen]`
             );
 
+            /**
+             * Stage 2 - Scale each camera stream:
+             *   - `[N:v]`: selects video stream from input N (camera inputs come after screen)
+             *   - Same scale + pad logic as stage 1, but for each camera input
+             *   - `camWidth` divides 1280px equally among all cameras
+             *   - Each camera output is labeled `[cam0]`, `[cam1]`, etc.
+             */
             for (let i = 0; i < cameraFiles.length; i++) {
                 const streamIdx = screenFiles.length + i;
                 filterComplex.push(
@@ -382,6 +398,13 @@ export class MediaCompiler {
                 );
             }
 
+            /**
+             * Stage 3 - Combine cameras into horizontal bar:
+             *   - Single camera: `[cam0]pad=1280:140:(1280-iw)/2:0[cambar]`
+             *     Centers the lone camera in a 1280px-wide bar
+             *   - Multiple cameras: `[cam0][cam1]...hstack=inputs=N[cambar]`
+             *     Horizontally stacks all camera streams side-by-side
+             */
             if (cameraFiles.length === 1) {
                 filterComplex.push(`[cam0]pad=1280:${barHeight}:(1280-iw)/2:0[cambar]`);
             } else {
@@ -389,6 +412,11 @@ export class MediaCompiler {
                 filterComplex.push(`${camLabels}hstack=inputs=${cameraFiles.length}[cambar]`);
             }
 
+            /**
+             * Stage 4 - Stack screen and camera bar vertically:
+             *   - `[screen][cambar]vstack=inputs=2[vout]`
+             *   - Places screen (580px) on top, camera bar (140px) on bottom = 720px total
+             */
             filterComplex.push(`[screen][cambar]vstack=inputs=2[vout]`);
             outputLabel = "[vout]";
         } else if (screenFiles.length > 0) {
