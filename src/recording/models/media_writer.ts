@@ -16,12 +16,7 @@ const isDebug = LOG_LEVEL === LogLevel.DEBUG;
 const FFMPEG_KILL_TIMEOUT = 30_000;
 
 /**
- * Abstraction for a FFMPEG child process
- *
- * TODO fix resolution and timestamps issue:
- * when looking at the output it seems that the resolution is quite low and that the timestamps are buggy.
- * could be ffmpeg or could be the media_output (rtp) that is incorrectly configured?
- * we use multiple encodings per producer (simulcast with multiple spatial layers), maybe we're taking the wrong one?
+ * Abstraction for a FFMPEG child process that captures RTP streams to disk.
  */
 export class MediaWriter {
     readonly extension: string;
@@ -173,14 +168,20 @@ export class MediaWriter {
         let args = [
             "-loglevel",
             isDebug ? "debug" : "error",
+            "-use_wallclock_as_timestamps",
+            "1", // use system clock for reliable timestamps
+            "-analyzeduration",
+            "2000000", // 2 seconds to detect stream properties
+            "-probesize",
+            "5000000", // 5 MB probe size for codec detection
             "-protocol_whitelist",
             "pipe,udp,rtp",
             "-fflags",
-            "+genpts", // preserve packet timestamps for deterministic output
+            "+genpts+nobuffer+discardcorrupt", // generate PTS, minimize latency, drop corrupt packets
             "-f",
-            "sdp", // Force format to SDP (Session Description Protocol)
+            "sdp",
             "-i",
-            "pipe:0" // Read SDP from stdin
+            "pipe:0"
         ];
         if (this._rtp.kind === "audio") {
             args = args.concat(["-map", "0:a:0", "-c:a", "copy"]);
