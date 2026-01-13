@@ -15,14 +15,14 @@ import { Logger } from "#src/utils/utils.ts";
 
 const logger = new Logger("MEDIA_OUTPUT");
 
-export type rtpData = {
-    payloadType?: number;
-    clockRate?: number;
-    codec?: string;
-    kind?: MediaKind;
-    channels?: number;
+export type RtpData = {
+    kind: MediaKind;
+    payloadType: number;
+    clockRate: number;
+    codec: string;
     port: number;
-};
+    channels?: number;
+}
 
 /**
  * Bridges a mediasoup producer through a RTP to an FFMPEG recording process.
@@ -44,7 +44,7 @@ export class MediaOutput extends EventEmitter {
     private _transport?: PlainTransport;
     private _consumer?: Consumer;
     private _mediaWriter?: MediaWriter;
-    private _rtpData?: rtpData;
+    private _rtpData?: RtpData;
     private _port?: DynamicPort;
     private _isClosed = false;
     private _directory: string;
