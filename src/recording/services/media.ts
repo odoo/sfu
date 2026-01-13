@@ -4,7 +4,7 @@ import { createReadStream } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-import { recording, RECORDING_PATH } from "#src/config.ts";
+import { recording, RECORDING_PATH, KEEP_RECORDINGS } from "#src/config.ts";
 import { decrypt, sign } from "#src/core/services/auth.ts";
 import { MediaCompiler } from "#src/recording/models/media_compiler.ts";
 import type { SealedMetaData } from "#src/recording/models/recorder.ts";
@@ -161,7 +161,9 @@ async function processRecording(folderName: string) {
     } catch (error) {
         logger.error(`Failed to process recording ${folderName}: ${error}`);
     }
-    fs.rm(dir, { recursive: true });
+    if (!KEEP_RECORDINGS) {
+        fs.rm(dir, { recursive: true });
+    }
 }
 
 async function fetchTranscription(filePath: string, metadata: SealedMetaData) {

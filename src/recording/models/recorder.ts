@@ -118,6 +118,11 @@ export class Recorder extends EventEmitter {
     /**
      * Can be called again even if it has started to update the transcription state,
      * this applies to the whole recording.
+     *
+     * @param [options={}]
+     * @param [options.video] - whether to record video
+     * @param [options.transcription] - whether to transcribe the recording, this flags the
+     * current recording for transcription, can be changed at runtime.
      */
     async start(options: { video?: boolean; transcription?: boolean } = {}) {
         this.transcription = Boolean(options.transcription);

@@ -3,12 +3,11 @@ import path from "node:path";
 import { spawn, ChildProcess } from "node:child_process";
 import { Readable } from "node:stream";
 
-import { Logger, LogLevel } from "#src/utils/utils.ts";
-import { recording, LOG_LEVEL } from "#src/config.ts";
+import { Logger } from "#src/utils/utils.ts";
+import { recording, FFMPEG_LOGGING } from "#src/config.ts";
 import type { rtpData } from "#src/recording/models/media_output.ts";
 
 const logger = new Logger("FFMPEG");
-const isDebug = LOG_LEVEL === LogLevel.DEBUG;
 /**
  * We need to move forward with the recording even if ffmpeg does not close gracefully.
  * If ffmpeg does not close gracefully, force kill it after this timeout.
@@ -74,7 +73,7 @@ export class MediaWriter {
             logger.debug(`spawning ffmpeg with args: ${args.join(" ")}`);
             this._process = spawn("ffmpeg", args);
 
-            if (isDebug) {
+            if (FFMPEG_LOGGING) {
                 this._logStream = fs.createWriteStream(
                     `${path.join(this._directory, this.filename)}.log`
                 );
@@ -167,7 +166,7 @@ export class MediaWriter {
     private _getCommandArgs(): string[] {
         let args = [
             "-loglevel",
-            isDebug ? "debug" : "error",
+            FFMPEG_LOGGING ? "debug" : "error",
             "-use_wallclock_as_timestamps",
             "1", // use system clock for reliable timestamps
             "-analyzeduration",
