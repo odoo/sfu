@@ -191,6 +191,13 @@ export const LOG_TIMESTAMP: boolean = !FALSY_INPUT.has(process.env.LOG_TIMESTAMP
 export const LOG_COLOR: boolean = process.env.LOG_COLOR
     ? Boolean(process.env.LOG_COLOR)
     : process.stdout.isTTY;
+/**
+ * Whether we keep the recordings (and their raw files) after they are successfully
+ * upload to the remote server or not.
+ * mostly for debugging
+ */
+export const KEEP_RECORDINGS = Boolean(process.env.KEEP_RECORDINGS);
+export const FFMPEG_LOGGING = Boolean(process.env.FFMPEG_LOGGING);
 
 // ------------------------------------------------------------
 // --------------------   SETTINGS   --------------------------

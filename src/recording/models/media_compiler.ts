@@ -4,13 +4,13 @@ import { access, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 
 import { TIME_TAG, type TimeStampData } from "#src/recording/models/recorder.ts";
-import { recording, LOG_LEVEL } from "#src/config.ts";
-import { Logger, LogLevel } from "#src/utils/utils.ts";
+import { recording, FFMPEG_LOGGING } from "#src/config.ts";
+import { Logger } from "#src/utils/utils.ts";
 import { STREAM_TYPE } from "#src/shared/enums.ts";
 import type { SessionId } from "#src/core/models/session.ts";
 
 const logger = new Logger("MEDIA_COMPILER");
-const isDebug = LOG_LEVEL === LogLevel.DEBUG;
+const FILENAME_PREFIX = "recording_";
 
 /**
  * Minimum time gap (ms) between segment boundaries. Changes occurring within
@@ -117,7 +117,7 @@ export class MediaCompiler {
 
         const outputName = path.join(
             this._workingDir,
-            `recording_${this._startedAt}.${recording.audioExt}`
+            `${FILENAME_PREFIX}${this._startedAt}.${recording.audioExt}`
         );
         try {
             await access(outputName);
@@ -169,7 +169,7 @@ export class MediaCompiler {
             const proc = spawn("ffmpeg", args);
             let logStream: fs.WriteStream | undefined;
 
-            if (isDebug) {
+            if (FFMPEG_LOGGING) {
                 logStream = fs.createWriteStream(`${outputName}.log`);
                 proc.stderr?.pipe(logStream, { end: false });
                 proc.stdout?.pipe(logStream, { end: false });
@@ -215,7 +215,7 @@ export class MediaCompiler {
 
         const outputName = path.join(
             this._workingDir,
-            `recording_${this._startedAt}.${recording.videoExt}`
+            `${FILENAME_PREFIX}${this._startedAt}.${recording.videoExt}`
         );
         try {
             await access(outputName);
@@ -421,6 +421,7 @@ export class MediaCompiler {
             outputLabel = "[vout]";
         } else if (screenFiles.length > 0) {
             // Only screen(s) - fullscreen (use first if multiple)
+            // TODO upstream (recorder) should implement the logic that discriminates screen shares
             filterComplex.push(
                 `[0:v]scale=1280:720:force_original_aspect_ratio=decrease,` +
                     `pad=1280:720:(ow-iw)/2:(oh-ih)/2[vout]`
@@ -457,7 +458,7 @@ export class MediaCompiler {
             const proc = spawn("ffmpeg", args);
             let logStream: fs.WriteStream | undefined;
 
-            if (isDebug) {
+            if (FFMPEG_LOGGING) {
                 logStream = fs.createWriteStream(`${outputPath}.log`);
                 proc.stderr?.pipe(logStream, { end: false });
                 proc.stdout?.pipe(logStream, { end: false });
@@ -626,7 +627,7 @@ export class MediaCompiler {
             const proc = spawn("ffmpeg", args);
             let logStream: fs.WriteStream | undefined;
 
-            if (isDebug) {
+            if (FFMPEG_LOGGING) {
                 logStream = fs.createWriteStream(`${outputPath}.log`);
                 proc.stderr?.pipe(logStream, { end: false });
                 proc.stdout?.pipe(logStream, { end: false });
