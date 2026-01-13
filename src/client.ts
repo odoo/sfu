@@ -20,6 +20,7 @@ import {
 } from "#src/shared/enums.ts";
 import type {
     AvailableFeatures,
+    DownloadStates,
     JSONSerializable,
     StreamType,
     BusMessage,
@@ -57,7 +58,6 @@ type UpdateInfoOptions = {
     /** Whether server should refresh local info from all sessions */
     needRefresh?: boolean;
 };
-export type DownloadStates = Partial<Record<StreamType, boolean>>;
 export enum CLIENT_UPDATE {
     /** A new track has been received */
     TRACK = "track",

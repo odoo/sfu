@@ -179,9 +179,13 @@ async function fetchTranscription(filePath: string, metadata: SealedMetaData) {
             "Content-Type": "audio/mpeg",
             "Content-Length": fileStats.size.toString()
         },
+        // FIXME remove linter error suppression
         // @ts-expect-error: Node fetch supports ReadStream
-        // "duplex" must be set to "half" when using a ReadableStream as the body.
-        // See: https://developer.mozilla.org/en-US/docs/Web/API/Request/duplex
+        // The reason is that the current tsconfig uses both ES2024 and DOM
+        // because part of the SFU codebase runs on the client (client.ts)
+        // this causes the linter to treat this fetch as a client fetch
+        // it could probably fixed with some tsconfig compositing trickery
+        // that takes client.ts, tests and shared files into account
         body: createReadStream(filePath),
         duplex: "half"
     });
@@ -215,9 +219,7 @@ async function upload(filePath: string, metadata: SealedMetaData) {
                     "Content-Type": "video/av1", // TODO should depend on config
                     "Content-Length": fileStats.size.toString()
                 },
-                // @ts-expect-error: Node fetch supports ReadStream
-                // "duplex" must be set to "half" when using a ReadableStream as the body.
-                // See: https://developer.mozilla.org/en-US/docs/Web/API/Request/duplex
+                // @ts-expect-error: same as above
                 body: createReadStream(filePath),
                 duplex: "half"
             });

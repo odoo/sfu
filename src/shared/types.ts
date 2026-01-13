@@ -36,8 +36,9 @@ export type AvailableFeatures = {
     videoRecording: boolean;
 };
 
-import type { DownloadStates } from "#src/client.ts";
 import type { SessionId, SessionInfo, TransportConfig } from "#src/core/models/session.ts";
+
+export type DownloadStates = Partial<Record<StreamType, boolean>>;
 
 import type {
     DtlsParameters,
