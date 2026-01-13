@@ -14,6 +14,10 @@ const logger = new Logger("MEDIA");
 const CHECK_INTERVAL = 2 * 60 * 1000; // 2 minutes
 const CPU_LOAD_THRESHOLD = 0.8;
 
+type RoutingResponse = {
+    destination: string;
+};
+
 /**
  * Nice-to-have feature, if the server provides a on-demand transcriptino
  */
@@ -167,11 +171,13 @@ async function processRecording(folderName: string) {
 }
 
 async function fetchTranscription(filePath: string, metadata: SealedMetaData) {
+    const fileStats = await fs.stat(filePath);
     const response = await fetch(`${metadata.routingAddress}/transcription`, {
         method: "POST",
         headers: {
             Authorization: `Bearer ${makeJwt(metadata.channelKey)}`,
-            "Content-Type": "audio/mpeg"
+            "Content-Type": "audio/mpeg",
+            "Content-Length": fileStats.size.toString()
         },
         // @ts-expect-error: Node fetch supports ReadStream
         // "duplex" must be set to "half" when using a ReadableStream as the body.
@@ -186,7 +192,7 @@ async function fetchTranscription(filePath: string, metadata: SealedMetaData) {
     return await response.text();
 }
 
-async function upload(file: string, metadata: SealedMetaData) {
+async function upload(filePath: string, metadata: SealedMetaData) {
     logger.debug(`Uploading files to ${metadata.routingAddress}`);
     try {
         const response = await fetch(`${metadata.routingAddress}/routing`, {
@@ -200,17 +206,19 @@ async function upload(file: string, metadata: SealedMetaData) {
                 `Failed to obtain routing from ${metadata.routingAddress}: ${response.statusText}`
             );
         }
-        const jsonResponse = await response.json();
+        const jsonResponse = (await response.json()) as RoutingResponse;
         if (jsonResponse.destination) {
+            const fileStats = await fs.stat(filePath);
             const response = await fetch(jsonResponse.destination, {
                 method: "POST",
                 headers: {
-                    "Content-Type": "video/av1" // TODO should depend on config
+                    "Content-Type": "video/av1", // TODO should depend on config
+                    "Content-Length": fileStats.size.toString()
                 },
                 // @ts-expect-error: Node fetch supports ReadStream
                 // "duplex" must be set to "half" when using a ReadableStream as the body.
                 // See: https://developer.mozilla.org/en-US/docs/Web/API/Request/duplex
-                body: createReadStream(file),
+                body: createReadStream(filePath),
                 duplex: "half"
             });
             if (!response.ok) {
