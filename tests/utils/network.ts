@@ -6,7 +6,6 @@ import * as fakeParameters from "mediasoup-client/lib/test/fakeParameters";
 import * as auth from "#src/core/services/auth";
 import * as http from "#src/core/services/http";
 import * as resources from "#src/core/services/resources";
-import { Deferred } from "#src/utils/utils";
 import { SfuClient, SfuClientState } from "#src/client";
 import { Channel } from "#src/core/models/channel";
 import type { Session } from "#src/core/models/session";
@@ -41,7 +40,7 @@ type ConnectionResult = {
     /** Client-side SFU client instance */
     sfuClient: SfuClient;
     /** Promise resolving to true when client is connected */
-    isConnected: Deferred<boolean>;
+    isConnected: Promise<boolean>;
 };
 
 /**
@@ -156,7 +155,7 @@ export class LocalNetwork {
         };
 
         // Set up authentication promise
-        const isClientAuthenticated = new Deferred<boolean>();
+        const isClientAuthenticated = Promise.withResolvers();
         const handleStateChange = (event: CustomEvent) => {
             const { state } = event.detail;
             switch (state) {
@@ -178,7 +177,7 @@ export class LocalNetwork {
         };
         sfuClient.addEventListener("stateChange", handleStateChange as EventListener);
 
-        const isConnected = new Deferred<boolean>();
+        const isConnected = Promise.withResolvers();
         const connectedHandler = (event: CustomEvent) => {
             const { state } = event.detail;
             if (state === SfuClientState.CONNECTED) {
@@ -211,7 +210,7 @@ export class LocalNetwork {
             throw new Error(`Channel ${channelUUID} not found`);
         }
 
-        await isClientAuthenticated;
+        await isClientAuthenticated.promise;
 
         // Get session from channel
         const session = channel.sessions.get(sessionId);
@@ -219,7 +218,7 @@ export class LocalNetwork {
             throw new Error(`Session ${sessionId} not found in channel ${channelUUID}`);
         }
 
-        return { session, sfuClient, isConnected };
+        return { session, sfuClient, isConnected: isConnected.promise as Promise<boolean> };
     }
 
     /**
