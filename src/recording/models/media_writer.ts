@@ -5,7 +5,7 @@ import { Readable } from "node:stream";
 
 import { Logger } from "#src/utils/utils.ts";
 import { recording, FFMPEG_LOGGING } from "#src/config.ts";
-import type { rtpData } from "#src/recording/models/media_output.ts";
+import type { RtpData } from "#src/recording/models/media_output.ts";
 
 const logger = new Logger("FFMPEG");
 /**
@@ -20,13 +20,13 @@ const FFMPEG_KILL_TIMEOUT = 30_000;
 export class MediaWriter {
     readonly extension: string;
     readonly filename: string;
-    private readonly _rtp: rtpData;
+    private readonly _rtp: RtpData;
     private _process?: ChildProcess;
     private _isClosed = false;
     private _logStream?: fs.WriteStream;
     private readonly _directory: string;
 
-    constructor(rtp: rtpData, directory: string, filename: string) {
+    constructor(rtp: RtpData, directory: string, filename: string) {
         this._rtp = rtp;
         this._directory = directory;
         this.extension = this._getContainerExtension();
@@ -113,11 +113,6 @@ export class MediaWriter {
      */
     private _createSdpText(): string {
         const { port, payloadType, codec, clockRate, channels, kind } = this._rtp;
-
-        if (!port || !payloadType || !codec || !clockRate || !kind) {
-            throw new Error("RTP missing required properties for SDP generation");
-        }
-
         let sdp = `v=0\n`;
         sdp += `o=- 0 0 IN IP4 ${recording.routingInterface}\n`;
         sdp += `s=FFmpeg\n`;
