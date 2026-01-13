@@ -142,6 +142,10 @@ export class Logger {
  * @param req - HTTP request object
  * @param options - Parsing options
  * @returns Promise resolving to parsed body (string or JSON)
+ * 
+ * TODO override definition: if this takes json=true as param,
+ * it returns Promise<JsonSerializable>, else returns Promise<string>
+ * this should allow calling this function without type narrowing with a string check
  */
 export function parseBody(
     req: IncomingMessage,
