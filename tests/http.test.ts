@@ -328,6 +328,17 @@ describe("Route listener implementation", () => {
         expect(await response.text()).toBe("created");
     });
 
+    test("Handles server error", async () => {
+        routeListener.get("/test", {
+            callback: (req, res) => {
+                throw new Error();
+            }
+        });
+        const response = await fetch(`http://127.0.0.1:${port}/test`);
+        expect(response.ok).toBe(false);
+        expect(response.status).toBe(500);
+    });
+
     test("GET/CORS", async () => {
         routeListener.get("/cors", {
             cors: "*",
