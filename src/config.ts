@@ -197,6 +197,10 @@ export const LOG_COLOR: boolean = process.env.LOG_COLOR
  * mostly for debugging
  */
 export const KEEP_RECORDINGS = Boolean(process.env.KEEP_RECORDINGS);
+/**
+ * If set, generates `.log` files alongside all ffmpeg file outputs.
+ * eg: `recording_1768377901321.mp4` will have an associated `recording_1768377901321.mp4.log`
+ */
 export const FFMPEG_LOGGING = Boolean(process.env.FFMPEG_LOGGING);
 
 // ------------------------------------------------------------

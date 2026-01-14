@@ -14,9 +14,9 @@ async function run(): Promise<void> {
     await http.start();
     await media.start();
     logger.debug(`===== TO IMPLEMENT =====`);
-    logger.debug(`* Choose format for recording (AV vs H264)`);
-    logger.debug(`* improve quality of video recording`);
-    logger.debug(`* add some warning if a call participant is in p2p mode when starting recording`);
+    logger.debug(
+        `* add some warning if a call participant is in p2p (failed sfu connection) mode when starting recording`
+    );
     logger.debug(`* Out of SFU flow (artifact, cloud,...)`);
     logger.debug(`* Investigate imbeded transcription flow`);
 }

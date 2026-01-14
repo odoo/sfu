@@ -162,26 +162,39 @@ export class MediaWriter {
         let args = [
             "-loglevel",
             FFMPEG_LOGGING ? "debug" : "error",
-            "-use_wallclock_as_timestamps",
-            "1", // use system clock for reliable timestamps
+            // Input options for RTP stream
+            "-reorder_queue_size",
+            "500", // larger reorder queue to handle out-of-order RTP packets
             "-analyzeduration",
-            "2000000", // 2 seconds to detect stream properties
+            "5000000", // 5 seconds to properly detect stream properties and wait for keyframe
             "-probesize",
-            "5000000", // 5 MB probe size for codec detection
+            "10000000", // 10 MB probe size for better codec detection
             "-protocol_whitelist",
             "pipe,udp,rtp",
             "-fflags",
-            "+genpts+nobuffer+discardcorrupt", // generate PTS, minimize latency, drop corrupt packets
+            "+genpts+discardcorrupt", // generate PTS, drop corrupt packets (removed nobuffer to allow buffering)
             "-f",
             "sdp",
             "-i",
             "pipe:0"
         ];
+        // Output options - normalize timestamps to start from 0
+        args.push("-start_at_zero");
+        args.push("-copyts"); // preserve timestamps during copy
         if (this._rtp.kind === "audio") {
             args = args.concat(["-map", "0:a:0", "-c:a", "copy"]);
         } else {
-            args = args.concat(["-map", "0:v:0", "-c:v", "copy"]);
+            args = args.concat([
+                "-map",
+                "0:v:0",
+                "-c:v",
+                "copy",
+                "-vsync",
+                "passthrough" // preserve frame timing without dropping/duplicating
+            ]);
         }
+        // Reset timestamps in the output container
+        args.push("-output_ts_offset", "0");
         args.push(path.join(this._directory, this.filename));
         return args;
     }
