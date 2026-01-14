@@ -13,6 +13,42 @@ const logger = new Logger("MEDIA_COMPILER");
 const FILENAME_PREFIX = "recording_";
 
 /**
+ * Validates that a video file can be read by FFmpeg.
+ * Uses ffprobe to check file headers and stream info.
+ * @returns true if the file is valid and readable, false otherwise
+ */
+async function validateVideoFile(filePath: string): Promise<boolean> {
+    return new Promise((resolve) => {
+        const proc = spawn("ffprobe", [
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=codec_name",
+            "-of",
+            "csv=p=0",
+            filePath
+        ]);
+
+        let hasOutput = false;
+
+        proc.stdout.on("data", () => {
+            hasOutput = true;
+        });
+
+        proc.on("close", (code) => {
+            // Valid if ffprobe exits 0 and found a video stream
+            resolve(code === 0 && hasOutput);
+        });
+
+        proc.on("error", () => {
+            resolve(false);
+        });
+    });
+}
+
+/**
  * Minimum time gap (ms) between segment boundaries. Changes occurring within
  * this threshold are merged to avoid excessive segment fragmentation.
  */
@@ -338,21 +374,47 @@ export class MediaCompiler {
         const screenFiles = files.filter((f) => f.type === STREAM_TYPE.SCREEN);
         const cameraFiles = files.filter((f) => f.type === STREAM_TYPE.CAMERA);
 
+        // Validate files and filter out corrupted ones
+        const validScreenFiles: { file: VideoFileInfo; filePath: string }[] = [];
+        const validCameraFiles: { file: VideoFileInfo; filePath: string }[] = [];
+
+        for (const file of screenFiles) {
+            const filePath = path.join(this._workingDir, "screen", file.filename);
+            if (await validateVideoFile(filePath)) {
+                validScreenFiles.push({ file, filePath });
+            } else {
+                logger.warn(`Skipping corrupted screen file: ${file.filename}`);
+            }
+        }
+
+        for (const file of cameraFiles) {
+            const filePath = path.join(this._workingDir, "camera", file.filename);
+            if (await validateVideoFile(filePath)) {
+                validCameraFiles.push({ file, filePath });
+            } else {
+                logger.warn(`Skipping corrupted camera file: ${file.filename}`);
+            }
+        }
+
+        // If all files were corrupted, skip this segment
+        if (validScreenFiles.length === 0 && validCameraFiles.length === 0) {
+            logger.warn(`Segment ${index}: all video files are corrupted, skipping`);
+            return undefined;
+        }
+
         const inputs: string[] = [];
         const filterComplex: string[] = [];
 
-        for (const file of screenFiles) {
+        for (const { file, filePath } of validScreenFiles) {
             const offset = (segment.startTime - file.fileStartTime) / 1000;
-            const filePath = path.join(this._workingDir, "screen", file.filename);
             if (offset > 0) {
                 inputs.push("-ss", offset.toFixed(3));
             }
             inputs.push("-i", filePath);
         }
 
-        for (const file of cameraFiles) {
+        for (const { file, filePath } of validCameraFiles) {
             const offset = (segment.startTime - file.fileStartTime) / 1000;
-            const filePath = path.join(this._workingDir, "camera", file.filename);
             if (offset > 0) {
                 inputs.push("-ss", offset.toFixed(3));
             }
@@ -361,12 +423,12 @@ export class MediaCompiler {
 
         let outputLabel: string;
 
-        if (screenFiles.length > 0 && cameraFiles.length > 0) {
+        if (validScreenFiles.length > 0 && validCameraFiles.length > 0) {
             // Screen + cameras: screen takes main area, cameras in bottom bar
             // Layout: 1280x720 total - screen: 1280x580 (top), cameras: 1280x140 (bottom bar)
             const screenHeight = 580;
             const barHeight = 140;
-            const camWidth = Math.floor(1280 / cameraFiles.length);
+            const camWidth = Math.floor(1280 / validCameraFiles.length);
 
             /**
              * Stage 1 - Scale screen share:
@@ -390,8 +452,8 @@ export class MediaCompiler {
              *   - `camWidth` divides 1280px equally among all cameras
              *   - Each camera output is labeled `[cam0]`, `[cam1]`, etc.
              */
-            for (let i = 0; i < cameraFiles.length; i++) {
-                const streamIdx = screenFiles.length + i;
+            for (let i = 0; i < validCameraFiles.length; i++) {
+                const streamIdx = validScreenFiles.length + i;
                 filterComplex.push(
                     `[${streamIdx}:v]scale=${camWidth}:${barHeight}:force_original_aspect_ratio=decrease,` +
                         `pad=${camWidth}:${barHeight}:(ow-iw)/2:(oh-ih)/2[cam${i}]`
@@ -405,11 +467,11 @@ export class MediaCompiler {
              *   - Multiple cameras: `[cam0][cam1]...hstack=inputs=N[cambar]`
              *     Horizontally stacks all camera streams side-by-side
              */
-            if (cameraFiles.length === 1) {
+            if (validCameraFiles.length === 1) {
                 filterComplex.push(`[cam0]pad=1280:${barHeight}:(1280-iw)/2:0[cambar]`);
             } else {
-                const camLabels = cameraFiles.map((_, i) => `[cam${i}]`).join("");
-                filterComplex.push(`${camLabels}hstack=inputs=${cameraFiles.length}[cambar]`);
+                const camLabels = validCameraFiles.map((_, i) => `[cam${i}]`).join("");
+                filterComplex.push(`${camLabels}hstack=inputs=${validCameraFiles.length}[cambar]`);
             }
 
             /**
@@ -419,7 +481,7 @@ export class MediaCompiler {
              */
             filterComplex.push(`[screen][cambar]vstack=inputs=2[vout]`);
             outputLabel = "[vout]";
-        } else if (screenFiles.length > 0) {
+        } else if (validScreenFiles.length > 0) {
             // Only screen(s) - fullscreen (use first if multiple)
             // TODO upstream (recorder) should implement the logic that discriminates screen shares
             filterComplex.push(
@@ -427,9 +489,9 @@ export class MediaCompiler {
                     `pad=1280:720:(ow-iw)/2:(oh-ih)/2[vout]`
             );
             outputLabel = "[vout]";
-        } else if (cameraFiles.length > 0) {
+        } else if (validCameraFiles.length > 0) {
             // Only cameras - dynamic grid layout
-            outputLabel = this._buildCameraGrid(cameraFiles.length, filterComplex);
+            outputLabel = this._buildCameraGrid(validCameraFiles.length, filterComplex);
         } else {
             return undefined;
         }
