@@ -153,6 +153,12 @@ export class MediaOutput extends EventEmitter {
         const active = available && this._allowed;
         if (active) {
             this._consumer?.resume();
+            // Request a keyframe when starting/resuming video recording.
+            // This ensures FFmpeg receives a clean decoding start point immediately
+            // instead of waiting for the producer's next natural keyframe interval.
+            if (this._consumer?.kind === "video") {
+                this._consumer.requestKeyFrame();
+            }
         } else {
             this._consumer?.pause();
         }
