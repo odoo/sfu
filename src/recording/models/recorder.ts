@@ -136,16 +136,11 @@ export class Recorder extends EventEmitter {
 
         try {
             await this._init();
+            this._emitStatus();
         } catch (error) {
             logger.error(`Failed to start recording for ${this._channel.name}: ${error}`);
-            this.terminate({ save: false });
+            this.stop({ save: false });
         }
-        this._emitStatus();
-    }
-
-    async stop() {
-        this.terminate();
-        this._emitStatus();
     }
 
     mark(tag: TIME_TAG, info: TimeTagInfo) {
@@ -199,7 +194,7 @@ export class Recorder extends EventEmitter {
      * @param param0
      * @param param0.save - whether to save the recording
      */
-    terminate({ save = true }: { save?: boolean } = {}) {
+    stop({ save = true, cause }: { save?: boolean; cause?: string } = {}) {
         if (!this.isRecording) {
             return;
         }
@@ -241,6 +236,7 @@ export class Recorder extends EventEmitter {
                     `Failed to save recording for channel ${this._channel.name}: ${error}`
                 );
             });
+        this._emitStatus(cause);
     }
 
     /**
@@ -294,8 +290,7 @@ export class Recorder extends EventEmitter {
         this._folder = await getFolder(["audio", "camera", "screen"]);
         clearTimeout(this._timeout);
         this._timeout = setTimeout(() => {
-            this.terminate();
-            this._emitStatus("recording_timeout");
+            this.stop({ cause: "recording_timeout" });
         }, recording.maxDuration);
         logger.verbose(`Initializing recorder for channel: ${this._channel.name}`);
         for (const [sessionId, session] of this._channel.sessions) {
