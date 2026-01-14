@@ -131,6 +131,10 @@ async function processRecording(folderName: string) {
     try {
         const content = await fs.readFile(metadataPath, "utf-8");
         const metadata: SealedMetaData = JSON.parse(decrypt(content));
+        /**
+         * TODO should add channelId to the metadata, if the channel is still alive, we skip it,
+         * then we will combine all recordings of the same channel
+         */
         if (!metadata.startedAt || !metadata.stoppedAt) {
             throw new Error("No startedAt or stoppedAt found in metadata");
         }

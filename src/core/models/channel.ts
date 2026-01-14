@@ -358,7 +358,7 @@ export class Channel extends EventEmitter {
              * a single person should not keep a channel alive forever.
              */
             this.setCloseTimeout(true);
-            this.recorder?.terminate({ save: true });
+            this.recorder?.stop();
         }
     }
 }
