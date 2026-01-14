@@ -104,7 +104,7 @@ function isCpuLoaded(): boolean {
 }
 
 async function processRecordings() {
-    logger.debug(`Checking recordings in ${RECORDING_PATH}`);
+    logger.info(`Checking recordings in ${RECORDING_PATH}`);
     try {
         const entries = await fs.readdir(RECORDING_PATH, { withFileTypes: true });
         for (const entry of entries) {
@@ -140,7 +140,6 @@ async function processRecording(folderName: string) {
             throw new Error("expired recording");
         }
         logger.debug(`Read metadata for recording ${folderName}: ${metadata.channelName}`);
-        logger.debug(`Expected to be delivered at ${metadata.routingAddress}`);
         let srt: string | undefined;
         const compiler = new MediaCompiler({
             workingDir: dir,
@@ -162,6 +161,7 @@ async function processRecording(folderName: string) {
         if (file) {
             await upload(file, metadata);
         }
+        logger.info(`recording ${recording.metadataFileName} was succesfully processed`);
     } catch (error) {
         logger.error(`Failed to process recording ${folderName}: ${error}`);
     }
