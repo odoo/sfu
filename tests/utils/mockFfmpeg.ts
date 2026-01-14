@@ -39,6 +39,8 @@ export class MockChildProcess extends EventEmitter implements ChildProcess {
 
         if (command === "ffmpeg") {
             this._simulateFfmpeg(args);
+        } else if (command === "ffprobe") {
+            this._simulateFfprobe(args);
         }
     }
 
@@ -71,6 +73,26 @@ export class MockChildProcess extends EventEmitter implements ChildProcess {
             }
         }, 10);
     }
+
+    private _simulateFfprobe(args: string[]) {
+        const inputFile = args[args.length - 1];
+        if (!inputFile) {
+            setTimeout(() => this.emit("close", 1), 5);
+            return;
+        }
+        const fileExists = mockFs.exists(inputFile);
+        setTimeout(() => {
+            if (!this.killed) {
+                if (fileExists) {
+                    this.stdout?.push("vp8\n");
+                    this.stdout?.push(null);
+                    this.emit("close", 0);
+                } else {
+                    this.emit("close", 1);
+                }
+            }
+        }, 5);
+    }
 }
 
 export const mockSpawn = jest.fn((command: string, args: string[], options?: unknown) => {
@@ -85,7 +107,7 @@ export function mockFfmpeg() {
         return {
             ...original,
             spawn: (command: string, args: string[], options: SpawnOptions): ChildProcessLike => {
-                if (command === "ffmpeg") {
+                if (command === "ffmpeg" || command === "ffprobe") {
                     return mockSpawn(command, args, options) as unknown as ChildProcessLike;
                 }
                 return original.spawn(command, args, options);
