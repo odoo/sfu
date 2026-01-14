@@ -22,7 +22,7 @@ export type RtpData = {
     codec: string;
     port: number;
     channels?: number;
-}
+};
 
 /**
  * Bridges a mediasoup producer through a RTP to an FFMPEG recording process.
@@ -102,10 +102,6 @@ export class MediaOutput extends EventEmitter {
                 rtpCapabilities: this._router!.rtpCapabilities,
                 paused: true
             });
-            // Request highest quality simulcast layer for recording
-            if (this._producer.kind === "video") {
-                await this._consumer.setPreferredLayers({ spatialLayer: 2 });
-            }
             if (this._isClosed) {
                 // may be closed by the time the consumer is created
                 this._cleanup();
