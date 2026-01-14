@@ -348,13 +348,15 @@ export class Channel extends EventEmitter {
          * @type {SessionId} sessionId
          */
         this.emit(Channel.Events.SESSION_LEAVE, id);
-        if (this.sessions.size <= 1) {
+        if (this.sessions.size === 1) {
             /**
              * If there is only one person left in the call, we already start the timeout as
              * a single person should not keep a channel alive forever.
              */
             this.setCloseTimeout(true);
             this.recorder?.stop();
+        } else if (this.sessions.size === 0) {
+            this.close();
         }
     }
 }

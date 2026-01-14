@@ -26,7 +26,7 @@ describe("Models", () => {
         expect(channel.sessions.size).toBe(1);
         session!.close();
         expect(channel.sessions.size).toBe(0);
-        expect(Channel.records.size).toBe(1);
+        expect(Channel.records.size).toBe(0);
     });
     test("should have the right amount of sessions on the channel", async () => {
         const channel1 = await Channel.create("testRemote", "testIssuer");
@@ -65,7 +65,7 @@ describe("Models", () => {
             session.close();
         }
         expect(channel2.sessions.size).toBe(0);
-        expect(Channel.records.size).toBe(2);
+        expect(Channel.records.size).toBe(0);
         jest.advanceTimersByTime(timeouts.channel + 10);
         expect(Channel.records.size).toBe(0);
         jest.useRealTimers();
