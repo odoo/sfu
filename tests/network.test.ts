@@ -255,6 +255,7 @@ describe("Full network", () => {
         jest.spyOn(global, "setTimeout");
         jest.useFakeTimers();
         const channelUUID = await network.getChannelUUID();
+        await network.connect(channelUUID, 2);
         const user = await network.connect(channelUUID, 273);
         const [stateChangeEvent] = await once(user.session, "stateChange");
         // we must pass the connected step before advancing time so that the session is not closed by the connection timeout
