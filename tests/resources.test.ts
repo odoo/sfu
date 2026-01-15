@@ -89,7 +89,7 @@ describe("resources service", () => {
 
         const oldPath = folder.path;
         const newPath = path.join(config.RESOURCES_PATH, "sealed-folder");
-        await folder.seal(newPath);
+        await folder.move(newPath);
         expect(mockFs.exists(oldPath)).toBe(false);
         const expectedPath = path.join(newPath, folder.name);
         expect(mockFs.exists(expectedPath)).toBe(true);

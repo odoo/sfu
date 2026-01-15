@@ -238,7 +238,7 @@ export class Recorder extends EventEmitter {
     async close(options: StopOptions = {}) {
         await this.stop(options);
         this._folders.forEach((folder) =>
-            folder.seal(path.join(recording.directory, this._channel.uuid))
+            folder.move(path.join(recording.directory, this._channel.uuid))
         );
         this._folders = [];
     }
