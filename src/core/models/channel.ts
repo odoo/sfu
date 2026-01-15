@@ -303,7 +303,7 @@ export class Channel extends EventEmitter {
      * @fires Channel#close
      */
     close(): void {
-        this.recorder?.stop();
+        this.recorder?.close();
         for (const session of this.sessions.values()) {
             session.off("close", this._onSessionClose);
             session.close({ code: SESSION_CLOSE_CODE.CHANNEL_CLOSED });

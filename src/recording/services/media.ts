@@ -9,7 +9,6 @@ import { decrypt, sign } from "#src/core/services/auth.ts";
 import { MediaCompiler } from "#src/recording/models/media_compiler.ts";
 import type { SealedMetaData } from "#src/recording/models/recorder.ts";
 import { Logger } from "#src/utils/utils.ts";
-import { Channel } from "#src/core/models/channel.ts";
 
 const logger = new Logger("MEDIA");
 const CHECK_INTERVAL = 2 * 60 * 1000; // 2 minutes
@@ -110,10 +109,6 @@ async function processRecordings() {
         const channelDirectories = await fs.readdir(RECORDING_PATH, { withFileTypes: true });
         const dir = channelDirectories[0];
         if (!dir) {
-            return;
-        }
-        if (Channel.records.has(dir.name)) {
-            logger.debug(`Channel ${dir.name} is still active, skipping`);
             return;
         }
         if (dir.isDirectory()) {
