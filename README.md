@@ -42,7 +42,7 @@ The available environment variables are:
 
 - **PUBLIC_IP** (required): used to establish webRTC connections to the server
 - **AUTH_KEY** (required): the base64 encoded encryption key used for authentication
-- **LOCAL_KEY**: a key used for encrypting/decrypting data locally, if not set one will be randomly generated. It MUST be a 32bytes base64 key, for example generated from `node -e "console.log(crypto.randomBytes(32).toString('base64'))"`. If not provided one will be generated at runtime, but local encrypted files will lose persistence across restarts.
+- **LOCAL_KEY**: a key used for encrypting/decrypting data locally, if not set one will be randomly generated. It MUST be a 32bytes base64 key, for example generated from `openssl rand 32 | base64`. If not provided one will be generated at runtime, but local encrypted files will lose persistence between server restarts.
 - **HTTP_INTERFACE**:  HTTP/WS interface, defaults to "0.0.0.0" (listen on all interfaces)
 - **PORT**: port for HTTP/WS, defaults to standard ports
 - **RTC_INTERFACE**: Interface address for RTC, defaults to "0.0.0.0"

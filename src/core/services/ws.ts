@@ -10,6 +10,7 @@ import { Session, SESSION_CLOSE_CODE, type SessionPermissions } from "#src/core/
 import { Channel } from "#src/core/models/channel.ts";
 import { verify } from "#src/core/services/auth.ts";
 import type { WebSocketCredentials } from "#src/shared/types.ts";
+import type { AddressInfo } from "node:net";
 
 type WSConnectClaims = {
     sfu_channel_uuid: string;
@@ -28,8 +29,6 @@ let server: WebSocketServer | undefined;
 export async function start(
     options: ConstructorParameters<typeof WebSocketServer>[0]
 ): Promise<WebSocketServer> {
-    logger.info("starting...");
-
     server = new WebSocketServer(options);
 
     /**
@@ -79,7 +78,8 @@ export async function start(
             clearTimeout(timeout);
         });
     });
-
+    const addr = server.address() as AddressInfo;
+    logger.info(`websocket listening at ${addr.address}:${addr.port}`);
     return server;
 }
 
