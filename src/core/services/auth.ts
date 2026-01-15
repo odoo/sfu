@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 
 import * as config from "#src/config.ts";
-import { Logger } from "#src/utils/utils.ts";
+import { Logger, b64toBuffer } from "#src/utils/utils.ts";
 import { AuthenticationError } from "#src/utils/errors.ts";
 import type { StringLike } from "#src/shared/types.ts";
 
@@ -77,12 +77,10 @@ export function start(key?: string | Buffer): void {
     if (!authKeyB64str) {
         throw new Error("AUTH_KEY is required for authentication service");
     }
-    jwtKey = Buffer.isBuffer(authKeyB64str) ? authKeyB64str : Buffer.from(authKeyB64str, "base64");
+    jwtKey = b64toBuffer(authKeyB64str);
     const localKeyB64str = config.LOCAL_KEY;
     if (localKeyB64str) {
-        localKey = Buffer.isBuffer(localKeyB64str)
-            ? localKeyB64str
-            : Buffer.from(localKeyB64str, "base64");
+        localKey = b64toBuffer(localKeyB64str);
         if (localKey.length !== 32) {
             throw new Error(
                 `Invalid LOCAL_KEY length: ${localKey.length} bytes. It must be 32 bytes (256 bits) for AES-256-GCM.`
@@ -135,7 +133,7 @@ export function sign<T>(
     if (!key) {
         throw new AuthenticationError("JWT signing key is not set");
     }
-    const keyBuffer = Buffer.isBuffer(key) ? key : Buffer.from(key, "base64");
+    const keyBuffer = b64toBuffer(key);
     const header: JWTHeader = { alg: algorithm, typ: "JWT" };
     const headerB64 = base64Encode(JSON.stringify(header));
     const claimsB64 = base64Encode(JSON.stringify(claims));
@@ -187,7 +185,7 @@ export function verify<T>(jsonWebToken: string, key: StringLike = jwtKey!): T & 
     if (!key) {
         throw new AuthenticationError("JWT verification key is not set");
     }
-    const keyBuffer = Buffer.isBuffer(key) ? key : Buffer.from(key, "base64");
+    const keyBuffer = b64toBuffer(key);
     let parsedJWT: ParsedJWT<T>;
     try {
         parsedJWT = parseJwt<T>(jsonWebToken);

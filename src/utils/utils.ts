@@ -49,6 +49,10 @@ export type ParseBodyOptions = {
     json?: boolean;
 };
 
+export function b64toBuffer(b64str: string | Buffer): Buffer {
+    return Buffer.isBuffer(b64str) ? b64str : Buffer.from(b64str, "base64");
+}
+
 export class Logger {
     private readonly _name: string;
     private readonly _colorize: (text: string, color?: string) => string;
@@ -142,7 +146,7 @@ export class Logger {
  * @param req - HTTP request object
  * @param options - Parsing options
  * @returns Promise resolving to parsed body (string or JSON)
- * 
+ *
  * TODO override definition: if this takes json=true as param,
  * it returns Promise<JsonSerializable>, else returns Promise<string>
  * this should allow calling this function without type narrowing with a string check
