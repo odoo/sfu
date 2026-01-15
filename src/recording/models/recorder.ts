@@ -46,6 +46,7 @@ export type TimeStampData = {
 };
 export type Metadata = {
     channelName: string;
+    channelUUID: string;
     routingAddress: string;
     startedAt?: number;
     timeStamps: TimeStampData[];
@@ -85,6 +86,7 @@ export class Recorder extends EventEmitter {
     private readonly _tasks = new Map<SessionId, RecordingTask>();
     private readonly _metaData: Metadata = {
         channelName: "",
+        channelUUID: "",
         routingAddress: "",
         timeStamps: [],
         labels: {}
@@ -112,6 +114,7 @@ export class Recorder extends EventEmitter {
         this._onSessionLeave = this._onSessionLeave.bind(this);
         this._channel = channel;
         this._metaData.channelName = channel.name;
+        this._metaData.channelUUID = channel.uuid;
         this._metaData.routingAddress = routingAddress;
     }
 
@@ -225,7 +228,7 @@ export class Recorder extends EventEmitter {
                 if (save && !failed) {
                     currentFolder!.add(recording.metadataFileName, metaData!);
                     currentFolder!.seal(
-                        path.join(recording.directory, `${Date.now()}-${this._channel.name}`)
+                        path.join(recording.directory, this._channel.uuid, Date.now().toString())
                     );
                 } else {
                     currentFolder!.delete();

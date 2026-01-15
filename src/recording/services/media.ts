@@ -9,6 +9,7 @@ import { decrypt, sign } from "#src/core/services/auth.ts";
 import { MediaCompiler } from "#src/recording/models/media_compiler.ts";
 import type { SealedMetaData } from "#src/recording/models/recorder.ts";
 import { Logger } from "#src/utils/utils.ts";
+import { Channel } from "#src/core/models/channel.ts";
 
 const logger = new Logger("MEDIA");
 const CHECK_INTERVAL = 2 * 60 * 1000; // 2 minutes
@@ -106,10 +107,28 @@ function isCpuLoaded(): boolean {
 async function processRecordings() {
     logger.info(`Checking recordings in ${RECORDING_PATH}`);
     try {
-        const entries = await fs.readdir(RECORDING_PATH, { withFileTypes: true });
-        for (const entry of entries) {
-            if (entry.isDirectory()) {
-                await processRecording(entry.name);
+        const channelDirectories = await fs.readdir(RECORDING_PATH, { withFileTypes: true });
+        const dir = channelDirectories[0];
+        if (!dir) {
+            return;
+        }
+        if (Channel.records.has(dir.name)) {
+            logger.debug(`Channel ${dir.name} is still active, skipping`);
+            return;
+        }
+        if (dir.isDirectory()) {
+            const dirPath = path.join(RECORDING_PATH, dir.name);
+            const subDirs = await fs.readdir(dirPath, { withFileTypes: true });
+            for (const subdir of subDirs) {
+                if (subdir.isDirectory()) {
+                    /**
+                     * TODO: processRecording should not handle the upload and transcription,
+                     * it should return the path to the compiled media.
+                     * we will then combine all subdirs ouputs per channel dir into one
+                     * then, upload it to the destination (can get the destination of any metadata of that batch)
+                     */
+                    await processRecording(path.join(dir.name, subdir.name));
+                }
             }
         }
     } catch (error) {
@@ -128,6 +147,7 @@ async function processRecordings() {
 async function processRecording(folderName: string) {
     const dir = path.join(RECORDING_PATH, folderName);
     const metadataPath = path.join(dir, recording.metadataFileName);
+    let filePath;
     try {
         const content = await fs.readFile(metadataPath, "utf-8");
         const metadata: SealedMetaData = JSON.parse(decrypt(content));
@@ -152,7 +172,7 @@ async function processRecording(folderName: string) {
             timeStamps: metadata.timeStamps
         });
         if (metadata.transcription && IMBED_TRANSCRIPTION) {
-            const filePath = await compiler.compile({ video: false });
+            filePath = await compiler.compile({ video: false });
             if (filePath) {
                 srt = await fetchTranscription(filePath, metadata);
             }
@@ -161,9 +181,9 @@ async function processRecording(folderName: string) {
          *  todo should maybe flag if we already did the transcription.
          *  or we expect the remote server to keep track of that
          */
-        const file = await compiler.compile({ video: metadata.video, srt });
-        if (file) {
-            await upload(file, metadata);
+        filePath = await compiler.compile({ video: metadata.video, srt });
+        if (filePath) {
+            await upload(filePath, metadata);
         }
         logger.info(`recording ${recording.metadataFileName} was succesfully processed`);
     } catch (error) {
@@ -172,6 +192,7 @@ async function processRecording(folderName: string) {
     if (!KEEP_RECORDINGS) {
         fs.rm(dir, { recursive: true });
     }
+    return filePath;
 }
 
 async function fetchTranscription(filePath: string, metadata: SealedMetaData) {

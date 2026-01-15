@@ -77,6 +77,112 @@ export class MediaCompiler {
     private _audioPath?: string;
     private _videoPath?: string;
 
+    /**
+     * TODO make public for meta concatenation (concatenate different recordings of same channel)
+     * Concatenates all video segments with the audio track and optional subtitles.
+     */
+    static async concatenateSegments({
+        workingDir,
+        segmentFiles,
+        audioPath,
+        srt,
+        outputPath
+    }: {
+        workingDir: string;
+        segmentFiles: string[];
+        audioPath: string | undefined;
+        srt: string | undefined;
+        outputPath: string;
+    }): Promise<string> {
+        const concatListPath = path.join(workingDir, "concat_list.txt");
+        const concatContent = segmentFiles.map((f) => `file '${f}'`).join("\n");
+        await writeFile(concatListPath, concatContent);
+
+        let srtPath: string | undefined;
+        if (srt) {
+            srtPath = path.join(workingDir, "subtitles.srt");
+            await writeFile(srtPath, srt);
+        }
+
+        const inputs: string[] = ["-f", "concat", "-safe", "0", "-i", concatListPath];
+
+        if (audioPath) {
+            inputs.push("-i", audioPath);
+        }
+
+        const filterComplex: string[] = [];
+        let mapArgs: string[];
+
+        if (srtPath) {
+            inputs.push("-i", srtPath);
+            const subtitleIdx = audioPath ? 2 : 1;
+            filterComplex.push(`[0:v][${subtitleIdx}:s]overlay[vout]`);
+            mapArgs = ["-map", "[vout]"];
+        } else {
+            mapArgs = ["-map", "0:v"];
+        }
+
+        if (audioPath) {
+            mapArgs.push("-map", "1:a");
+        }
+
+        const args = [
+            "-y",
+            ...inputs,
+            ...(filterComplex.length > 0 ? ["-filter_complex", filterComplex.join(";")] : []),
+            ...mapArgs,
+            "-c:v",
+            recording.videoCodec,
+            "-c:a",
+            recording.audioCodec,
+            "-preset",
+            recording.videoPreset,
+            outputPath
+        ];
+
+        logger.debug(`Concatenating segments: ffmpeg ${args.join(" ")}`);
+
+        return new Promise<string>((resolve, reject) => {
+            const proc = spawn("ffmpeg", args);
+            let logStream: fs.WriteStream | undefined;
+
+            if (FFMPEG_LOGGING) {
+                logStream = fs.createWriteStream(`${outputPath}.log`);
+                proc.stderr?.pipe(logStream, { end: false });
+                proc.stdout?.pipe(logStream, { end: false });
+            }
+
+            proc.on("close", async (code) => {
+                logStream?.end();
+                try {
+                    await unlink(concatListPath);
+                    if (srtPath) {
+                        await unlink(srtPath);
+                    }
+                    for (const segmentFile of segmentFiles) {
+                        await unlink(segmentFile);
+                    }
+                } catch {
+                    logger.error("Failed to cleanup temp video compilation files");
+                }
+
+                if (code === 0) {
+                    logger.info(`Compiled video: ${outputPath}`);
+                    resolve(outputPath);
+                } else {
+                    logger.error(`Final concatenation failed with code ${code}`);
+                    reject(new Error(`FFmpeg exited with code ${code}`));
+                }
+            });
+
+            proc.on("error", (err) => {
+                logStream?.end();
+                logger.error(`Failed to spawn FFmpeg for concatenation: ${err}`);
+                reject(err);
+            });
+        });
+    }
+
     constructor({
         workingDir,
         startedAt,
@@ -276,7 +382,13 @@ export class MediaCompiler {
             return audioPath;
         }
 
-        return this._concatenateSegments(segmentFiles, audioPath, srt, outputName);
+        return MediaCompiler.concatenateSegments({
+            workingDir: this._workingDir,
+            segmentFiles,
+            audioPath,
+            srt,
+            outputPath: outputName
+        });
     }
 
     /**
@@ -626,103 +738,5 @@ export class MediaCompiler {
         }
         filterComplex.push(`${rowLabels.join("")}vstack=inputs=${rows}[vout]`);
         return "[vout]";
-    }
-
-    /**
-     * Concatenates all video segments with the audio track and optional subtitles.
-     */
-    private async _concatenateSegments(
-        segmentFiles: string[],
-        audioPath: string | undefined,
-        srt: string | undefined,
-        outputPath: string
-    ): Promise<string> {
-        const concatListPath = path.join(this._workingDir, "concat_list.txt");
-        const concatContent = segmentFiles.map((f) => `file '${f}'`).join("\n");
-        await writeFile(concatListPath, concatContent);
-
-        let srtPath: string | undefined;
-        if (srt) {
-            srtPath = path.join(this._workingDir, "subtitles.srt");
-            await writeFile(srtPath, srt);
-        }
-
-        const inputs: string[] = ["-f", "concat", "-safe", "0", "-i", concatListPath];
-
-        if (audioPath) {
-            inputs.push("-i", audioPath);
-        }
-
-        const filterComplex: string[] = [];
-        let mapArgs: string[];
-
-        if (srtPath) {
-            inputs.push("-i", srtPath);
-            const subtitleIdx = audioPath ? 2 : 1;
-            filterComplex.push(`[0:v][${subtitleIdx}:s]overlay[vout]`);
-            mapArgs = ["-map", "[vout]"];
-        } else {
-            mapArgs = ["-map", "0:v"];
-        }
-
-        if (audioPath) {
-            mapArgs.push("-map", "1:a");
-        }
-
-        const args = [
-            "-y",
-            ...inputs,
-            ...(filterComplex.length > 0 ? ["-filter_complex", filterComplex.join(";")] : []),
-            ...mapArgs,
-            "-c:v",
-            recording.videoCodec,
-            "-c:a",
-            recording.audioCodec,
-            "-preset",
-            recording.videoPreset,
-            outputPath
-        ];
-
-        logger.debug(`Concatenating segments: ffmpeg ${args.join(" ")}`);
-
-        return new Promise<string>((resolve, reject) => {
-            const proc = spawn("ffmpeg", args);
-            let logStream: fs.WriteStream | undefined;
-
-            if (FFMPEG_LOGGING) {
-                logStream = fs.createWriteStream(`${outputPath}.log`);
-                proc.stderr?.pipe(logStream, { end: false });
-                proc.stdout?.pipe(logStream, { end: false });
-            }
-
-            proc.on("close", async (code) => {
-                logStream?.end();
-                try {
-                    await unlink(concatListPath);
-                    if (srtPath) {
-                        await unlink(srtPath);
-                    }
-                    for (const segmentFile of segmentFiles) {
-                        await unlink(segmentFile);
-                    }
-                } catch {
-                    logger.error("Failed to cleanup temp video compilation files");
-                }
-
-                if (code === 0) {
-                    logger.info(`Compiled video: ${outputPath}`);
-                    resolve(outputPath);
-                } else {
-                    logger.error(`Final concatenation failed with code ${code}`);
-                    reject(new Error(`FFmpeg exited with code ${code}`));
-                }
-            });
-
-            proc.on("error", (err) => {
-                logStream?.end();
-                logger.error(`Failed to spawn FFmpeg for concatenation: ${err}`);
-                reject(err);
-            });
-        });
     }
 }
