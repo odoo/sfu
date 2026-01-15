@@ -78,7 +78,7 @@ describe("resources service", () => {
     });
 
     test("folder should be created and managed", async () => {
-        const folder = await resources.getFolder(["sub1", "sub2"]);
+        const folder = await resources.Folder.create("name", ["sub1", "sub2"]);
         expect(mockFs.exists(folder.path)).toBe(true);
         expect(mockFs.exists(path.join(folder.path, "sub1"))).toBe(true);
         expect(mockFs.exists(path.join(folder.path, "sub2"))).toBe(true);
@@ -91,9 +91,10 @@ describe("resources service", () => {
         const newPath = path.join(config.RESOURCES_PATH, "sealed-folder");
         await folder.seal(newPath);
         expect(mockFs.exists(oldPath)).toBe(false);
-        expect(mockFs.exists(newPath)).toBe(true);
-        expect(mockFs.exists(path.join(newPath, "test.txt"))).toBe(true);
-        expect(folder.path).toBe(newPath);
+        const expectedPath = path.join(newPath, folder.name);
+        expect(mockFs.exists(expectedPath)).toBe(true);
+        expect(mockFs.exists(path.join(expectedPath, "test.txt"))).toBe(true);
+        expect(folder.path).toBe(expectedPath);
 
         await folder.delete();
         expect(mockFs.exists(newPath)).toBe(false);

@@ -127,34 +127,36 @@ export async function getWorker(): Promise<RtcWorker> {
 
 export class Folder {
     path: string;
+    name: string;
 
     static async create(name: string, subDirectories: string[]) {
-        const p: string = path.join(config.RESOURCES_PATH, name);
+        const p: string = path.join(config.RESOURCES_PATH, `${name}-${unique++}`);
         await fs.mkdir(p);
         const proms = [];
         for (const subDirectory of subDirectories) {
             proms.push(fs.mkdir(path.join(p, subDirectory)));
         }
         await Promise.all(proms);
-        return new Folder(p);
+        return new Folder(p, name);
     }
 
-    constructor(path: string) {
+    constructor(path: string, name: string) {
         this.path = path;
+        this.name = name;
     }
 
     async add(name: string, content: string) {
         await fs.writeFile(path.join(this.path, name), content);
     }
 
-    async seal(path: string) {
-        const destinationPath = path;
+    async seal(destinationPath: string) {
+        const fullPath = path.join(destinationPath, this.name);
         try {
-            await fs.rename(this.path, destinationPath);
-            logger.verbose(`Moved folder from ${this.path} to ${destinationPath}`);
-            this.path = destinationPath;
+            await fs.rename(this.path, fullPath);
+            logger.verbose(`Moved folder from ${this.path} to ${fullPath}`);
+            this.path = fullPath;
         } catch (error) {
-            logger.error(`Failed to move folder from ${this.path} to ${destinationPath}: ${error}`);
+            logger.error(`Failed to move folder from ${this.path} to ${fullPath}: ${error}`);
         }
     }
     async delete() {
@@ -165,10 +167,6 @@ export class Folder {
             logger.error(`Failed to delete folder ${this.path}: ${error}`);
         }
     }
-}
-
-export async function getFolder(subDirectories: string[]): Promise<Folder> {
-    return Folder.create(`${Date.now()}-${unique++}`, subDirectories);
 }
 export class DynamicPort {
     number: number;

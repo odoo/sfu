@@ -2,7 +2,7 @@ import path from "node:path";
 import { EventEmitter } from "node:events";
 
 import { recording } from "#src/config.ts";
-import { getFolder, type Folder } from "#src/core/services/resources.ts";
+import { Folder } from "#src/core/services/resources.ts";
 import { RecordingTask, type RecordingStates } from "#src/recording/models/recording_task.ts";
 import { encrypt } from "#src/core/services/auth.ts";
 import { Logger } from "#src/utils/utils.ts";
@@ -60,6 +60,11 @@ export type SealedMetaData = Metadata & {
     transcription: boolean;
 };
 
+export type StopOptions = {
+    save?: boolean;
+    cause?: string;
+};
+
 const logger = new Logger("RECORDER");
 
 /**
@@ -81,6 +86,10 @@ export class Recorder extends EventEmitter {
      */
     transcription: boolean = false;
     private _folder?: Folder;
+    /**
+     * The list of all the folders currently held by that recorder
+     */
+    private _folders: Folder[] = [];
     private _timeout?: NodeJS.Timeout;
     private readonly _channel: Channel;
     private readonly _tasks = new Map<SessionId, RecordingTask>();
@@ -197,7 +206,7 @@ export class Recorder extends EventEmitter {
      * @param param0
      * @param param0.save - whether to save the recording
      */
-    stop({ save = true, cause }: { save?: boolean; cause?: string } = {}) {
+    async stop({ save = true, cause }: StopOptions = {}) {
         if (!this.isRecording) {
             return;
         }
@@ -215,31 +224,23 @@ export class Recorder extends EventEmitter {
         this.transcription = false;
         const currentFolder = this._folder;
         this._folder = undefined;
-        /**
-         * Not awaiting as FFMPEG can take arbitrarily long to complete
-         * (several seconds, or more), and we don't want to block the
-         * termination of the recorder as a new recording can be started
-         * straight away, independently of the saving process of the
-         * previous recording. The input delay for the user would also be too long.
-         */
-        this._stopRecordingTasks()
-            .then((results) => {
-                const failed = results.some((result) => result.status === "rejected");
-                if (save && !failed) {
-                    currentFolder!.add(recording.metadataFileName, metaData!);
-                    currentFolder!.seal(
-                        path.join(recording.directory, this._channel.uuid, Date.now().toString())
-                    );
-                } else {
-                    currentFolder!.delete();
-                }
-            })
-            .catch((error) => {
-                logger.error(
-                    `Failed to save recording for channel ${this._channel.name}: ${error}`
-                );
-            });
+        const results = await this._stopRecordingTasks();
+        const failed = results.some((result) => result.status === "rejected");
+        if (save && !failed && currentFolder) {
+            currentFolder.add(recording.metadataFileName, metaData!);
+            this._folders.push(currentFolder);
+        } else {
+            currentFolder?.delete();
+        }
         this._emitStatus(cause);
+    }
+
+    async close(options: StopOptions = {}) {
+        await this.stop(options);
+        this._folders.forEach((folder) =>
+            folder.seal(path.join(recording.directory, this._channel.uuid))
+        );
+        this._folders = [];
     }
 
     /**
@@ -290,7 +291,7 @@ export class Recorder extends EventEmitter {
         });
     }
     private async _init() {
-        this._folder = await getFolder(["audio", "camera", "screen"]);
+        this._folder = await Folder.create(Date.now().toString(), ["audio", "camera", "screen"]);
         clearTimeout(this._timeout);
         this._timeout = setTimeout(() => {
             this.stop({ cause: "recording_timeout" });
