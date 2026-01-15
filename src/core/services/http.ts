@@ -48,7 +48,6 @@ let httpServer: http.Server | undefined;
 
 export async function start(options: HttpStartOptions = {}): Promise<void> {
     const { httpInterface = config.HTTP_INTERFACE, port = config.PORT } = options;
-    logger.info("starting...");
     const routeListener = new RouteListener();
     setupRoutes(routeListener);
     httpServer = http.createServer(routeListener.listen);

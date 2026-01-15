@@ -92,7 +92,9 @@ export function start(key?: string | Buffer): void {
         localKey = crypto.randomBytes(32);
         logger.warn("LOCAL_KEY is not set, generating a random key");
     }
-    logger.info("auth keys set");
+    logger.info(
+        `ready with ${jwtKey.length} bytes auth key and ${localKey.length} bytes encryption key`
+    );
 }
 
 export function close(): void {

@@ -4,7 +4,7 @@ import { createReadStream } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-import { recording, RECORDING_PATH, KEEP_RECORDINGS } from "#src/config.ts";
+import { recording, RECORDING_PATH, KEEP_RECORDINGS, LOCAL_KEY } from "#src/config.ts";
 import { decrypt, sign } from "#src/core/services/auth.ts";
 import { MediaCompiler } from "#src/recording/models/media_compiler.ts";
 import type { SealedMetaData } from "#src/recording/models/recorder.ts";
@@ -45,18 +45,34 @@ function makeJwt(key: string) {
 /**
  * Service responsible for post-processing of media recordings.
  *
- * This service runs periodically to check for completed recordings in the recording directory.
- * Manages the lifecycle of recording files:
+ * This service runs periodically to check for completed
+ * recordings in the recording directory and manage the lifecycle
+ * of recording files:
  * - Monitoring CPU load to schedule processing during idle times.
  * - Checking for expired recordings and cleaning them up based on TTL.
- * - Compiling raw media streams into consumable formats (e.g., merging audio/video, generating transcriptions).
- * - Uploading processed media and transcriptions to the routing address specified in the metadata.
+ * - Compiling raw media streams into consumable formats
+ *   (e.g., merging audio/video, generating transcriptions).
+ * - Uploading processed media and transcriptions to the
+ *   routing address specified in the metadata.
  *
- * Note: This service is currently part of the main process but is designed to potentially
- * run as a separate worker or service in the future to offload heavy media processing.
+ * Note: This service is currently part of the main process but is
+ * designed to potentially run as a separate worker or service in the
+ * future to offload heavy media processing.
+ * The conversion to separate worker thread should be fairly
+ * straightforward as there is no shared memory (although some
+ * initialization data should be provided like the auth keys)
  */
 export async function start(): Promise<void> {
     if (recording.enabled) {
+        if (!LOCAL_KEY) {
+            /**
+             * If the local key is not set, it means that the encryption key
+             * is auto generated, so any previously encrypted recording cannot
+             * be decrypted.
+             */
+            logger.warn("LOCAL_KEY missing from the environment, removing old recordings");
+            await fs.rm(RECORDING_PATH, { recursive: true, force: true });
+        }
         await fs.mkdir(RECORDING_PATH, { recursive: true });
     } else {
         logger.info("Recording is disabled, media service will not start");

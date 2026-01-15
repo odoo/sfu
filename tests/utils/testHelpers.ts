@@ -68,6 +68,7 @@ export async function setupUnitTestsEnv() {
             enabled: true
         },
         RECORDING_PATH: "/mock/recordings",
+        LOCAL_KEY: "24qvOuliAKWt1gnSzSvkYUD3s31pO1hPcchbekMHCyA=",
         LOG_LEVEL: "none"
     }));
 
