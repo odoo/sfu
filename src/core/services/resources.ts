@@ -149,7 +149,7 @@ export class Folder {
         await fs.writeFile(path.join(this.path, name), content);
     }
 
-    async seal(destinationPath: string) {
+    async move(destinationPath: string) {
         const fullPath = path.join(destinationPath, this.name);
         try {
             await fs.rename(this.path, fullPath);

@@ -10,7 +10,7 @@ The recording architecture follows a hierarchical structure, managing resources 
 ```mermaid
 flowchart TB
    
-    R["Recorder <br> Channel Level"] --> RT1["RecordingTask <br> Session 1"] & RT2["RecordingTask <br> Session 2"]
+    R["Recorder <br> Channel Level"] ---> RT1["RecordingTask <br> Session 1"] & RT2["RecordingTask <br> Session 2"]
     R ---> RTN["RecordingTask <br> Session N"] & RTN1["RecordingTask <br> Session N+1"] & RTN0["RecordingTask <br> Session N+X"]
     RT1 -- audio --> MOA1["MediaOutput <br> Audio"]
     RT1 -- screen --> MOS1["MediaOutput <br> Screen"]
@@ -64,10 +64,10 @@ The recording feature is configured via environment variables in `src/config.ts`
 
 ## Output Structure
 
-Recordings are saved in a directory named `{timestamp}_{channelName}` inside `RECORDING_PATH`.
+Recordings are saved in a directory `{channelUUID}/{timestamp}` inside `RECORDING_PATH`.
 
 ```text
-{timestamp}_{channelName}/
+{channelUUID}/{timestamp}/
 ├── metadata.json
 ├── audio/
 │   └── {timestamp}-{sessionID}-{streamType}.webm
