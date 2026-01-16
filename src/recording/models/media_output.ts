@@ -74,9 +74,9 @@ export class MediaOutput extends EventEmitter {
         directory: string;
     }) {
         super();
+        this.name = name;
         this._router = router;
         this._producer = producer;
-        this.name = name;
         this._directory = directory;
         this._init();
     }
