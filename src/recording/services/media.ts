@@ -203,7 +203,7 @@ async function fetchTranscription(filePath: string, metadata: SealedMetaData) {
         method: "POST",
         headers: {
             Authorization: `Bearer ${makeJwt(metadata.channelKey)}`,
-            "Content-Type": "audio/mpeg",
+            "Content-Type": `audio/${recording.audioExt}`,
             "Content-Length": fileStats.size.toString()
         },
         // FIXME remove linter error suppression
