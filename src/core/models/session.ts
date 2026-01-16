@@ -202,8 +202,7 @@ export class Session extends EventEmitter {
     }
 
     get canVideoRecord(): boolean {
-        return false; // TODO: NOT IMPLEMENTED YET
-        // return Boolean(this.canRecord && this.permissions.videoRecording);
+        return Boolean(this.canRecord && this.permissions.videoRecording);
     }
 
     get name(): string {
@@ -720,7 +719,7 @@ export class Session extends EventEmitter {
                 if (this.canRecord) {
                     const { video, transcription } = payload || {};
                     await this._channel.recorder!.start({
-                        video,
+                        video: video && this.canVideoRecord,
                         transcription
                     });
                 }
