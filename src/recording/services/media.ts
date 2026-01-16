@@ -18,11 +18,6 @@ type RoutingResponse = {
     destination: string;
 };
 
-/**
- * Nice-to-have feature, if the server provides a on-demand transcriptino
- */
-const IMBED_TRANSCRIPTION = false;
-
 let interval: NodeJS.Timeout | undefined;
 
 /**
@@ -182,16 +177,12 @@ async function processRecording(folderName: string) {
             stoppedAt: metadata.stoppedAt,
             timeStamps: metadata.timeStamps
         });
-        if (metadata.transcription && IMBED_TRANSCRIPTION) {
+        if (metadata.transcription) {
             filePath = await compiler.compile({ video: false });
             if (filePath) {
                 srt = await fetchTranscription(filePath, metadata);
             }
         }
-        /**
-         *  todo should maybe flag if we already did the transcription.
-         *  or we expect the remote server to keep track of that
-         */
         filePath = await compiler.compile({ video: metadata.video, srt });
         if (filePath) {
             await upload(filePath, metadata);
