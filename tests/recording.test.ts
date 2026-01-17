@@ -34,8 +34,8 @@ describe("Recording & Transcription", () => {
         const { SfuClient } = await import("#src/client");
         const client = new SfuClient();
 
-        expect(await client.startRecording()).toStrictEqual({ allowed: false });
-        expect(await client.stopRecording()).toStrictEqual({ allowed: false });
+        expect(await client.startRecording()).toBe(false);
+        expect(await client.stopRecording()).toBe(false);
     });
     test("can record", async () => {
         const { restore, network } = await recordingSetup({ RECORDING: "true" });
@@ -47,7 +47,7 @@ describe("Recording & Transcription", () => {
         expect(user2.sfuClient.availableFeatures.recording).toBe(true);
         const recordingStartEventPromise = once(user1.sfuClient, "update");
         const startResult = await user2.sfuClient.startRecording();
-        expect(startResult.allowed).toBe(true);
+        expect(startResult).toBe(true);
         const [recordingStartEvent] = await recordingStartEventPromise;
         expect(recordingStartEvent.detail).toEqual({
             name: CLIENT_UPDATE.CHANNEL_INFO_CHANGE,
@@ -61,7 +61,7 @@ describe("Recording & Transcription", () => {
             name: CLIENT_UPDATE.CHANNEL_INFO_CHANGE,
             payload: { state: { recording: false, transcription: false, video: false } }
         });
-        expect(stopResult.allowed).toBe(true);
+        expect(stopResult).toBe(true);
         restore();
     });
     test("can transcribe", async () => {
@@ -72,13 +72,12 @@ describe("Recording & Transcription", () => {
         const user2 = await network.connect(channelUUID, 3);
         await user2.isConnected;
         const startResult = await user2.sfuClient.startRecording({ transcription: true });
-        expect(startResult.allowed).toBe(true);
-        expect(startResult.allowed).toBe(true);
+        expect(startResult).toBe(true);
         expect(user2.sfuClient.recordingState.recording).toBe(true);
         expect(user2.sfuClient.recordingState.transcription).toBe(true);
 
         const stopResult = await user2.sfuClient.stopRecording();
-        expect(stopResult.allowed).toBe(true);
+        expect(stopResult).toBe(true);
         expect(user2.sfuClient.recordingState.recording).toBe(false);
         expect(user2.sfuClient.recordingState.transcription).toBe(false);
         restore();

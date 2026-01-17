@@ -723,17 +723,13 @@ export class Session extends EventEmitter {
                         transcription
                     });
                 }
-                return {
-                    allowed: this.canRecord
-                };
+                return this.canRecord;
             }
             case CLIENT_REQUEST.STOP_RECORDING: {
                 if (this.canRecord) {
                     await this._channel.recorder!.stop();
                 }
-                return {
-                    allowed: this.canRecord
-                };
+                return this.canRecord;
             }
             default:
                 logger.warn(`[${this.name}] Unknown request type: ${name}`);
