@@ -844,3 +844,101 @@ describe("MediaCompiler Unit Tests", () => {
         expect(segmentCalls.length).toBe(2);
     });
 });
+
+describe("MediaWriter Unit Tests", () => {
+    let MediaWriter: typeof import("#src/recording/models/media_writer.ts").MediaWriter;
+
+    beforeEach(async () => {
+        await setupUnitTestsEnv();
+        mockSpawn.mockClear();
+        mockSpawn.mockImplementation((_cmd, args) => {
+            const mp = new MockChildProcess("ffmpeg", args || []);
+            mp.stdin = new PassThrough();
+            return mp;
+        });
+        MediaWriter = (await import("#src/recording/models/media_writer.ts")).MediaWriter;
+    });
+
+    test("should fall back to mkv for unknown codec", () => {
+        const writer = new MediaWriter(
+            {
+                kind: "video",
+                payloadType: 96,
+                clockRate: 90000,
+                codec: "unknownCodec",
+                port: 5000
+            },
+            "/tmp",
+            "test_video"
+        );
+        expect(writer.extension).toBe("mkv");
+        expect(writer.filename).toBe("test_video.mkv");
+    });
+
+    test("should use wav for PCMU codec", () => {
+        const writer = new MediaWriter(
+            {
+                kind: "audio",
+                payloadType: 0,
+                clockRate: 8000,
+                codec: "PCMU",
+                port: 5001,
+                channels: 1
+            },
+            "/tmp",
+            "test_audio"
+        );
+        expect(writer.extension).toBe("wav");
+        expect(writer.filename).toBe("test_audio.wav");
+    });
+
+    test("should use wav for PCMA codec", () => {
+        const writer = new MediaWriter(
+            {
+                kind: "audio",
+                payloadType: 8,
+                clockRate: 8000,
+                codec: "PCMA",
+                port: 5002,
+                channels: 1
+            },
+            "/tmp",
+            "test_audio_pcma"
+        );
+        expect(writer.extension).toBe("wav");
+        expect(writer.filename).toBe("test_audio_pcma.wav");
+    });
+
+    test("should use webm for opus codec", () => {
+        const writer = new MediaWriter(
+            {
+                kind: "audio",
+                payloadType: 111,
+                clockRate: 48000,
+                codec: "opus",
+                port: 5003,
+                channels: 2
+            },
+            "/tmp",
+            "test_opus"
+        );
+        expect(writer.extension).toBe("webm");
+        expect(writer.filename).toBe("test_opus.webm");
+    });
+
+    test("should use mp4 for H264 codec", () => {
+        const writer = new MediaWriter(
+            {
+                kind: "video",
+                payloadType: 96,
+                clockRate: 90000,
+                codec: "H264",
+                port: 5004
+            },
+            "/tmp",
+            "test_h264"
+        );
+        expect(writer.extension).toBe("mp4");
+        expect(writer.filename).toBe("test_h264.mp4");
+    });
+});

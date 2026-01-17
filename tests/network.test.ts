@@ -272,6 +272,7 @@ describe("Full network", () => {
         const user2 = await network.connect(channelUUID, 2);
         const sender = await network.connect(channelUUID, 3);
         const message = "hello";
+
         sender.sfuClient.broadcast(message);
         const prom1 = once(user1.sfuClient, "update");
         const prom2 = once(user2.sfuClient, "update");
@@ -282,5 +283,25 @@ describe("Full network", () => {
         expect(event2.detail.payload.senderId).toBe(sender.session.id);
         expect(event1.detail.payload.message).toBe(message);
         expect(event2.detail.payload.message).toBe(message);
+    });
+    test("Client enters CLOSED state when server kicks session", async () => {
+        const channelUUID = await network.getChannelUUID();
+        const user = await network.connect(channelUUID, 1);
+
+        await user.isConnected;
+        const stateChangeProm = once(user.sfuClient, "stateChange");
+        user.session.close({ code: SESSION_CLOSE_CODE.KICKED });
+        const [event] = await stateChangeProm;
+        expect(event.detail.state).toBe(SFU_CLIENT_STATE.CLOSED);
+    });
+    test("Client enters RECOVERING state when session closes with ERROR code", async () => {
+        const channelUUID = await network.getChannelUUID();
+        const user = await network.connect(channelUUID, 1);
+
+        await user.isConnected;
+        const stateChangeProm = once(user.sfuClient, "stateChange");
+        user.session.close({ code: SESSION_CLOSE_CODE.ERROR });
+        const [event] = await stateChangeProm;
+        expect(event.detail.state).toBe(SFU_CLIENT_STATE.RECOVERING);
     });
 });
