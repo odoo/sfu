@@ -459,7 +459,7 @@ describe("Media Service", () => {
     });
 });
 
-describe("MediaCompiler Unit Tests", () => {
+describe("MediaCompiler tests", () => {
     let MediaCompiler: typeof import("#src/recording/models/media_compiler.ts").MediaCompiler;
     let mockFs: typeof import("#tests/utils/mockFileSystem").mockFs;
     // mockSpawn uses global variable
@@ -845,7 +845,7 @@ describe("MediaCompiler Unit Tests", () => {
     });
 });
 
-describe("MediaWriter Unit Tests", () => {
+describe("MediaWriter tests", () => {
     let MediaWriter: typeof import("#src/recording/models/media_writer.ts").MediaWriter;
 
     beforeEach(async () => {
@@ -940,5 +940,379 @@ describe("MediaWriter Unit Tests", () => {
         );
         expect(writer.extension).toBe("mp4");
         expect(writer.filename).toBe("test_h264.mp4");
+    });
+
+    test("should handle FFMPEG process error gracefully", async () => {
+        const errorMock = new MockChildProcess("ffmpeg", []);
+        errorMock.stdin = new PassThrough();
+        mockSpawn.mockImplementationOnce(() => errorMock);
+
+        const writer = new MediaWriter(
+            {
+                kind: "audio",
+                payloadType: 111,
+                clockRate: 48000,
+                codec: "opus",
+                port: 5005,
+                channels: 2
+            },
+            "/tmp",
+            "test_error"
+        );
+
+        // Simulate FFMPEG error event
+        errorMock.emit("error", new Error("FFMPEG crashed"));
+
+        // Writer should have closed
+        await writer.close();
+        expect(writer.extension).toBe("webm");
+    });
+
+    test("should use mp4 for H265 codec", () => {
+        const writer = new MediaWriter(
+            {
+                kind: "video",
+                payloadType: 96,
+                clockRate: 90000,
+                codec: "H265",
+                port: 5006
+            },
+            "/tmp",
+            "test_h265"
+        );
+        expect(writer.extension).toBe("mp4");
+        expect(writer.filename).toBe("test_h265.mp4");
+    });
+
+    test("should use webm for VP8 codec", () => {
+        const writer = new MediaWriter(
+            {
+                kind: "video",
+                payloadType: 96,
+                clockRate: 90000,
+                codec: "VP8",
+                port: 5007
+            },
+            "/tmp",
+            "test_vp8"
+        );
+        expect(writer.extension).toBe("webm");
+    });
+
+    test("should use webm for VP9 codec", () => {
+        const writer = new MediaWriter(
+            {
+                kind: "video",
+                payloadType: 96,
+                clockRate: 90000,
+                codec: "VP9",
+                port: 5008
+            },
+            "/tmp",
+            "test_vp9"
+        );
+        expect(writer.extension).toBe("webm");
+    });
+
+    test("should use webm for AV1 codec", () => {
+        const writer = new MediaWriter(
+            {
+                kind: "video",
+                payloadType: 96,
+                clockRate: 90000,
+                codec: "AV1",
+                port: 5009
+            },
+            "/tmp",
+            "test_av1"
+        );
+        expect(writer.extension).toBe("webm");
+    });
+});
+
+describe("Media Compiler edge cases tests", () => {
+    let MediaCompiler: typeof import("#src/recording/models/media_compiler.ts").MediaCompiler;
+    let mockFsInstance: typeof import("#tests/utils/mockFileSystem").mockFs;
+
+    beforeEach(async () => {
+        const env = await setupUnitTestsEnv();
+        mockFsInstance = env.mockFs;
+        MediaCompiler = (await import("#src/recording/models/media_compiler.ts")).MediaCompiler;
+    });
+
+    test("should compile video with screen-only (no cameras)", async () => {
+        const workingDir = "/work_screen";
+        mockFsInstance.mkdir(workingDir);
+        mockFsInstance.mkdir(path.join(workingDir, "screen"));
+        mockFsInstance.mkdir(path.join(workingDir, "audio"));
+        mockFsInstance.write(path.join(workingDir, "screen", "screen1.mp4"), "screen");
+        mockFsInstance.write(path.join(workingDir, "audio", "audio1.ogg"), "audio");
+
+        const compiler = new MediaCompiler({
+            workingDir,
+            startedAt: 1000,
+            stoppedAt: 5000,
+            timeStamps: [
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 1000,
+                    info: {
+                        type: STREAM_TYPE.SCREEN,
+                        sessionId: 1,
+                        available: true,
+                        active: true,
+                        filename: "screen1.mp4"
+                    }
+                },
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 1000,
+                    info: {
+                        type: STREAM_TYPE.AUDIO,
+                        sessionId: 1,
+                        available: true,
+                        active: true,
+                        filename: "audio1.ogg"
+                    }
+                }
+            ]
+        });
+
+        const result = await compiler.compile({ video: true });
+        expect(result).toBe(path.join(workingDir, "recording_1000.mp4"));
+
+        // Verify screen was included in ffmpeg call
+        const calls = mockSpawn.mock.calls;
+        const screenCall = calls.find((c) => (c[1] as string[]).join(" ").includes("screen1.mp4"));
+        expect(screenCall).toBeDefined();
+    });
+
+    test("should handle audio file starting before recording", async () => {
+        const workingDir = "/work_early";
+        mockFsInstance.mkdir(workingDir);
+        mockFsInstance.mkdir(path.join(workingDir, "audio"));
+        mockFsInstance.write(path.join(workingDir, "audio", "early.ogg"), "audio");
+
+        const compiler = new MediaCompiler({
+            workingDir,
+            startedAt: 2000,
+            stoppedAt: 5000,
+            timeStamps: [
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 1000, // Before startedAt
+                    info: {
+                        type: STREAM_TYPE.AUDIO,
+                        sessionId: 1,
+                        available: true,
+                        active: true,
+                        filename: "early.ogg"
+                    }
+                }
+            ]
+        });
+
+        const result = await compiler.compile();
+        expect(result).toBe(path.join(workingDir, "recording_2000.ogg"));
+
+        // Verify -ss flag is used when offset is negative
+        const calls = mockSpawn.mock.calls;
+        const audioCall = calls.find((c) => (c[1] as string[]).includes("-ss"));
+        expect(audioCall).toBeDefined();
+    });
+
+    test("should skip corrupted video files in segment", async () => {
+        const workingDir = "/work_corrupt";
+        mockFsInstance.mkdir(workingDir);
+        mockFsInstance.mkdir(path.join(workingDir, "camera"));
+        mockFsInstance.mkdir(path.join(workingDir, "audio"));
+        // Note: no actual video file written - simulates corrupted/missing file
+        mockFsInstance.write(path.join(workingDir, "audio", "audio1.ogg"), "audio");
+
+        const compiler = new MediaCompiler({
+            workingDir,
+            startedAt: 1000,
+            stoppedAt: 5000,
+            timeStamps: [
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 1000,
+                    info: {
+                        type: STREAM_TYPE.CAMERA,
+                        sessionId: 1,
+                        available: true,
+                        active: true,
+                        filename: "corrupted.mp4" // File doesn't exist
+                    }
+                },
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 1000,
+                    info: {
+                        type: STREAM_TYPE.AUDIO,
+                        sessionId: 1,
+                        available: true,
+                        active: true,
+                        filename: "audio1.ogg"
+                    }
+                }
+            ]
+        });
+
+        // Should fall back to audio since video is corrupted
+        const result = await compiler.compile({ video: true });
+        expect(result).toBe(path.join(workingDir, "recording_1000.ogg"));
+    });
+});
+
+describe("Media Service network tests", () => {
+    let mediaService: typeof import("#src/recording/services/media");
+    let mockFsInstance: typeof import("#tests/utils/mockFileSystem").mockFs;
+    let mockFsModuleInstance: typeof import("#tests/utils/mockFileSystem").mockFsModule;
+
+    const mockFetch = jest.fn() as jest.MockedFunction<typeof fetch>;
+    const originalFetch = global.fetch;
+
+    beforeEach(async () => {
+        const env = await setupUnitTestsEnv();
+        mockFsInstance = env.mockFs;
+        mockFsModuleInstance = env.mockFsModule;
+
+        global.fetch = mockFetch;
+        mockFetch.mockClear();
+        mediaService = await import("#src/recording/services/media");
+    });
+
+    afterEach(() => {
+        if (mediaService) {
+            mediaService.close();
+        }
+        global.fetch = originalFetch;
+    });
+
+    test("should handle network errors gracefully during upload", async () => {
+        const channelUUID = "channel_network_error";
+        const recordingName = "session_network_error";
+        const routingAddress = "http://www.odoo.com/routing";
+        const channelDir = `/mock/recordings/${channelUUID}`;
+        const recordingDir = `${channelDir}/${recordingName}`;
+        const metadata = {
+            channelName: "Test Channel",
+            routingAddress,
+            channelKey: "key123",
+            stoppedAt: Date.now() - 1000,
+            startedAt: 1000,
+            timeStamps: [
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 1100,
+                    info: { type: STREAM_TYPE.AUDIO, active: true, filename: "audio_1.ogg" }
+                }
+            ],
+            video: false,
+            transcription: false
+        };
+
+        mockFsInstance.mkdir(channelDir);
+        mockFsInstance.mkdir(recordingDir);
+        mockFsInstance.mkdir(path.join(recordingDir, "audio"));
+        mockFsInstance.write(path.join(recordingDir, "metadata.bin"), JSON.stringify(metadata));
+        mockFsInstance.write(path.join(recordingDir, "audio", "audio_1.ogg"), "dummy audio");
+
+        // Simulate network error during routing fetch
+        mockFetch.mockRejectedValue(new Error("Network error"));
+
+        await mediaService.start();
+        await mediaService.processingQueue;
+
+        // Recording should be cleaned up despite network failure
+        expect(mockFsModuleInstance.rm).toHaveBeenCalledWith(recordingDir, { recursive: true });
+    });
+
+    test("should handle routing failure gracefully", async () => {
+        const channelUUID = "channel_route_fail";
+        const recordingName = "session_route_fail";
+        const routingAddress = "http://www.odoo.com/routing";
+        const channelDir = `/mock/recordings/${channelUUID}`;
+        const recordingDir = `${channelDir}/${recordingName}`;
+        const metadata = {
+            channelName: "Test Channel",
+            routingAddress,
+            channelKey: "key123",
+            stoppedAt: Date.now() - 1000,
+            startedAt: 1000,
+            timeStamps: [
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 1100,
+                    info: { type: STREAM_TYPE.AUDIO, active: true, filename: "audio_1.ogg" }
+                }
+            ],
+            video: false,
+            transcription: false
+        };
+
+        mockFsInstance.mkdir(channelDir);
+        mockFsInstance.mkdir(recordingDir);
+        mockFsInstance.mkdir(path.join(recordingDir, "audio"));
+        mockFsInstance.write(path.join(recordingDir, "metadata.bin"), JSON.stringify(metadata));
+        mockFsInstance.write(path.join(recordingDir, "audio", "audio_1.ogg"), "dummy audio");
+
+        // Routing endpoint returns error
+        mockFetch.mockResolvedValue({
+            ok: false,
+            statusText: "Not Found"
+        } as Response);
+
+        await mediaService.start();
+        await mediaService.processingQueue;
+
+        // Recording should be cleaned up despite upload failure
+        expect(mockFsModuleInstance.rm).toHaveBeenCalledWith(recordingDir, { recursive: true });
+    });
+
+    test("should handle empty destination in routing response", async () => {
+        const channelUUID = "channel_no_dest";
+        const recordingName = "session_no_dest";
+        const routingAddress = "http://www.odoo.com/routing";
+        const channelDir = `/mock/recordings/${channelUUID}`;
+        const recordingDir = `${channelDir}/${recordingName}`;
+        const metadata = {
+            channelName: "Test Channel",
+            routingAddress,
+            channelKey: "key123",
+            stoppedAt: Date.now() - 1000,
+            startedAt: 1000,
+            timeStamps: [
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 1100,
+                    info: { type: STREAM_TYPE.AUDIO, active: true, filename: "audio_1.ogg" }
+                }
+            ],
+            video: false,
+            transcription: false
+        };
+
+        mockFsInstance.mkdir(channelDir);
+        mockFsInstance.mkdir(recordingDir);
+        mockFsInstance.mkdir(path.join(recordingDir, "audio"));
+        mockFsInstance.write(path.join(recordingDir, "metadata.bin"), JSON.stringify(metadata));
+        mockFsInstance.write(path.join(recordingDir, "audio", "audio_1.ogg"), "dummy audio");
+
+        // Routing returns empty destination
+        mockFetch.mockResolvedValue({
+            ok: true,
+            json: async () => ({ destination: "" }),
+            statusText: "OK"
+        } as Response);
+
+        await mediaService.start();
+        await mediaService.processingQueue;
+
+        // Should call routing but not attempt upload (destination is empty)
+        expect(mockFetch).toHaveBeenCalledWith(`${routingAddress}/routing`, expect.anything());
+        // Recording should still be cleaned up
+        expect(mockFsModuleInstance.rm).toHaveBeenCalledWith(recordingDir, { recursive: true });
     });
 });
