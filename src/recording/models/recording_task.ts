@@ -1,10 +1,8 @@
 import path from "node:path";
 import { EventEmitter } from "node:events";
 
-import type { Producer } from "mediasoup/node/lib/types";
-
 import { MediaOutput } from "#src/recording/models/media_output.ts";
-import { Session } from "#src/core/models/session.ts";
+import { Session, type SessionProducer } from "#src/core/models/session.ts";
 import { Logger } from "#src/utils/utils.ts";
 import { TIME_TAG, type Recorder } from "#src/recording/models/recorder.ts";
 import { STREAM_TYPE } from "#src/shared/enums.ts";
@@ -95,13 +93,17 @@ export class RecordingTask extends EventEmitter {
         producer
     }: {
         type: STREAM_TYPE;
-        producer: Producer;
+        producer: SessionProducer;
     }) {
         const data = this.recordingDataByStreamType[type];
         this._updateProcess(data, producer, type);
     }
 
-    private async _updateProcess(data: RecordingData, producer: Producer, type: STREAM_TYPE) {
+    private async _updateProcess(
+        data: RecordingData,
+        producer: SessionProducer,
+        type: STREAM_TYPE
+    ) {
         if (data.active) {
             if (data.mediaOutput) {
                 // already recording
@@ -110,7 +112,6 @@ export class RecordingTask extends EventEmitter {
             try {
                 data.mediaOutput = new MediaOutput({
                     producer,
-                    router: this._session.router!,
                     name: `${this._session.id}-${type}`,
                     directory: path.join(this._recorder.path!, type)
                 });
