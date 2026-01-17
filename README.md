@@ -42,7 +42,6 @@ The available environment variables are:
 
 - **PUBLIC_IP** (required): used to establish webRTC connections to the server
 - **AUTH_KEY** (required): the base64 encoded encryption key used for authentication
-- **LOCAL_KEY**: a key used for encrypting/decrypting data locally, if not set one will be randomly generated. It MUST be a 32bytes base64 key, for example generated from `openssl rand 32 | base64`. If not provided one will be generated at runtime, but local encrypted files will lose persistence between server restarts.
 - **HTTP_INTERFACE**:  HTTP/WS interface, defaults to "0.0.0.0" (listen on all interfaces)
 - **PORT**: port for HTTP/WS, defaults to standard ports
 - **RTC_INTERFACE**: Interface address for RTC, defaults to "0.0.0.0"
@@ -57,14 +56,19 @@ The available environment variables are:
 - **MAX_BITRATE_OUT**: if set, limits the outgoing bitrate per session (user), defaults to 10mbps
 - **MAX_VIDEO_BITRATE**: if set, defines the `maxBitrate` of the highest encoding layer (simulcast), defaults to 4mbps
 - **CHANNEL_SIZE**: the maximum amount of users per channel, defaults to 100
-- **RECORDING**: enables the recording feature, defaults to false
-- **RECORDING_PATH**: the path where the recordings will be saved, defaults to `${tmpDir}/recordings`.
 - **WORKER_LOG_LEVEL**: "none" | "error" | "warn" | "debug", will only work if `DEBUG` is properly set.
 - **LOG_LEVEL**: "none" | "error" | "warn" | "info" | "debug" | "verbose"
 - **LOG_TIMESTAMP**: adds a timestamp to the log lines, defaults to true, to disable it, set to "disable", "false", "none", "no" or "0"
 - **LOG_COLOR**: If set, colors the log lines based on their level
 - **DEBUG**: an env variable used by the [debug](https://www.npmjs.com/package/debug) module. e.g.: `DEBUG=*`, `DEBUG=mediasoup*`
 
+recording specific env variables:
+- **RECORDING**: enables the recording feature, defaults to false
+- **RECORDING_PATH**: the path where the recordings will be saved, defaults to `${tmpDir}/recordings`.
+- **LOCAL_KEY**: a key used for encrypting/decrypting data locally, if not set one will be randomly generated. It MUST be a 32bytes base64 key, for example generated from `openssl rand 32 | base64`. If not provided one will be generated at runtime, but local encrypted files will lose persistence between server restarts.
+- **DYNAMIC_MIN_PORT**/**DYNAMIC_MAX_PORT**: Lower bound/Upper bound for the range of ports that the SFU server can use for dynamic ports, used for recording. Defaults to 50000/59999.
+- **KEEP_RECORDINGS**: if set, recordings (and the original raw files) will not be deleted after being sent to the remote storage.
+- **FFMPEG_LOGGING**: if set, ffmpeg will generate log files along media files.
 
 See [config.js](./src/config.js) for more details and examples.
 
@@ -90,6 +94,7 @@ See [server.js](./src/server.js) for more details.
 ## Documentation
 
 - [Architecture](./doc/architecture.md)
+- [Full Network Flow](./doc/network_flow.md)
 - [HTTP API](./doc/http.md)
 - [Recording](./doc/recording.md)
 - [Client API bundle](./doc/client.md)
