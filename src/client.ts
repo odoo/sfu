@@ -283,7 +283,7 @@ export class SfuClient extends EventTarget {
         options: { video?: boolean; transcription?: boolean } = {}
     ): Promise<recordingActionResult> {
         if (this.state !== SfuClientState.CONNECTED) {
-            return { allowed: false };
+            return false;
         }
         return this._bus!.request(
             {
@@ -296,7 +296,7 @@ export class SfuClient extends EventTarget {
 
     async stopRecording(): Promise<recordingActionResult> {
         if (this.state !== SfuClientState.CONNECTED) {
-            return { allowed: false };
+            return false;
         }
         return this._bus!.request(
             {
