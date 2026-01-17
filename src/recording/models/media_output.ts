@@ -1,17 +1,12 @@
 import { EventEmitter } from "node:events";
 
-import type {
-    Router,
-    Producer,
-    Consumer,
-    PlainTransport,
-    MediaKind
-} from "mediasoup/node/lib/types";
+import type { Consumer, PlainTransport, MediaKind, Producer } from "mediasoup/node/lib/types";
 
 import { DynamicPort } from "#src/core/services/resources.ts";
 import { recording, rtc } from "#src/config.ts";
 import { MediaWriter } from "#src/recording/models/media_writer.ts";
 import { Logger } from "#src/utils/utils.ts";
+import type { SessionAppData } from "#src/core/models/session.ts";
 
 const logger = new Logger("MEDIA_OUTPUT");
 
@@ -39,8 +34,7 @@ export class MediaOutput extends EventEmitter {
     };
 
     name: string;
-    private _router: Router;
-    private _producer: Producer;
+    private _producer: Producer<SessionAppData>;
     private _transport?: PlainTransport;
     private _consumer?: Consumer;
     private _mediaWriter?: MediaWriter;
@@ -64,18 +58,15 @@ export class MediaOutput extends EventEmitter {
 
     constructor({
         producer,
-        router,
         name,
         directory
     }: {
-        producer: Producer;
-        router: Router;
+        producer: Producer<SessionAppData>;
         name: string;
         directory: string;
     }) {
         super();
         this.name = name;
-        this._router = router;
         this._producer = producer;
         this._directory = directory;
         this._init();
@@ -86,10 +77,14 @@ export class MediaOutput extends EventEmitter {
         await this._cleanup();
     }
 
+    private get _router() {
+        return this._producer.appData.router;
+    }
+
     private async _init() {
         try {
             this._port = new DynamicPort();
-            this._transport = await this._router?.createPlainTransport(rtc.plainTransportOptions);
+            this._transport = await this._router.createPlainTransport(rtc.plainTransportOptions);
             if (!this._transport) {
                 throw new Error(`Failed at creating a plain transport for`);
             }
@@ -99,7 +94,7 @@ export class MediaOutput extends EventEmitter {
             });
             this._consumer = await this._transport.consume({
                 producerId: this._producer.id,
-                rtpCapabilities: this._router!.rtpCapabilities,
+                rtpCapabilities: this._router.rtpCapabilities,
                 paused: true
             });
             if (this._isClosed) {

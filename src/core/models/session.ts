@@ -1,11 +1,13 @@
 import { EventEmitter } from "node:events";
 
 import type {
+    AppData,
     Consumer,
     DtlsParameters,
     IceCandidate,
     IceParameters,
     Producer,
+    Router,
     RtpCapabilities,
     SctpParameters,
     WebRtcTransport
@@ -86,13 +88,17 @@ type Consumers = {
     /** Screen sharing consumer */
     [STREAM_TYPE.SCREEN]: Consumer | null;
 };
+export type SessionAppData = AppData & {
+    router: Router;
+};
+export type SessionProducer = Producer<SessionAppData>;
 type Producers = {
     /** Audio producer */
-    [STREAM_TYPE.AUDIO]: Producer | null;
+    [STREAM_TYPE.AUDIO]: SessionProducer | null;
     /** Camera video producer */
-    [STREAM_TYPE.CAMERA]: Producer | null;
+    [STREAM_TYPE.CAMERA]: SessionProducer | null;
     /** Screen sharing producer */
-    [STREAM_TYPE.SCREEN]: Producer | null;
+    [STREAM_TYPE.SCREEN]: SessionProducer | null;
 };
 type SessionCloseOptions = {
     /** Close code indicating reason for termination */
@@ -684,11 +690,12 @@ export class Session extends EventEmitter {
                 const { type, kind, rtpParameters } = payload;
                 this.producers[type]?.close();
                 this.producers[type] = null;
-                let producer: Producer;
+                let producer: SessionProducer;
                 try {
-                    producer = await this._ctsTransport!.produce({
+                    producer = await this._ctsTransport!.produce<SessionAppData>({
                         kind,
-                        rtpParameters
+                        rtpParameters,
+                        appData: { router: this._channel.router! }
                     });
                 } catch (error) {
                     this._handleError(error as Error);
