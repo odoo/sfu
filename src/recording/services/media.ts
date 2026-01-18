@@ -115,7 +115,7 @@ function isCpuLoaded(): boolean {
 }
 
 async function processRecordings() {
-    logger.info(`Checking recordings in ${RECORDING_PATH}`);
+    logger.verbose(`Checking recordings in ${RECORDING_PATH}`);
     try {
         const channelDirectories = await fs.readdir(RECORDING_PATH, { withFileTypes: true });
         const dir = channelDirectories[0];
