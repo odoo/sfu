@@ -200,17 +200,6 @@ export class MediaCompiler {
         this._timeStamps = timeStamps;
     }
 
-    /**
-     * Returns the full path to the file
-     */
-    async compile({ video = false, srt }: { video?: boolean; srt?: string } = {}) {
-        if (video) {
-            return this._getVideoFile(srt);
-        } else {
-            return this._getAudioFile();
-        }
-    }
-
     //////////////////////////////////
     //////////// AUDIO ///////////////
     //////////////////////////////////
@@ -219,7 +208,7 @@ export class MediaCompiler {
      * Compiles the raw recording into a single file.
      * @returns The full path to the compiled file, or undefined if no audio files were found.
      */
-    private async _getAudioFile(): Promise<string | undefined> {
+    async getAudio(): Promise<string | undefined> {
         if (!this._audioPath) {
             this._audioPath = await this._compileAudio();
         }
@@ -340,7 +329,7 @@ export class MediaCompiler {
     //////////// VIDEO ///////////////
     //////////////////////////////////
 
-    private async _getVideoFile(srtFile?: string): Promise<string | undefined> {
+    async getVideo(srtFile?: string): Promise<string | undefined> {
         if (!this._videoPath) {
             this._videoPath = await this._compileVideo(srtFile);
         }
@@ -352,7 +341,7 @@ export class MediaCompiler {
 
         if (segments.length === 0) {
             logger.info("No video segments found, falling back to audio-only");
-            return this._compileAudio();
+            return;
         }
 
         const outputName = path.join(
@@ -367,9 +356,7 @@ export class MediaCompiler {
             // File does not exist, continue
         }
 
-        const audioPath = await this._compileAudio();
         const segmentFiles: string[] = [];
-
         for (let i = 0; i < segments.length; i++) {
             const segmentPath = await this._compileSegment(segments[i], i);
             if (segmentPath) {
@@ -379,13 +366,13 @@ export class MediaCompiler {
 
         if (segmentFiles.length === 0) {
             logger.warn("No video segments were successfully compiled");
-            return audioPath;
+            return;
         }
 
         return MediaCompiler.concatenateSegments({
             workingDir: this._workingDir,
             segmentFiles,
-            audioPath,
+            audioPath: await this.getAudio(),
             srt,
             outputPath: outputName
         });

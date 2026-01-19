@@ -170,22 +170,19 @@ async function processRecording(folderName: string) {
             throw new Error("expired recording");
         }
         logger.debug(`Read metadata for recording ${folderName}: ${metadata.channelName}`);
-        let srt: string | undefined;
         const compiler = new MediaCompiler({
             workingDir: dir,
             startedAt: metadata.startedAt,
             stoppedAt: metadata.stoppedAt,
             timeStamps: metadata.timeStamps
         });
-        if (metadata.transcription) {
-            filePath = await compiler.compile({ video: false });
-            if (filePath) {
-                srt = await fetchTranscription(filePath, metadata);
-            }
+        const audioPath = await compiler.getAudio();
+        const videoPath = metadata.video && (await compiler.getVideo());
+        if (audioPath) {
+            await uploadAudio({ filePath: audioPath, metadata, mainMedia: !videoPath });
         }
-        filePath = await compiler.compile({ video: metadata.video, srt });
-        if (filePath) {
-            await upload(filePath, metadata);
+        if (videoPath) {
+            await uploadVideo({ filePath: videoPath, metadata });
         }
         logger.info(`recording ${recording.metadataFileName} was succesfully processed`);
     } catch (error) {
@@ -197,9 +194,25 @@ async function processRecording(folderName: string) {
     return filePath;
 }
 
-async function fetchTranscription(filePath: string, metadata: SealedMetaData) {
+async function uploadAudio({
+    filePath,
+    metadata,
+    mainMedia
+}: {
+    filePath: string;
+    metadata: SealedMetaData;
+    mainMedia: boolean;
+}) {
     const fileStats = await fs.stat(filePath);
-    const response = await fetch(`${metadata.routingAddress}/transcription`, {
+    const queryParams = [];
+    if (metadata.transcription) {
+        queryParams.push("transcribe=True");
+    }
+    if (mainMedia) {
+        queryParams.push("main_media=True");
+    }
+    const paramString = queryParams.length ? "?" + queryParams.join("&") : "";
+    const response = await fetch(`${metadata.routingAddress}/audio${paramString}`, {
         method: "POST",
         headers: {
             Authorization: `Bearer ${makeJwt(metadata.channelKey)}`,
@@ -223,7 +236,7 @@ async function fetchTranscription(filePath: string, metadata: SealedMetaData) {
     return await response.text();
 }
 
-async function upload(filePath: string, metadata: SealedMetaData) {
+async function uploadVideo({ filePath, metadata }: { filePath: string; metadata: SealedMetaData }) {
     logger.debug(`Uploading files to ${metadata.routingAddress}`);
     try {
         const response = await fetch(`${metadata.routingAddress}/routing`, {

@@ -412,9 +412,9 @@ describe("Media Service", () => {
         );
 
         expect(mockFetch).toHaveBeenCalledWith(
-            `${routingAddress}/routing`,
+            `${routingAddress}/audio?main_media=True`,
             expect.objectContaining({
-                method: "GET",
+                method: "POST",
                 headers: expect.objectContaining({ Authorization: "Bearer mock_jwt" })
             })
         );
@@ -507,7 +507,7 @@ describe("MediaCompiler tests", () => {
         mockFs.write(path.join(workingDir, "audio", "file1.ogg"), "data");
         mockFs.write(path.join(workingDir, "audio", "file2.ogg"), "data");
 
-        const result = await compiler.compile();
+        const result = await compiler.getAudio();
 
         expect(result).toBe(path.join(workingDir, "recording_1000.ogg"));
         expect(mockSpawn).toHaveBeenCalledWith(
@@ -546,7 +546,7 @@ describe("MediaCompiler tests", () => {
         mockFs.mkdir(workingDir);
         mockFs.write(path.join(workingDir, "recording_1000.ogg"), "existing");
 
-        const result = await compiler.compile();
+        const result = await compiler.getAudio();
         expect(result).toBe(path.join(workingDir, "recording_1000.ogg"));
         expect(mockSpawn).not.toHaveBeenCalled();
     });
@@ -560,7 +560,7 @@ describe("MediaCompiler tests", () => {
             stoppedAt: 5000,
             timeStamps: []
         });
-        const result = await compiler.compile();
+        const result = await compiler.getAudio();
         expect(result).toBeUndefined();
         expect(mockSpawn).not.toHaveBeenCalled();
     });
@@ -603,7 +603,7 @@ describe("MediaCompiler tests", () => {
             ]
         });
 
-        const result = await compiler.compile({ video: true });
+        const result = await compiler.getVideo();
         expect(result).toBe(path.join(workingDir, "recording_1000.mp4"));
 
         const calls = mockSpawn.mock.calls;
@@ -661,7 +661,7 @@ describe("MediaCompiler tests", () => {
             ]
         });
 
-        const result = await compiler.compile({ video: true });
+        const result = await compiler.getVideo();
         expect(result).toBe(path.join(workingDir, "recording_1000.mp4"));
 
         const calls = mockSpawn.mock.calls;
@@ -720,7 +720,7 @@ describe("MediaCompiler tests", () => {
             ]
         });
 
-        const result = await compiler.compile({ video: true });
+        const result = await compiler.getVideo();
         expect(result).toBe(path.join(workingDir, "recording_1000.mp4"));
 
         const calls = mockSpawn.mock.calls;
@@ -758,7 +758,7 @@ describe("MediaCompiler tests", () => {
             ]
         });
 
-        const result = await compiler.compile({ video: true });
+        const result = await compiler.getAudio();
         // Falls back to audio file
         expect(result).toBe(path.join(workingDir, "recording_1000.ogg"));
     });
@@ -828,7 +828,7 @@ describe("MediaCompiler tests", () => {
             ]
         });
 
-        await compiler.compile({ video: true });
+        await compiler.getVideo();
 
         // The _buildVideoSegments method is private, so we verify indirectly
         // by checking that ffmpeg was called with the expected segment pattern.
@@ -1078,7 +1078,7 @@ describe("Media Compiler edge cases tests", () => {
             ]
         });
 
-        const result = await compiler.compile({ video: true });
+        const result = await compiler.getVideo();
         expect(result).toBe(path.join(workingDir, "recording_1000.mp4"));
 
         // Verify screen was included in ffmpeg call
@@ -1112,7 +1112,7 @@ describe("Media Compiler edge cases tests", () => {
             ]
         });
 
-        const result = await compiler.compile();
+        const result = await compiler.getAudio();
         expect(result).toBe(path.join(workingDir, "recording_2000.ogg"));
 
         // Verify -ss flag is used when offset is negative
@@ -1160,7 +1160,7 @@ describe("Media Compiler edge cases tests", () => {
         });
 
         // Should fall back to audio since video is corrupted
-        const result = await compiler.compile({ video: true });
+        const result = await compiler.getAudio();
         expect(result).toBe(path.join(workingDir, "recording_1000.ogg"));
     });
 });
@@ -1288,24 +1288,40 @@ describe("Media Service network tests", () => {
                     tag: TIME_TAG.FILE_STATE_CHANGE,
                     timestamp: 1100,
                     info: { type: STREAM_TYPE.AUDIO, active: true, filename: "audio_1.ogg" }
+                },
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 1100,
+                    info: { type: STREAM_TYPE.CAMERA, active: true, filename: "cam_1.mp4" }
                 }
             ],
-            video: false,
+            video: true,
             transcription: false
         };
 
         mockFsInstance.mkdir(channelDir);
         mockFsInstance.mkdir(recordingDir);
         mockFsInstance.mkdir(path.join(recordingDir, "audio"));
+        mockFsInstance.mkdir(path.join(recordingDir, "camera"));
         mockFsInstance.write(path.join(recordingDir, "metadata.bin"), JSON.stringify(metadata));
         mockFsInstance.write(path.join(recordingDir, "audio", "audio_1.ogg"), "dummy audio");
+        mockFsInstance.write(path.join(recordingDir, "camera", "cam_1.mp4"), "dummy video");
 
-        // Routing returns empty destination
-        mockFetch.mockResolvedValue({
-            ok: true,
-            json: async () => ({ destination: "" }),
-            statusText: "OK"
-        } as Response);
+        // Audio upload succeeds, routing returns empty destination
+        mockFetch.mockImplementation(async (url: string | URL | Request) => {
+            const urlString = url.toString();
+            if (urlString.includes("/audio")) {
+                return { ok: true, text: async () => "" } as Response;
+            }
+            if (urlString.includes("/routing")) {
+                return {
+                    ok: true,
+                    json: async () => ({ destination: "" }),
+                    statusText: "OK"
+                } as Response;
+            }
+            return { ok: false, statusText: "Not Found" } as Response;
+        });
 
         await mediaService.start();
         await mediaService.processingQueue;
