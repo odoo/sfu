@@ -18,6 +18,16 @@ export class MockFileSystem {
         this.dirs.add("/");
     }
 
+    stat(path: string): { size: number } {
+        return {
+            size: 999
+        };
+    }
+
+    createReadStream(path: string) {
+        return "";
+    }
+
     async readdir(dirPath: string, options?: { withFileTypes?: boolean }): Promise<unknown[]> {
         const normalizedDir = path.resolve(dirPath);
         const entries: unknown[] = [];
@@ -184,6 +194,7 @@ export const mockFsModule = {
     readdir: jest.fn((path: string, opts: unknown) =>
         mockFs.readdir(path, opts as { withFileTypes?: boolean })
     ),
+    stat: jest.fn((path: string) => mockFs.stat(path)),
     readFile: jest.fn((path: string, enc: unknown) => mockFs.readFile(path, enc as string)),
     access: jest.fn((path: string) => mockFs.access(path)),
     rm: jest.fn((path: string, opts: unknown) =>
@@ -200,6 +211,7 @@ export const mockFsModule = {
 };
 
 export const mockFsSyncModule = {
+    createReadStream: jest.fn((path: string) => mockFs.createReadStream(path)),
     rmSync: jest.fn((path: string, opts: unknown) =>
         mockFs.rmSync(path, opts as { recursive?: boolean; force?: boolean })
     ),
@@ -213,6 +225,7 @@ export function mockNodeFS() {
         };
         return {
             ...(jest.requireActual("node:fs") as Record<string, unknown>),
+            createReadStream: mockFsSyncModule.createReadStream,
             rmSync: mockFsSyncModule.rmSync,
             mkdirSync: mockFsSyncModule.mkdirSync
         };
