@@ -91,10 +91,14 @@ export function close() {
 async function checkSystemAndProcess() {
     const work = (async () => {
         try {
-            if (!isCpuLoaded()) {
-                await processRecordings();
-            } else {
-                logger.warn("CPU is too loaded, skipping recording processing");
+            while (!isCpuLoaded()) {
+                const didWork = await processOneChannelDirectory();
+                if (!didWork) {
+                    break;
+                }
+            }
+            if (isCpuLoaded()) {
+                logger.warn("CPU is too loaded, pausing recording processing");
             }
         } catch (error) {
             logger.error(`Error in media service check: ${error}`);
@@ -114,36 +118,39 @@ function isCpuLoaded(): boolean {
     return loadPercentage > CPU_LOAD_THRESHOLD;
 }
 
-async function processRecordings() {
+/**
+ * Processes one channel directory completely, then returns.
+ * @returns `true` if a channel directory was processed (more may remain), `false` if none found.
+ */
+async function processOneChannelDirectory(): Promise<boolean> {
     logger.verbose(`Checking recordings in ${RECORDING_PATH}`);
     try {
         const channelDirectories = await fs.readdir(RECORDING_PATH, { withFileTypes: true });
-        for (const dir of channelDirectories) {
-            if (!dir) {
-                return;
-            }
-            if (dir.isDirectory()) {
-                const dirPath = path.join(RECORDING_PATH, dir.name);
-                const subDirs = await fs.readdir(dirPath, { withFileTypes: true });
-                for (const subdir of subDirs) {
-                    if (subdir.isDirectory()) {
-                        /**
-                         * TODO: processRecording should not handle the upload and transcription,
-                         * it should return the path to the compiled media.
-                         * we will then combine all subdirs ouputs per channel dir into one
-                         * then, upload it to the destination (can get the destination of any metadata of that batch)
-                         */
-                        await processRecording(path.join(dir.name, subdir.name));
-                    }
-                }
+        const dir = channelDirectories.find((d) => d?.isDirectory());
+        if (!dir) {
+            return false;
+        }
+        const dirPath = path.join(RECORDING_PATH, dir.name);
+        const subDirs = await fs.readdir(dirPath, { withFileTypes: true });
+        let didWork = false;
+        for (const subdir of subDirs) {
+            if (subdir.isDirectory()) {
+                await processRecording(path.join(dir.name, subdir.name));
+                didWork = true;
             }
         }
+        if (!didWork) {
+            // directory contains no subdirectories, remove it to avoid infinite loop
+            await fs.rm(dirPath, { recursive: true, force: true });
+        }
+        return true;
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
             logger.debug("Recording directory not found (no recordings yet)");
         } else {
             logger.error(`Failed to read recording directory: ${error}`);
         }
+        return false;
     }
 }
 
