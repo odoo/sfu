@@ -12,7 +12,7 @@ the SFU and a [client bundle/library](#client-api-bundle) to connect to it.
 The SFU is powered by the [Mediasoup](https://mediasoup.org/) WebRTC library.
 
 ## Prerequisites
-- [Node.js 22.16.0 (LTS)](https://nodejs.org/en/download)
+- [Node.js 24.13.0 (LTS)](https://nodejs.org/en/download)
 - [FFmpeg 8](https://ffmpeg.org/download.html) (if using the recording feature)
 
 ## Before deployment
