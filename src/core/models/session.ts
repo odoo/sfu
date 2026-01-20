@@ -725,7 +725,7 @@ export class Session extends EventEmitter {
             case CLIENT_REQUEST.START_RECORDING: {
                 if (this.canRecord) {
                     const { video, transcription } = payload || {};
-                    await this._channel.recorder!.start({
+                    this._channel.recorder!.start({
                         video: video && this.canVideoRecord,
                         transcription
                     });
@@ -734,7 +734,7 @@ export class Session extends EventEmitter {
             }
             case CLIENT_REQUEST.STOP_RECORDING: {
                 if (this.canRecord) {
-                    await this._channel.recorder!.stop();
+                    this._channel.recorder!.stop();
                 }
                 return this.canRecord;
             }

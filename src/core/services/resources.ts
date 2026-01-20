@@ -152,6 +152,7 @@ export class Folder {
     async move(destinationPath: string) {
         const fullPath = path.join(destinationPath, this.name);
         try {
+            await fs.mkdir(destinationPath, { recursive: true });
             await fs.rename(this.path, fullPath);
             logger.verbose(`Moved folder from ${this.path} to ${fullPath}`);
             this.path = fullPath;
