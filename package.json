@@ -13,7 +13,7 @@
     "test:watch": "LOG_LEVEL=verbose node ./node_modules/.bin/jest --watch -i"
   },
   "engines": {
-    "node": ">=22.16.0"
+    "node": ">=24.13.0"
   },
   "files": [
     "src/**/*"
