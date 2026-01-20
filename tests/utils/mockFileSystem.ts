@@ -110,8 +110,16 @@ export class MockFileSystem {
         this.dirs.add(path.dirname(normalized));
     }
 
-    mkdir(dirPath: string) {
-        this.dirs.add(path.resolve(dirPath));
+    mkdir(dirPath: string, options?: { recursive?: boolean }) {
+        const normalized = path.resolve(dirPath);
+        this.dirs.add(normalized);
+        if (options?.recursive) {
+            let parent = path.dirname(normalized);
+            while (parent && parent !== "/" && parent !== ".") {
+                this.dirs.add(parent);
+                parent = path.dirname(parent);
+            }
+        }
     }
 
     rmSync(targetPath: string, options?: { recursive?: boolean; force?: boolean }): void {
@@ -200,7 +208,9 @@ export const mockFsModule = {
     rm: jest.fn((path: string, opts: unknown) =>
         mockFs.rm(path, opts as { recursive?: boolean; force?: boolean })
     ),
-    mkdir: jest.fn((path: string, opts: unknown) => Promise.resolve(mockFs.mkdir(path))),
+    mkdir: jest.fn((path: string, opts: { recursive?: boolean }) =>
+        Promise.resolve(mockFs.mkdir(path, opts))
+    ),
     writeFile: jest.fn((path: string, content: string) =>
         Promise.resolve(mockFs.write(path, content))
     ),

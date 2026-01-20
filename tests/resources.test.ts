@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "@jest/globals";
 import path from "node:path";
+import fs from "node:fs/promises";
 
 import { mockFs, mockNodeFS } from "./utils/mockFileSystem.ts";
 mockNodeFS();
@@ -88,7 +89,7 @@ describe("resources service", () => {
         expect(await mockFs.readFile(path.join(folder.path, "test.txt"))).toBe("hello world");
 
         const oldPath = folder.path;
-        const newPath = path.join(config.RESOURCES_PATH, "sealed-folder");
+        const newPath = path.join(config.RESOURCES_PATH, "nested", "path", "sealed-folder");
         await folder.move(newPath);
         expect(mockFs.exists(oldPath)).toBe(false);
         const expectedPath = path.join(newPath, folder.name);
@@ -97,7 +98,8 @@ describe("resources service", () => {
         expect(folder.path).toBe(expectedPath);
 
         await folder.delete();
-        expect(mockFs.exists(newPath)).toBe(false);
+        expect(mockFs.exists(path.join(config.RESOURCES_PATH, "nested"))).toBe(true);
+        await fs.rm(path.join(config.RESOURCES_PATH, "nested"), { recursive: true, force: true });
     });
 
     test("ports should be allocated and released", async () => {
