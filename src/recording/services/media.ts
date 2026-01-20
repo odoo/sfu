@@ -118,22 +118,23 @@ async function processRecordings() {
     logger.verbose(`Checking recordings in ${RECORDING_PATH}`);
     try {
         const channelDirectories = await fs.readdir(RECORDING_PATH, { withFileTypes: true });
-        const dir = channelDirectories[0];
-        if (!dir) {
-            return;
-        }
-        if (dir.isDirectory()) {
-            const dirPath = path.join(RECORDING_PATH, dir.name);
-            const subDirs = await fs.readdir(dirPath, { withFileTypes: true });
-            for (const subdir of subDirs) {
-                if (subdir.isDirectory()) {
-                    /**
-                     * TODO: processRecording should not handle the upload and transcription,
-                     * it should return the path to the compiled media.
-                     * we will then combine all subdirs ouputs per channel dir into one
-                     * then, upload it to the destination (can get the destination of any metadata of that batch)
-                     */
-                    await processRecording(path.join(dir.name, subdir.name));
+        for (const dir of channelDirectories) {
+            if (!dir) {
+                return;
+            }
+            if (dir.isDirectory()) {
+                const dirPath = path.join(RECORDING_PATH, dir.name);
+                const subDirs = await fs.readdir(dirPath, { withFileTypes: true });
+                for (const subdir of subDirs) {
+                    if (subdir.isDirectory()) {
+                        /**
+                         * TODO: processRecording should not handle the upload and transcription,
+                         * it should return the path to the compiled media.
+                         * we will then combine all subdirs ouputs per channel dir into one
+                         * then, upload it to the destination (can get the destination of any metadata of that batch)
+                         */
+                        await processRecording(path.join(dir.name, subdir.name));
+                    }
                 }
             }
         }
@@ -152,9 +153,9 @@ async function processRecordings() {
  */
 async function processRecording(folderName: string) {
     const dir = path.join(RECORDING_PATH, folderName);
-    const metadataPath = path.join(dir, recording.metadataFileName);
     let filePath;
     try {
+        const metadataPath = path.join(dir, recording.metadataFileName);
         const content = await fs.readFile(metadataPath, "utf-8");
         const metadata: SealedMetaData = JSON.parse(decrypt(content));
         /**
