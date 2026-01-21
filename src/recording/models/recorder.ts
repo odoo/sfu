@@ -224,6 +224,7 @@ export class Recorder extends EventEmitter {
         this.transcription = false;
         const currentFolder = this._folder;
         this._folder = undefined;
+        this._emitStatus(cause);
         const results = await this._stopRecordingTasks();
         const failed = results.some((result) => result.status === "rejected");
         if (save && !failed && currentFolder) {
@@ -232,7 +233,6 @@ export class Recorder extends EventEmitter {
         } else {
             currentFolder?.delete();
         }
-        this._emitStatus(cause);
     }
 
     async close(options: StopOptions = {}) {
