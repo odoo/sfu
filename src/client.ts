@@ -621,7 +621,7 @@ export class SfuClient extends EventTarget {
                 this._makeSTCTransport(stcConfig);
                 this._makeCTSTransport(ctsConfig);
                 this.state = SfuClientState.CONNECTED;
-                return this._device!.rtpCapabilities;
+                return this._device!.rtpCapabilities as JSONSerializable;
             }
             case SERVER_REQUEST.PING:
                 return; // Just respond to keep connection alive
