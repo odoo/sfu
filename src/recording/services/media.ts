@@ -89,6 +89,9 @@ export function close() {
 }
 
 async function checkSystemAndProcess() {
+    // TODO set interval to check if queue is empty to probe for files to process
+    // must keep going periodically
+    logger.debug("checking for media processing");
     const work = (async () => {
         try {
             while (!isCpuLoaded()) {
@@ -197,7 +200,7 @@ async function processRecording(folderName: string) {
         logger.error(`Failed to process recording ${folderName}: ${error}`);
     }
     if (!KEEP_RECORDINGS) {
-        fs.rm(dir, { recursive: true });
+        await fs.rm(dir, { recursive: true });
     }
     return filePath;
 }
