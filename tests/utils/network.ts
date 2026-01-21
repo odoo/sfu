@@ -1,7 +1,5 @@
 import { WebSocket } from "ws";
-import { Device } from "mediasoup-client";
-import { FakeHandler } from "mediasoup-client/lib/handlers/FakeHandler";
-import * as fakeParameters from "mediasoup-client/lib/test/fakeParameters";
+import { Device, FakeHandler, testFakeParameters } from "mediasoup-client";
 
 import * as auth from "#src/core/services/auth";
 import * as http from "#src/core/services/http";
@@ -144,7 +142,7 @@ export class LocalNetwork {
         sfuClient._createDevice = (): Device => {
             // Mock device creation since we're in a server environment without real WebRTC
             return new Device({
-                handlerFactory: FakeHandler.createFactory(fakeParameters)
+                handlerFactory: FakeHandler.createFactory(testFakeParameters)
             });
         };
 

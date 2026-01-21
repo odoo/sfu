@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 import type { IncomingMessage } from "node:http";
 
-import type { RtpCodecCapability } from "mediasoup/node/lib/types";
+import type { RouterRtpCodecCapability } from "mediasoup/node/lib/types";
 
 import * as config from "#src/config.ts";
 import type { JSONSerializable } from "#src/shared/types";
@@ -218,8 +218,8 @@ export function extractRequestInfo(req: IncomingMessage): RequestInfo {
 /**
  * Returns the list of used codecs based on the configuration of the server.
  */
-export function getAllowedCodecs(): RtpCodecCapability[] {
-    const codecs: RtpCodecCapability[] = [];
+export function getAllowedCodecs(): RouterRtpCodecCapability[] {
+    const codecs: RouterRtpCodecCapability[] = [];
     if (config.AUDIO_CODECS) {
         const requestedAudioCodecs = config.AUDIO_CODECS.split(",");
         for (const codec of requestedAudioCodecs) {

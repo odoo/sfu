@@ -2,7 +2,7 @@ import os from "node:os";
 import path from "node:path";
 
 import type {
-    RtpCodecCapability,
+    RouterRtpCodecCapability,
     WorkerSettings,
     WebRtcServerOptions,
     PlainTransportOptions
@@ -375,7 +375,7 @@ export const rtc: RtcConfig = Object.freeze({
  * and recommend the same for any WebRTC endpoint.
  * https://datatracker.ietf.org/doc/html/rfc7874#section-3
  */
-export const audioCodecs: Record<string, RtpCodecCapability> = Object.freeze({
+export const audioCodecs: Record<string, RouterRtpCodecCapability> = Object.freeze({
     opus: {
         // https://datatracker.ietf.org/doc/html/rfc7587
         kind: "audio",
@@ -406,7 +406,7 @@ export const audioCodecs: Record<string, RtpCodecCapability> = Object.freeze({
  * and recommend the same for any WebRTC endpoint.
  * https://datatracker.ietf.org/doc/html/rfc7742#section-5
  */
-export const videoCodecs: Record<string, RtpCodecCapability> = Object.freeze({
+export const videoCodecs: Record<string, RouterRtpCodecCapability> = Object.freeze({
     VP8: {
         // https://datatracker.ietf.org/doc/html/rfc7741
         kind: "video",
