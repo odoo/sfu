@@ -13,13 +13,17 @@ flowchart TB
         Media["Media Service<br>(scheduling/monitoring)"]
         Session["Session"]
         Disk["Disk<br>(raw recordings)"]
-        MC
+        MC["Media Compiler"]
+  end
+  subgraph s2["Odoo"]
+        Server(["🏢 Odoo Server"])
+        Client(["💻 Odoo Client"])
+        CB["SfuClient</br>(bundle)"]
   end
     C1["Cloud"]
     Auth -- verify --> WS
-    Server(["🏢 Odoo Server"]) <-.....-> HTTP
-    CB["SfuClient</br>(bundle)"]
-    Client(["💻 Odoo Client"]) <----> CB
+    Server <-.....-> HTTP
+    Client <----> CB
     CB <-..-> WS
     Auth -- verify --> HTTP
     WS <--> Bus
@@ -32,10 +36,14 @@ flowchart TB
     Channel ---> Recorder
     Recorder --> Disk
     
+subgraph s3["Odoo"]
+    O2["Odoo Filestore"]
+    R1(["routing"])
+end
     Media -.-> C1
-    Media <-.-> R1(["routing"])
-    Media -.-> O2["Odoo server"]
-    MC["Media Compiler"] <--> Media
+    Media <-.-> R1
+    Media -.-> O2
+    MC <--> Media
     Disk --> Media
     
 
@@ -43,6 +51,7 @@ flowchart TB
     Channel@{shape: procs}
     Recorder@{shape: procs}
     Session@{shape: procs}
+    MC@{shape: procs}
     R1@{shape: diamond}
     O2@{shape: cyl}
     Disk@{shape: cyl}
@@ -74,13 +83,12 @@ The WebSocket service manages real-time, persistent connections with clients. It
 sequenceDiagram
     participant C as Client
     participant WS as WebSocket Service
-    participant A as Auth Service
     participant S as Session
 
     C->>WS: Connect
     WS-->>C: Open (Wait for Auth)
     C->>WS: Send Credentials {jwt, channelUUID}
-    WS->>A: Verify JWT
+    WS->>WS: verify token
     WS->>S: Create & Join Session
     WS-->>C: Send Startup Data
     loop Traffic
