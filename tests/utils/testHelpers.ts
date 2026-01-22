@@ -65,7 +65,8 @@ export async function setupUnitTestsEnv() {
         __esModule: true,
         recording: {
             ...recording,
-            enabled: true
+            enabled: true,
+            processingCooldown: 0
         },
         RECORDING_PATH: "/mock/recordings",
         LOCAL_KEY: "24qvOuliAKWt1gnSzSvkYUD3s31pO1hPcchbekMHCyA=",

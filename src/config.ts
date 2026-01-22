@@ -251,6 +251,7 @@ export const recording = Object.freeze({
     metadataFileName: "metadata.bin",
     maxDuration: 1000 * 60 * 60, // 1 hour, could be a env-var.
     fileTTL: 1000 * 60 * 60 * 24, // 24 hours
+    processingCooldown: 5 * 1000, // 5 seconds between recordings
     // TODO could be env variables
     videoCodec: "libsvtav1",
     videoPreset: "10",

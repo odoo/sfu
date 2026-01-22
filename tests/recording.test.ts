@@ -399,7 +399,7 @@ describe("Media Service", () => {
         mockFs.write(path.join(recordingDir, "audio", "audio_1.ogg"), "dummy audio content");
 
         await mediaService.start();
-        await mediaService.processingQueue;
+        await mediaService.__testing__.oneProcessingBatch();
 
         expect(mockFsModule.readdir).toHaveBeenCalled();
         expect(mockSpawn).toHaveBeenCalledWith(
@@ -423,7 +423,7 @@ describe("Media Service", () => {
         mockFs.mkdir(recordingDir);
 
         await mediaService.start();
-        await mediaService.processingQueue;
+        await mediaService.__testing__.oneProcessingBatch();
 
         expect(mockFsModule.readFile).toHaveBeenCalledWith(
             path.join(recordingDir, "metadata.bin"),
@@ -444,7 +444,7 @@ describe("Media Service", () => {
         mockFs.write(path.join(recordingDir, "metadata.bin"), JSON.stringify(metadata));
 
         await mediaService.start();
-        await mediaService.processingQueue;
+        await mediaService.__testing__.oneProcessingBatch();
 
         expect(mockFsModule.rm).toHaveBeenCalledWith(recordingDir, { recursive: true });
     });
@@ -1211,7 +1211,7 @@ describe("Media Service network tests", () => {
         mockFetch.mockRejectedValue(new Error("Network error"));
 
         await mediaService.start();
-        await mediaService.processingQueue;
+        await mediaService.__testing__.oneProcessingBatch;
 
         // Recording should be cleaned up despite network failure
         expect(mockFsModuleInstance.rm).toHaveBeenCalledWith(recordingDir, { recursive: true });
@@ -1250,7 +1250,7 @@ describe("Media Service network tests", () => {
         } as Response);
 
         await mediaService.start();
-        await mediaService.processingQueue;
+        await mediaService.__testing__.oneProcessingBatch();
 
         // Recording should be cleaned up despite upload failure
         expect(mockFsModuleInstance.rm).toHaveBeenCalledWith(recordingDir, { recursive: true });
@@ -1306,7 +1306,7 @@ describe("Media Service network tests", () => {
         });
 
         await mediaService.start();
-        await mediaService.processingQueue;
+        await mediaService.__testing__.oneProcessingBatch();
 
         // Should call routing but not attempt upload (destination is empty)
         expect(mockFetch).toHaveBeenCalledWith(`${routingAddress}/routing`, expect.anything());
