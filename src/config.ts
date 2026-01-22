@@ -1,12 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 
-import type {
-    RouterRtpCodecCapability,
-    WorkerSettings,
-    WebRtcServerOptions,
-    PlainTransportOptions
-} from "mediasoup/node/lib/types";
+import type { RouterRtpCodecCapability } from "mediasoup/node/lib/types";
 // eslint-disable-next-line node/no-unpublished-import
 import type { ProducerOptions } from "mediasoup-client/lib/Producer";
 
@@ -210,26 +205,8 @@ export const FFMPEG_LOGGING = Boolean(process.env.FFMPEG_LOGGING);
 // --------------------   SETTINGS   --------------------------
 // ------------------------------------------------------------
 
-/**
- * Timeout configuration interface
- */
-export type TimeoutConfig = {
-    /** how long a session can take to respond (to a ping or to a connection attempt) */
-    readonly session: number;
-    /** how long the websocket service waits for the authentication of a new websocket */
-    readonly authentication: number;
-    /** how long to wait between each time we ping the client to keep the session alive */
-    readonly ping: number;
-    /** how long to wait before we try to recover a session (consuming or producing media) after an error */
-    readonly recovery: number;
-    /** how long before a channel is closed after the last session leaves */
-    readonly channel: number;
-    /** how long to wait to gather messages before sending through the bus */
-    readonly busBatch: number;
-};
-
 // timeouts in milliseconds
-export const timeouts: TimeoutConfig = Object.freeze({
+export const timeouts = Object.freeze({
     // how long a session can take to respond (to a ping or to a connection attempt)
     session: 10_000,
     // how long the websocket service waits for the authentication of a new websocket
@@ -249,9 +226,10 @@ export const recording = Object.freeze({
     directory: RECORDING_PATH,
     enabled: RECORDING,
     metadataFileName: "metadata.bin",
-    maxDuration: 1000 * 60 * 60, // 1 hour, could be a env-var.
-    fileTTL: 1000 * 60 * 60 * 24, // 24 hours
-    processingCooldown: 5 * 1000, // 5 seconds between recordings
+    minDuration: 30 /* sec */ * 1000, // TODO
+    maxDuration: 60 /* min */ * 60 * 1000,
+    fileTTL: 24 /* hours */ * 60 * 60 * 1000,
+    processingCooldown: 5 /* sec */ * 1000,
     // TODO could be env variables
     videoCodec: "libsvtav1",
     videoPreset: "10",
@@ -289,24 +267,7 @@ const baseProducerOptions: ProducerOptions = {
     zeroRtpOnPause: true
 };
 
-/**
- * RTC configuration interface
- */
-type RtcConfig = {
-    readonly workerSettings: WorkerSettings;
-    readonly rtcServerOptions: WebRtcServerOptions;
-    readonly plainTransportOptions: PlainTransportOptions;
-    readonly rtcTransportOptions: {
-        readonly maxSctpMessageSize: number;
-        readonly sctpSendBufferSize: number;
-    };
-    readonly producerOptionsByKind: {
-        readonly audio: ProducerOptions;
-        readonly video: ProducerOptions;
-    };
-};
-
-export const rtc: RtcConfig = Object.freeze({
+export const rtc = Object.freeze({
     // https://mediasoup.org/documentation/v3/mediasoup/api/#WorkerSettings
     workerSettings: {
         logLevel: WORKER_LOG_LEVEL,
