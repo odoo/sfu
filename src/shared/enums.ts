@@ -26,7 +26,7 @@ export enum SERVER_MESSAGE {
     /** Signals the clients that the info (talking, mute,...) of one of the session in their channel has changed */
     INFO_CHANGE = "S_INFO_CHANGE",
     /** Signals the clients that the info of the channel (isRecording,...) has changed */
-    CHANNEL_INFO_CHANGE = "C_INFO_CHANGE"
+    CHANNEL_INFO_CHANGE = "CH_INFO_CHANGE"
 }
 
 export enum CLIENT_REQUEST {
