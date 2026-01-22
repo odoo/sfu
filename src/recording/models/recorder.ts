@@ -1,4 +1,3 @@
-import path from "node:path";
 import { EventEmitter } from "node:events";
 
 import { recording } from "#src/config.ts";
@@ -86,10 +85,6 @@ export class Recorder extends EventEmitter {
      */
     transcription: boolean = false;
     private _folder?: Folder;
-    /**
-     * The list of all the folders currently held by that recorder
-     */
-    private _folders: Folder[] = [];
     private _timeout?: NodeJS.Timeout;
     private readonly _channel: Channel;
     private readonly _tasks = new Map<SessionId, RecordingTask>();
@@ -211,36 +206,30 @@ export class Recorder extends EventEmitter {
             return;
         }
         this.isRecording = false;
+        this.video = false;
+        this.transcription = false;
+        this._emitStatus(cause);
+        // At this point we may wait a few minutes / seconds in case they want to
+        // restart the recording, they we just restore the current one.
+        logger.verbose(`terminating recorder for channel ${this._channel.name}`);
         clearTimeout(this._timeout);
         this._timeout = undefined;
-        logger.verbose(`terminating recorder for channel ${this._channel.name}`);
         this._channel.off(Channel.Events.SESSION_JOIN, this._onSessionJoin);
         this._channel.off(Channel.Events.SESSION_LEAVE, this._onSessionLeave);
         const metaData = save ? this._sealMetaData() : undefined;
         this._metaData.timeStamps = [];
         this._metaData.startedAt = undefined;
         this._metaData.labels = {};
-        this.video = false;
-        this.transcription = false;
         const currentFolder = this._folder;
         this._folder = undefined;
-        this._emitStatus(cause);
         const results = await this._stopRecordingTasks();
         const failed = results.some((result) => result.status === "rejected");
         if (save && !failed && currentFolder) {
             currentFolder.add(recording.metadataFileName, metaData!);
-            this._folders.push(currentFolder);
+            currentFolder.move(recording.directory);
         } else {
             currentFolder?.delete();
         }
-    }
-
-    async close(options: StopOptions = {}) {
-        await this.stop(options);
-        this._folders.forEach((folder) =>
-            folder.move(path.join(recording.directory, this._channel.uuid))
-        );
-        this._folders = [];
     }
 
     /**
@@ -291,7 +280,11 @@ export class Recorder extends EventEmitter {
         });
     }
     private async _init() {
-        this._folder = await Folder.create(Date.now().toString(), ["audio", "camera", "screen"]);
+        this._folder = await Folder.create(`${Date.now()}-${this._channel.uuid}`, [
+            "audio",
+            "camera",
+            "screen"
+        ]);
         clearTimeout(this._timeout);
         this._timeout = setTimeout(() => {
             this.stop({ cause: "recording_timeout" });

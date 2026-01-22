@@ -72,22 +72,6 @@ export const HTTP_INTERFACE: string = process.env.HTTP_INTERFACE || "0.0.0.0";
  * Port of HTTP and Websocket, defaults to standard port 8070.
  */
 export const PORT: number = Number(process.env.PORT) || 8070;
-
-/**
- * Whether the recording feature is enabled, false by default.
- */
-export const RECORDING: boolean = Boolean(process.env.RECORDING);
-
-/**
- * The path where the recordings will be saved, defaults to `${tmpDir}/recordings`.
- */
-export const RECORDING_PATH: string = process.env.RECORDING_PATH || path.join(tmpDir, "recordings");
-/**
- * The path use by the resources service for temporary files, defaults to `${tmpDir}/resources`,
- * Keeping the default is fine as this is only used for temporary files used for internal process, but it can
- * be changed for debugging.
- */
-export const RESOURCES_PATH: string = process.env.RESOURCES_PATH || path.join(tmpDir, "resources");
 /**
  * The number of workers to spawn (up to core limits) to manage RTC servers.
  * 0 < NUM_WORKERS <= os.availableParallelism()
@@ -120,17 +104,6 @@ export const RTC_MIN_PORT: number =
  */
 export const RTC_MAX_PORT: number =
     (process.env.RTC_MAX_PORT && Number(process.env.RTC_MAX_PORT)) || 49999;
-/**
- * Lower bound for the range of ports that the SFU server can use for dynamic ports, used for
- * routing streams to internal processes (recording).
- */
-export const DYNAMIC_MIN_PORT: number =
-    (process.env.DYNAMIC_MIN_PORT && Number(process.env.DYNAMIC_MIN_PORT)) || 50000;
-/**
- * Upper bound for the range of ports that the SFU server can use for dynamic ports
- */
-export const DYNAMIC_MAX_PORT: number =
-    (process.env.DYNAMIC_MAX_PORT && Number(process.env.DYNAMIC_MAX_PORT)) || 59999;
 /**
  * The maximum size of the buffer in byes for incoming messages per session
  */
@@ -191,12 +164,42 @@ export const LOG_TIMESTAMP: boolean = !FALSY_INPUT.has(process.env.LOG_TIMESTAMP
 export const LOG_COLOR: boolean = process.env.LOG_COLOR
     ? Boolean(process.env.LOG_COLOR)
     : process.stdout.isTTY;
+
+// ---------------------------------------------------------------------
+// ------------------   RECORDING ENV VARS   ---------------------------
+// ---------------------------------------------------------------------
+
 /**
- * Whether we keep the recordings (and their raw files) after they are successfully
- * upload to the remote server or not.
- * mostly for debugging
+ * Whether the recording feature is enabled, false by default.
  */
-export const KEEP_RECORDINGS = Boolean(process.env.KEEP_RECORDINGS);
+export const RECORDING: boolean = Boolean(process.env.RECORDING);
+
+/**
+ * The path where the recordings will be saved, defaults to `${tmpDir}/recordings`.
+ */
+export const RECORDING_PATH: string = process.env.RECORDING_PATH || path.join(tmpDir, "recordings");
+/**
+ * The path use by the resources service for temporary files, defaults to `${tmpDir}/resources`,
+ * Keeping the default is fine as this is only used for temporary files used for internal process, but it can
+ * be changed for debugging.
+ */
+export const RESOURCES_PATH: string = process.env.RESOURCES_PATH || path.join(tmpDir, "resources");
+/**
+ * Lower bound for the range of ports that the SFU server can use for dynamic ports, used for
+ * routing streams to internal processes (recording).
+ */
+export const DYNAMIC_MIN_PORT: number =
+    (process.env.DYNAMIC_MIN_PORT && Number(process.env.DYNAMIC_MIN_PORT)) || 50000;
+/**
+ * Upper bound for the range of ports that the SFU server can use for dynamic ports
+ */
+export const DYNAMIC_MAX_PORT: number =
+    (process.env.DYNAMIC_MAX_PORT && Number(process.env.DYNAMIC_MAX_PORT)) || 59999;
+/**
+ * The path where the archives will be saved, will not be archived if unspecified,
+ * this is mostly for debugging (collecting corrupt files and ffmpeg logs)
+ */
+export const ARCHIVES_PATH: string | undefined = process.env.ARCHIVES_PATH;
 /**
  * If set, generates `.log` files alongside all ffmpeg file outputs.
  * eg: `recording_1768377901321.mp4` will have an associated `recording_1768377901321.mp4.log`

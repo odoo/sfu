@@ -70,21 +70,19 @@ const sfu = new SfuClient();
     ```
 - startRecording({ video: boolean, transcription: boolean }) / stopRecording()
     ```js
-    let isRecording = false;
-    async function toggleRecording() {
-        // TODO edit doc, no longer returns iRecording, it returns { allowed }, recording state is an event on sfu client.
-        if (isRecording) {
-            isRecording = await sfuClient.stopRecording();
-        } else {
-            isRecording = await sfuClient.startRecording({ video: false, transcription: false });
-        }
-    }
+        // return if you were allowed to do the action or not
+        allowed = await sfuClient.stopRecording();
+        allowed = await sfuClient.startRecording({ video: false, transcription: false });
+        // when recording has started or stopped, a "update"/"channel_info_change" event
+        // is emitted by the sfuClient (see below).
     ```
 
 - @fires "update"
     ```js
     sfu.addEventListener("update", ({ detail: { name, payload } }) => {
         switch (name) {
+            case "channel_info_change":
+                const { recording, transcription, video } = payload.recordingState;
             case "track":
                 {
                     const { sessionId, type, track, active } = payload;

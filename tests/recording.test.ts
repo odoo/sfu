@@ -369,11 +369,9 @@ describe("Media Service", () => {
     });
 
     test("should process a valid recording", async () => {
-        const channelUUID = "channel_123";
         const recordingName = "session_123";
         const routingAddress = "http://www.odoo.com/routin";
-        const channelDir = `/mock/recordings/${channelUUID}`;
-        const recordingDir = `${channelDir}/${recordingName}`;
+        const recordingDir = `/mock/recordings/${recordingName}`;
         const metadata = {
             channelName: "Test Channel",
             routingAddress,
@@ -395,7 +393,6 @@ describe("Media Service", () => {
             transcription: false
         };
 
-        mockFs.mkdir(channelDir);
         mockFs.mkdir(recordingDir);
         mockFs.mkdir(path.join(recordingDir, "audio"));
         mockFs.write(path.join(recordingDir, "metadata.bin"), JSON.stringify(metadata));
@@ -421,11 +418,8 @@ describe("Media Service", () => {
     });
 
     test("should ignore invalid/incomplete recordings", async () => {
-        const channelUUID = "channel_456";
         const recordingName = "bad_session";
-        const channelDir = `/mock/recordings/${channelUUID}`;
-        const recordingDir = `${channelDir}/${recordingName}`;
-        mockFs.mkdir(channelDir);
+        const recordingDir = `/mock/recordings/${recordingName}`;
         mockFs.mkdir(recordingDir);
 
         await mediaService.start();
@@ -439,16 +433,13 @@ describe("Media Service", () => {
     });
 
     test("should handle expired recordings", async () => {
-        const channelUUID = "channel_789";
         const recordingName = "expired_session";
-        const channelDir = `/mock/recordings/${channelUUID}`;
-        const recordingDir = `${channelDir}/${recordingName}`;
+        const recordingDir = `/mock/recordings/${recordingName}`;
         const metadata = {
             stoppedAt: Date.now() - 1000 * 60 * 60 * 24,
             timeStamps: []
         };
 
-        mockFs.mkdir(channelDir);
         mockFs.mkdir(recordingDir);
         mockFs.write(path.join(recordingDir, "metadata.bin"), JSON.stringify(metadata));
 
@@ -1191,11 +1182,9 @@ describe("Media Service network tests", () => {
     });
 
     test("should handle network errors gracefully during upload", async () => {
-        const channelUUID = "channel_network_error";
         const recordingName = "session_network_error";
         const routingAddress = "http://www.odoo.com/routing";
-        const channelDir = `/mock/recordings/${channelUUID}`;
-        const recordingDir = `${channelDir}/${recordingName}`;
+        const recordingDir = `/mock/recordings/${recordingName}`;
         const metadata = {
             channelName: "Test Channel",
             routingAddress,
@@ -1213,7 +1202,6 @@ describe("Media Service network tests", () => {
             transcription: false
         };
 
-        mockFsInstance.mkdir(channelDir);
         mockFsInstance.mkdir(recordingDir);
         mockFsInstance.mkdir(path.join(recordingDir, "audio"));
         mockFsInstance.write(path.join(recordingDir, "metadata.bin"), JSON.stringify(metadata));
@@ -1230,11 +1218,9 @@ describe("Media Service network tests", () => {
     });
 
     test("should handle routing failure gracefully", async () => {
-        const channelUUID = "channel_route_fail";
         const recordingName = "session_route_fail";
         const routingAddress = "http://www.odoo.com/routing";
-        const channelDir = `/mock/recordings/${channelUUID}`;
-        const recordingDir = `${channelDir}/${recordingName}`;
+        const recordingDir = `/mock/recordings/${recordingName}`;
         const metadata = {
             channelName: "Test Channel",
             routingAddress,
@@ -1252,7 +1238,6 @@ describe("Media Service network tests", () => {
             transcription: false
         };
 
-        mockFsInstance.mkdir(channelDir);
         mockFsInstance.mkdir(recordingDir);
         mockFsInstance.mkdir(path.join(recordingDir, "audio"));
         mockFsInstance.write(path.join(recordingDir, "metadata.bin"), JSON.stringify(metadata));
@@ -1272,11 +1257,9 @@ describe("Media Service network tests", () => {
     });
 
     test("should handle empty destination in routing response", async () => {
-        const channelUUID = "channel_no_dest";
         const recordingName = "session_no_dest";
         const routingAddress = "http://www.odoo.com/routing";
-        const channelDir = `/mock/recordings/${channelUUID}`;
-        const recordingDir = `${channelDir}/${recordingName}`;
+        const recordingDir = `/mock/recordings/${recordingName}`;
         const metadata = {
             channelName: "Test Channel",
             routingAddress,
@@ -1299,7 +1282,6 @@ describe("Media Service network tests", () => {
             transcription: false
         };
 
-        mockFsInstance.mkdir(channelDir);
         mockFsInstance.mkdir(recordingDir);
         mockFsInstance.mkdir(path.join(recordingDir, "audio"));
         mockFsInstance.mkdir(path.join(recordingDir, "camera"));
