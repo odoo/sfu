@@ -24,7 +24,14 @@ let interval: NodeJS.Timeout | undefined;
  * Promise that resolves when all queued processing is complete.
  * Tests can await this to avoid arbitrary setTimeout delays.
  */
-export let processingQueue: Promise<void> = Promise.resolve();
+let processingQueue: Promise<void> = Promise.resolve();
+
+export const __testing__ = {
+    async oneProcessingBatch() {
+        await processingQueue;
+        return;
+    }
+};
 
 function makeJwt(key: string) {
     const nowSeconds = Date.now() / 1000;
@@ -92,19 +99,17 @@ export function close() {
 }
 
 async function checkSystemAndProcess() {
-    // TODO set interval to check if queue is empty to probe for files to process
-    // must keep going periodically
     logger.debug("checking for media processing");
     const work = (async () => {
         try {
-            while (!isCpuLoaded()) {
-                const didWork = await processRecordings();
-                if (!didWork) {
-                    break;
-                }
-            }
             if (isCpuLoaded()) {
-                logger.warn("CPU is too loaded, pausing recording processing");
+                logger.warn("CPU is too loaded, skipping recording processing");
+                return;
+            }
+            const didWork = await processRecordings();
+            if (didWork) {
+                await new Promise((resolve) => setTimeout(resolve, recording.processingCooldown));
+                await checkSystemAndProcess();
             }
         } catch (error) {
             logger.error(`Error in media service check: ${error}`);
