@@ -212,7 +212,7 @@ async function uploadAudio({
     mainMedia: boolean;
 }) {
     const fileStats = await fs.stat(filePath);
-    const queryParams = [];
+    const queryParams = ["start=" + metadata.startedAt, "end=" + metadata.stoppedAt];
     if (metadata.transcription) {
         queryParams.push("transcribe=True");
     }

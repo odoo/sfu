@@ -409,7 +409,7 @@ describe("Media Service", () => {
         );
 
         expect(mockFetch).toHaveBeenCalledWith(
-            `${routingAddress}/audio?main_media=True`,
+            `${routingAddress}/audio?start=${metadata.startedAt}&end=${metadata.stoppedAt}&main_media=True`,
             expect.objectContaining({
                 method: "POST",
                 headers: expect.objectContaining({ Authorization: "Bearer mock_jwt" })

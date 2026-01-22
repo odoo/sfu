@@ -55,7 +55,8 @@ export type Metadata = {
 export type SealedMetaData = Metadata & {
     channelKey: string;
     video: boolean;
-    stoppedAt?: number;
+    startedAt: number;
+    stoppedAt: number;
     transcription: boolean;
 };
 
