@@ -285,6 +285,7 @@ export class SfuClient extends EventTarget {
         if (this.state !== SfuClientState.CONNECTED) {
             return false;
         }
+        // TODO: If not allowed, return false too, no need to contact server
         return this._bus!.request(
             {
                 name: CLIENT_REQUEST.START_RECORDING,

@@ -4,7 +4,7 @@ import { createReadStream } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-import { recording, RECORDING_PATH, KEEP_RECORDINGS, LOCAL_KEY } from "#src/config.ts";
+import { recording, RECORDING_PATH, ARCHIVES_PATH, LOCAL_KEY } from "#src/config.ts";
 import { decrypt, sign } from "#src/core/services/auth.ts";
 import { MediaCompiler } from "#src/recording/models/media_compiler.ts";
 import type { SealedMetaData } from "#src/recording/models/recorder.ts";
@@ -69,6 +69,9 @@ export async function start(): Promise<void> {
             await fs.rm(RECORDING_PATH, { recursive: true, force: true });
         }
         await fs.mkdir(RECORDING_PATH, { recursive: true });
+        if (ARCHIVES_PATH) {
+            await fs.mkdir(ARCHIVES_PATH, { recursive: true });
+        }
     } else {
         logger.info("Recording is disabled, media service will not start");
         return;
@@ -95,7 +98,7 @@ async function checkSystemAndProcess() {
     const work = (async () => {
         try {
             while (!isCpuLoaded()) {
-                const didWork = await processOneChannelDirectory();
+                const didWork = await processRecordings();
                 if (!didWork) {
                     break;
                 }
@@ -122,39 +125,26 @@ function isCpuLoaded(): boolean {
 }
 
 /**
- * Processes one channel directory completely, then returns.
- * @returns `true` if a channel directory was processed (more may remain), `false` if none found.
+ * @returns `true` if a recording was processed (more may remain), `false` if none found.
  */
-async function processOneChannelDirectory(): Promise<boolean> {
+async function processRecordings(): Promise<boolean> {
     logger.verbose(`Checking recordings in ${RECORDING_PATH}`);
     try {
-        const channelDirectories = await fs.readdir(RECORDING_PATH, { withFileTypes: true });
-        const dir = channelDirectories.find((d) => d?.isDirectory());
-        if (!dir) {
-            return false;
-        }
-        const dirPath = path.join(RECORDING_PATH, dir.name);
-        const subDirs = await fs.readdir(dirPath, { withFileTypes: true });
-        let didWork = false;
-        for (const subdir of subDirs) {
-            if (subdir.isDirectory()) {
-                await processRecording(path.join(dir.name, subdir.name));
-                didWork = true;
+        const recordingDirectories = await fs.readdir(RECORDING_PATH, { withFileTypes: true });
+        for (const dir of recordingDirectories) {
+            if (dir.isDirectory()) {
+                await processRecording(dir.name);
+                return true;
             }
         }
-        if (!didWork) {
-            // directory contains no subdirectories, remove it to avoid infinite loop
-            await fs.rm(dirPath, { recursive: true, force: true });
-        }
-        return true;
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
             logger.debug("Recording directory not found (no recordings yet)");
         } else {
             logger.error(`Failed to read recording directory: ${error}`);
         }
-        return false;
     }
+    return false;
 }
 
 /**
@@ -199,7 +189,9 @@ async function processRecording(folderName: string) {
     } catch (error) {
         logger.error(`Failed to process recording ${folderName}: ${error}`);
     }
-    if (!KEEP_RECORDINGS) {
+    if (ARCHIVES_PATH) {
+        await fs.rename(dir, path.join(ARCHIVES_PATH, folderName));
+    } else {
         await fs.rm(dir, { recursive: true });
     }
     return filePath;

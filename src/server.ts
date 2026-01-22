@@ -18,7 +18,7 @@ async function run(): Promise<void> {
         `* add some warning if a call participant is in p2p (failed sfu connection) mode when starting recording`
     );
     logger.debug(`* Out of SFU flow (artifact, cloud,...)`);
-    logger.debug(`* Investigate imbeded transcription flow`);
+    logger.debug(`* odo: always rm file, failure or not`);
 }
 
 function cleanup(): void {
