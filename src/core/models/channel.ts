@@ -7,7 +7,7 @@ import * as config from "#src/config.ts";
 import { getAllowedCodecs, Logger } from "#src/utils/utils.ts";
 import { AuthenticationError, OvercrowdedError } from "#src/utils/errors.ts";
 import { Session, SESSION_CLOSE_CODE, type SessionId } from "#src/core/models/session.ts";
-import { Recorder } from "#src/recording/models/recorder.ts";
+import { Recorder, STOP_CODE, type UpdateData } from "#src/recording/models/recorder.ts";
 import { getWorker, type RtcWorker } from "#src/core/services/resources.ts";
 import { SERVER_MESSAGE } from "#src/shared/enums.ts";
 import type { RecordingState } from "#src/shared/types.ts";
@@ -198,7 +198,9 @@ export class Channel extends EventEmitter {
             this.router && config.recording.enabled && options.recordingAddress
                 ? new Recorder(this, options.recordingAddress)
                 : undefined;
-        this.recorder?.on(Recorder.Events.UPDATE, (data) => this._broadcastState(data));
+        this.recorder?.on(Recorder.Events.UPDATE, (data: UpdateData) =>
+            this._broadcastState({ recorderData: data })
+        );
         this.key = key ? Buffer.from(key, "base64") : undefined;
         this.uuid = crypto.randomUUID();
         this.name = `${remoteAddress}*${this.uuid.slice(-5)}`;
@@ -303,7 +305,7 @@ export class Channel extends EventEmitter {
      * @fires Channel#close
      */
     close(): void {
-        this.recorder?.stop();
+        this.recorder?.stop({ stopCode: STOP_CODE.CHANNEL_CLOSED });
         for (const session of this.sessions.values()) {
             session.off("close", this._onSessionClose);
             session.close({ code: SESSION_CLOSE_CODE.CHANNEL_CLOSED });
@@ -321,7 +323,7 @@ export class Channel extends EventEmitter {
     /**
      * Broadcast the state of this channel to all its participants
      */
-    private _broadcastState({ cause }: { cause?: string }) {
+    private _broadcastState({ recorderData }: { recorderData?: UpdateData }) {
         for (const session of this.sessions.values()) {
             if (!session.bus) {
                 logger.warn(`tried to broadcast state to session ${session.id}, but had no Bus`);
@@ -330,7 +332,7 @@ export class Channel extends EventEmitter {
             session.bus.send(
                 {
                     name: SERVER_MESSAGE.CHANNEL_INFO_CHANGE,
-                    payload: { state: this.recordingState, cause }
+                    payload: { state: this.recordingState, stopCode: recorderData?.stopCode }
                 },
                 { batch: true }
             );
@@ -354,7 +356,7 @@ export class Channel extends EventEmitter {
              * a single person should not keep a channel alive forever.
              */
             this.setCloseTimeout(true);
-            this.recorder?.stop();
+            this.recorder?.stop({ stopCode: STOP_CODE.CHANNEL_CLOSED });
         } else if (this.sessions.size === 0) {
             this.close();
         }

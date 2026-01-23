@@ -62,8 +62,22 @@ export type SealedMetaData = Metadata & {
 
 export type StopOptions = {
     save?: boolean;
-    cause?: string;
+    stopCode?: STOP_CODE;
 };
+
+export type UpdateData = {
+    isRecording: boolean;
+    transcription: boolean;
+    video: boolean;
+    stopCode?: STOP_CODE;
+};
+
+export enum STOP_CODE {
+    USER_REQUEST = "user_request",
+    CHANNEL_CLOSED = "channel_closed",
+    RECORDING_TIMEOUT = "recording_timeout",
+    RECORDING_FAILED = "recording_failed"
+}
 
 const logger = new Logger("RECORDER");
 
@@ -143,11 +157,14 @@ export class Recorder extends EventEmitter {
         this._metaData.startedAt = Date.now();
 
         try {
-            await this._init();
+            await this._start();
             this._emitStatus();
         } catch (error) {
+            // if error is memory type (see resources), close code should be memory_full or something
+            // then the channel may disable the feature until the resource is available again?
+            // something like resourceService.diskAvailable < config.recording.expectedSize becoming a condition for "can record"?
             logger.error(`Failed to start recording for ${this._channel.name}: ${error}`);
-            this.stop({ save: false });
+            this.stop({ save: false, stopCode: STOP_CODE.RECORDING_FAILED });
         }
     }
 
@@ -202,14 +219,14 @@ export class Recorder extends EventEmitter {
      * @param param0
      * @param param0.save - whether to save the recording
      */
-    async stop({ save = true, cause }: StopOptions = {}) {
+    async stop({ save = true, stopCode = STOP_CODE.USER_REQUEST }: StopOptions = {}) {
         if (!this.isRecording) {
             return;
         }
         this.isRecording = false;
         this.video = false;
         this.transcription = false;
-        this._emitStatus(cause);
+        this._emitStatus(stopCode);
         // At this point we may wait a few minutes / seconds in case they want to
         // restart the recording, they we just restore the current one.
         logger.verbose(`terminating recorder for channel ${this._channel.name}`);
@@ -272,15 +289,15 @@ export class Recorder extends EventEmitter {
         }
     }
 
-    private _emitStatus(cause?: string) {
-        this.emit("update", {
+    private _emitStatus(stopCode?: STOP_CODE) {
+        this.emit(Recorder.Events.UPDATE, {
             isRecording: this.isRecording,
             transcription: this.transcription,
             video: this.video,
-            cause
-        });
+            stopCode
+        } as UpdateData);
     }
-    private async _init() {
+    private async _start() {
         this._folder = await Folder.create(`${Date.now()}-${this._channel.uuid}`, [
             "audio",
             "camera",
@@ -288,7 +305,7 @@ export class Recorder extends EventEmitter {
         ]);
         clearTimeout(this._timeout);
         this._timeout = setTimeout(() => {
-            this.stop({ cause: "recording_timeout" });
+            this.stop({ stopCode: STOP_CODE.RECORDING_TIMEOUT });
         }, recording.maxDuration);
         logger.verbose(`Initializing recorder for channel: ${this._channel.name}`);
         for (const [sessionId, session] of this._channel.sessions) {

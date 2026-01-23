@@ -59,7 +59,14 @@ describe("Recording & Transcription", () => {
         const [recordingEventEnd] = await recordingEndEventPromise;
         expect(recordingEventEnd.detail).toEqual({
             name: CLIENT_UPDATE.CHANNEL_INFO_CHANGE,
-            payload: { state: { recording: false, transcription: false, video: false } }
+            payload: {
+                state: {
+                    recording: false,
+                    transcription: false,
+                    video: false
+                },
+                stopCode: "user_request"
+            }
         });
         expect(stopResult).toBe(true);
         restore();
