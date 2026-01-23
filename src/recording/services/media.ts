@@ -4,7 +4,7 @@ import { createReadStream } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-import { recording, RECORDING_PATH, ARCHIVES_PATH, LOCAL_KEY } from "#src/config.ts";
+import { recording, RECORDING_PATH, ARCHIVES_PATH } from "#src/config.ts";
 import { decrypt, sign } from "#src/core/services/auth.ts";
 import { MediaCompiler } from "#src/recording/models/media_compiler.ts";
 import type { SealedMetaData } from "#src/recording/models/recorder.ts";
@@ -65,24 +65,6 @@ function makeJwt(key: string) {
  * initialization data should be provided like the auth keys)
  */
 export async function start(): Promise<void> {
-    if (recording.enabled) {
-        if (!LOCAL_KEY) {
-            /**
-             * If the local key is not set, it means that the encryption key
-             * is auto generated, so any previously encrypted recording cannot
-             * be decrypted.
-             */
-            logger.warn("LOCAL_KEY missing from the environment, removing old recordings");
-            await fs.rm(RECORDING_PATH, { recursive: true, force: true });
-        }
-        await fs.mkdir(RECORDING_PATH, { recursive: true });
-        if (ARCHIVES_PATH) {
-            await fs.mkdir(ARCHIVES_PATH, { recursive: true });
-        }
-    } else {
-        logger.info("Recording is disabled, media service will not start");
-        return;
-    }
     logger.info("Starting media service");
     await checkSystemAndProcess();
     // TODO maybe use fs.watch(dir)

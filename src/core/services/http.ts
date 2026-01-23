@@ -128,6 +128,11 @@ function setupRoutes(routeListener: RouteListener): void {
                 }
                 const recordingAddress = searchParams.get("recordingAddress");
                 if (recordingAddress && !claims.key) {
+                    /**
+                     * A key is required as we will use it to sign the JWT
+                     * that the SFU will use to authenticate when accessing
+                     * the provided route to dispatch the recordings.
+                     */
                     logger.warn(
                         `${remoteAddress}: missing key claim when creating channel with recording address`
                     );
