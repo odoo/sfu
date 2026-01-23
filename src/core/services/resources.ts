@@ -48,6 +48,13 @@ export const __testing__ = {
 };
 
 export async function start(): Promise<void> {
+    /**
+     * TODO use statfs to know the available space on the disk, and keep track of the used space
+     * reserve disk space at Folder.create(), then return null/undefined (or throw) if not enough space
+     * folder.create => provides expected size, increment _expectedSize (static on Folder)
+     * folder.move (to rename "seal") => decrement _expectedSize and update real usage
+     * folder.delete => decrement _expectedSize
+     */
     logger.info("starting...");
     logger.info(`cleaning resources folder (${config.RESOURCES_PATH})...`);
     clearResourcesDir();

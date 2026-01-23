@@ -1,3 +1,5 @@
+import type { STOP_CODE } from "#src/recording/models/recorder.ts";
+
 export type JSONSerializable =
     | string
     | number
@@ -23,7 +25,7 @@ export type RecordingState = {
 
 export type RecordingStateUpdate = {
     state: RecordingState;
-    cause?: string;
+    stopCode?: STOP_CODE;
 };
 
 export type StartupData = {

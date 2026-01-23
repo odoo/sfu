@@ -83,6 +83,13 @@ export class MediaWriter {
 
             this._process.on("error", (error) => {
                 logger.error(`ffmpeg ${this.filename} error: ${error.message}`);
+                /**
+                 * If there is an error for lack of memory, need to send an event
+                 * to the recorder so that it stops recording. We may use a server
+                 * wide bus (maybe in the resources service?)
+                 *
+                 * Or is it in "close" with some code when the kernel OOM kills ffmpeg?
+                 */
                 this.close();
             });
 
@@ -133,6 +140,10 @@ export class MediaWriter {
         const codec = this._rtp.codec?.toLowerCase();
 
         switch (codec) {
+            /**
+             *  TODO maybe only use robust formats that can survive abrupt termination,
+             *  so maybe not MP4?
+             */
             case "h264":
             case "h265":
                 return "mp4";
