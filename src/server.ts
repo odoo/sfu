@@ -13,12 +13,17 @@ async function run(): Promise<void> {
     await resources.start();
     await http.start();
     await media.start();
-    logger.debug(`===== TO IMPLEMENT =====`);
+    logger.debug(`===============================================`);
+    logger.debug(`================ TO IMPLEMENT =================`);
+    logger.debug(`===============================================`);
     logger.debug(
         `* add some warning if a call participant is in p2p (failed sfu connection) mode when starting recording`
     );
-    logger.debug(`* Out of SFU flow (artifact, cloud,...)`);
-    logger.debug(`* odo: always rm file, failure or not`);
+    logger.debug(`* Cloud integration`);
+    logger.debug(`* Handle out of disk memory error`);
+    logger.debug(`* "Smart" layout`);
+    logger.debug(`===============================================`);
+    logger.debug(`===============================================`);
 }
 
 function cleanup(): void {

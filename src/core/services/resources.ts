@@ -1,5 +1,4 @@
 import fs from "node:fs/promises";
-import { rmSync } from "node:fs";
 import path from "node:path";
 
 import * as mediasoup from "mediasoup";
@@ -24,12 +23,33 @@ export type RtcWorker = mediasoup.types.Worker<RtcAppData>;
 
 const logger = new Logger("RESOURCES");
 
-function clearResourcesDir() {
+async function clearFileSystem() {
     try {
-        rmSync(config.RESOURCES_PATH, { recursive: true });
+        if (!config.LOCAL_KEY) {
+            /**
+             * If the local key is not set, it means that the encryption key
+             * is auto generated, so any previously encrypted recording cannot
+             * be decrypted.
+             */
+            logger.warn("LOCAL_KEY missing from the environment, removing old recordings");
+            await fs.rm(config.RECORDING_PATH, { recursive: true, force: true });
+        }
+        await fs.rm(config.RESOURCES_PATH, { recursive: true });
     } catch (error) {
-        // probably does not exist
-        logger.debug(`Failed to delete resources folder ${config.RESOURCES_PATH}: ${error}`);
+        logger.error(`Failed to clear file system: ${error}`);
+    }
+}
+async function setupFileSystem() {
+    await clearFileSystem();
+    if (config.recording.enabled) {
+        await fs.mkdir(config.RESOURCES_PATH, { recursive: true });
+        await fs.mkdir(config.RECORDING_PATH, { recursive: true });
+        if (config.ARCHIVES_PATH) {
+            await fs.mkdir(config.ARCHIVES_PATH, { recursive: true });
+        }
+    } else {
+        logger.info("Recording is disabled, media service will not start");
+        return;
     }
 }
 
@@ -57,8 +77,7 @@ export async function start(): Promise<void> {
      */
     logger.info("starting...");
     logger.info(`cleaning resources folder (${config.RESOURCES_PATH})...`);
-    clearResourcesDir();
-    await fs.mkdir(config.RESOURCES_PATH, { recursive: true });
+    await setupFileSystem();
     for (let i = 0; i < config.NUM_WORKERS; ++i) {
         await makeWorker();
     }
@@ -84,7 +103,7 @@ export function close() {
         worker.appData.webRtcServer?.close();
         worker.close();
     }
-    clearResourcesDir();
+    clearFileSystem();
     workers.clear();
     availablePorts.length = 0;
 }
