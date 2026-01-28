@@ -19,6 +19,7 @@ export type WebSocketCredentials = {
 
 export type RecordingState = {
     recording?: boolean;
+    audio?: boolean;
     transcription?: boolean;
     video?: boolean;
 };
@@ -34,7 +35,8 @@ export type StartupData = {
 };
 export type AvailableFeatures = {
     rtc: boolean;
-    recording: boolean;
+    transcription: boolean;
+    audioRecording: boolean;
     videoRecording: boolean;
 };
 
@@ -80,7 +82,7 @@ export type BusMessage =
       }
     | {
           name: typeof CLIENT_REQUEST.START_RECORDING;
-          payload: { video?: boolean; transcription?: boolean };
+          payload: { audio?: boolean; video?: boolean; transcription?: boolean };
       }
     | { name: typeof CLIENT_REQUEST.STOP_RECORDING; payload?: never }
     | {

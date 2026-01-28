@@ -54,6 +54,7 @@ export type Metadata = {
 
 export type SealedMetaData = Metadata & {
     channelKey: string;
+    audio: boolean;
     video: boolean;
     startedAt: number;
     stoppedAt: number;
@@ -67,6 +68,7 @@ export type StopOptions = {
 
 export type UpdateData = {
     isRecording: boolean;
+    audio: boolean;
     transcription: boolean;
     video: boolean;
     stopCode?: STOP_CODE;
@@ -92,6 +94,10 @@ export class Recorder extends EventEmitter {
     };
     isRecording: boolean = false;
     /**
+     * Whether audio is recorded
+     */
+    audio: boolean = false;
+    /**
      * Whether video is recorded (camera and screen sharing)
      */
     video: boolean = false;
@@ -114,6 +120,7 @@ export class Recorder extends EventEmitter {
     get state(): RecordingState {
         return {
             recording: this.isRecording,
+            audio: this.audio,
             video: this.video,
             transcription: this.transcription
         };
@@ -146,13 +153,14 @@ export class Recorder extends EventEmitter {
      * @param [options.transcription] - whether to transcribe the recording, this flags the
      * current recording for transcription, can be changed at runtime.
      */
-    async start(options: { video?: boolean; transcription?: boolean } = {}) {
+    async start(options: { audio?: boolean; video?: boolean; transcription?: boolean } = {}) {
         this.transcription = Boolean(options.transcription);
         if (this.isRecording) {
             this._emitStatus();
             return;
         }
         this.isRecording = true;
+        this.audio = Boolean(options.audio);
         this.video = Boolean(options.video);
         this._metaData.startedAt = Date.now();
 
@@ -224,6 +232,7 @@ export class Recorder extends EventEmitter {
             return;
         }
         this.isRecording = false;
+        this.audio = false;
         this.video = false;
         this.transcription = false;
         this._emitStatus(stopCode);
@@ -258,6 +267,7 @@ export class Recorder extends EventEmitter {
     private _sealMetaData() {
         const metadata = JSON.stringify({
             ...this._metaData,
+            audio: this.audio,
             video: this.video,
             transcription: this.transcription,
             channelKey: this._channel.key,
@@ -292,6 +302,7 @@ export class Recorder extends EventEmitter {
     private _emitStatus(stopCode?: STOP_CODE) {
         this.emit(Recorder.Events.UPDATE, {
             isRecording: this.isRecording,
+            audio: this.audio,
             transcription: this.transcription,
             video: this.video,
             stopCode
@@ -330,7 +341,7 @@ export class Recorder extends EventEmitter {
 
     private _getRecordingStates(): RecordingStates {
         return {
-            audio: this.isRecording,
+            audio: this.isRecording && this.audio,
             camera: this.isRecording && this.video,
             screen: this.isRecording && this.video
         };

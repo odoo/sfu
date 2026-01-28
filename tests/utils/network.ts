@@ -193,8 +193,9 @@ export class LocalNetwork {
                     sfu_channel_uuid: channelUUID,
                     session_id: sessionId,
                     permissions: {
-                        recording: true,
-                        videoRecording: true
+                        audioRecording: true,
+                        videoRecording: true,
+                        transcription: true
                     }
                 },
                 key
