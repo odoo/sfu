@@ -156,11 +156,13 @@ export class SfuClient extends EventTarget {
     public errors: Error[] = [];
     public availableFeatures: AvailableFeatures = {
         rtc: false,
-        recording: false,
+        transcription: false,
+        audioRecording: false,
         videoRecording: false
     };
     public recordingState: RecordingState = {
         recording: false,
+        audio: false,
         transcription: false,
         video: false
     };
@@ -280,7 +282,7 @@ export class SfuClient extends EventTarget {
         return stats;
     }
     async startRecording(
-        options: { video?: boolean; transcription?: boolean } = {}
+        options: { audio?: boolean; video?: boolean; transcription?: boolean } = {}
     ): Promise<recordingActionResult> {
         if (this.state !== SfuClientState.CONNECTED) {
             return false;

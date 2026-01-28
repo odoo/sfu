@@ -44,14 +44,14 @@ describe("Recording & Transcription", () => {
         await user1.isConnected;
         const user2 = await network.connect(channelUUID, 3);
         await user2.isConnected;
-        expect(user2.sfuClient.availableFeatures.recording).toBe(true);
+        expect(user2.sfuClient.availableFeatures.audioRecording).toBe(true);
         const recordingStartEventPromise = once(user1.sfuClient, "update");
-        const startResult = await user2.sfuClient.startRecording();
+        const startResult = await user2.sfuClient.startRecording({ audio: true });
         expect(startResult).toBe(true);
         const [recordingStartEvent] = await recordingStartEventPromise;
         expect(recordingStartEvent.detail).toEqual({
             name: CLIENT_UPDATE.CHANNEL_INFO_CHANGE,
-            payload: { state: { recording: true, transcription: false, video: false } }
+            payload: { state: { recording: true, audio: true, transcription: false, video: false } }
         });
         expect(user2.sfuClient.recordingState.recording).toBe(true);
         const recordingEndEventPromise = once(user2.sfuClient, "update");
@@ -62,6 +62,7 @@ describe("Recording & Transcription", () => {
             payload: {
                 state: {
                     recording: false,
+                    audio: false,
                     transcription: false,
                     video: false
                 },
@@ -78,9 +79,13 @@ describe("Recording & Transcription", () => {
         await user1.isConnected;
         const user2 = await network.connect(channelUUID, 3);
         await user2.isConnected;
-        const startResult = await user2.sfuClient.startRecording({ transcription: true });
+        const startResult = await user2.sfuClient.startRecording({
+            audio: true,
+            transcription: true
+        });
         expect(startResult).toBe(true);
         expect(user2.sfuClient.recordingState.recording).toBe(true);
+        expect(user2.sfuClient.recordingState.audio).toBe(true);
         expect(user2.sfuClient.recordingState.transcription).toBe(true);
 
         const stopResult = await user2.sfuClient.stopRecording();
@@ -102,7 +107,7 @@ describe("Recording & Transcription", () => {
             const channelUUID = await network.getChannelUUID();
             const user = await network.connect(channelUUID, 1);
             await user.isConnected;
-            await user.sfuClient.startRecording({ video: true });
+            await user.sfuClient.startRecording({ audio: true, video: true });
 
             const audioTrack = new FakeMediaStreamTrack({ kind: "audio" });
             await user.sfuClient.updateUpload(STREAM_TYPE.AUDIO, audioTrack);
@@ -175,7 +180,7 @@ describe("Recording & Transcription", () => {
             await user.sfuClient.updateUpload(STREAM_TYPE.SCREEN, videoTrack);
             await user.sfuClient.updateUpload(STREAM_TYPE.SCREEN, null);
 
-            await user.sfuClient.startRecording({ video: true });
+            await user.sfuClient.startRecording({ audio: true, video: true });
 
             await new Promise<void>((resolve, reject) => {
                 const timeout = setTimeout(() => {
@@ -236,7 +241,7 @@ describe("Recording & Transcription", () => {
             const user1 = await network.connect(channelUUID, 1);
             await user1.isConnected;
 
-            await user1.sfuClient.startRecording();
+            await user1.sfuClient.startRecording({ audio: true });
             expect(user1.sfuClient.recordingState.recording).toBe(true);
 
             const user2 = await network.connect(channelUUID, 2);
@@ -285,7 +290,7 @@ describe("Recording & Transcription", () => {
             const user = await network.connect(channelUUID, 1);
             await user.isConnected;
 
-            await user.sfuClient.startRecording({ video: true });
+            await user.sfuClient.startRecording({ audio: true, video: true });
             expect(user.sfuClient.recordingState.recording).toBe(true);
 
             expect(mockSpawn).not.toHaveBeenCalled();
@@ -396,6 +401,7 @@ describe("Media Service", () => {
                     info: { type: STREAM_TYPE.AUDIO, active: false, filename: "audio_1.ogg" }
                 }
             ],
+            audio: false,
             video: false,
             transcription: false
         };
@@ -1205,6 +1211,7 @@ describe("Media Service network tests", () => {
                     info: { type: STREAM_TYPE.AUDIO, active: true, filename: "audio_1.ogg" }
                 }
             ],
+            audio: false,
             video: false,
             transcription: false
         };
@@ -1241,6 +1248,7 @@ describe("Media Service network tests", () => {
                     info: { type: STREAM_TYPE.AUDIO, active: true, filename: "audio_1.ogg" }
                 }
             ],
+            audio: false,
             video: false,
             transcription: false
         };
@@ -1285,6 +1293,7 @@ describe("Media Service network tests", () => {
                     info: { type: STREAM_TYPE.CAMERA, active: true, filename: "cam_1.mp4" }
                 }
             ],
+            audio: true,
             video: true,
             transcription: false
         };

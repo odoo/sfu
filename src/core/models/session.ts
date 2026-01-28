@@ -65,7 +65,8 @@ export enum SESSION_CLOSE_CODE {
     ERROR = "error"
 }
 export type SessionPermissions = {
-    recording?: boolean;
+    transcription?: boolean;
+    audioRecording?: boolean;
     videoRecording?: boolean;
 };
 export type TransportConfig = {
@@ -163,7 +164,8 @@ export class Session extends EventEmitter {
         screen: null
     };
     public readonly permissions: SessionPermissions = Object.seal({
-        recording: false,
+        transcription: false,
+        audioRecording: false,
         videoRecording: false
     });
     /** Parent channel containing this session */
@@ -196,19 +198,26 @@ export class Session extends EventEmitter {
         return {
             availableFeatures: {
                 rtc: Boolean(this._channel.router),
-                recording: this.canRecord,
+                transcription: this.canTranscriptionRecord,
+                audioRecording: this.canAudioRecord,
                 videoRecording: this.canVideoRecord
             },
             recordingState: this._channel.recordingState
         };
     }
-
-    get canRecord(): boolean {
-        return Boolean(this._channel.recorder && config.RECORDING && this.permissions.recording);
+    // TODO rename canRecordAudio
+    get canAudioRecord(): boolean {
+        return Boolean(
+            this._channel.recorder && config.RECORDING && this.permissions.audioRecording
+        );
     }
 
     get canVideoRecord(): boolean {
-        return Boolean(this.canRecord && this.permissions.videoRecording);
+        return Boolean(this.canAudioRecord && this.permissions.videoRecording);
+    }
+
+    get canTranscriptionRecord(): boolean {
+        return Boolean(this.canAudioRecord && this.permissions.transcription);
     }
 
     get name(): string {
@@ -723,20 +732,24 @@ export class Session extends EventEmitter {
                 return { id: producer.id };
             }
             case CLIENT_REQUEST.START_RECORDING: {
-                if (this.canRecord) {
-                    const { video, transcription } = payload || {};
+                const { audio, video, transcription } = payload || {};
+                const canAudio = audio && this.canAudioRecord;
+                const canVideo = video && this.canVideoRecord;
+                const canTranscription = transcription && this.canTranscriptionRecord;
+                if (canAudio || canVideo || canTranscription) {
                     this._channel.recorder!.start({
-                        video: video && this.canVideoRecord,
-                        transcription
+                        audio: canAudio,
+                        video: canVideo,
+                        transcription: canTranscription
                     });
                 }
-                return this.canRecord;
+                return canAudio || canVideo || canTranscription;
             }
             case CLIENT_REQUEST.STOP_RECORDING: {
-                if (this.canRecord) {
+                if (this.canAudioRecord || this.canVideoRecord || this.canTranscriptionRecord) {
                     this._channel.recorder!.stop();
                 }
-                return this.canRecord;
+                return this.canAudioRecord || this.canVideoRecord || this.canTranscriptionRecord;
             }
             default:
                 logger.warn(`[${this.name}] Unknown request type: ${name}`);
