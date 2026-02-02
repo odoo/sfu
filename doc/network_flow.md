@@ -116,14 +116,14 @@ Clients connect to the SFU via WebSocket and authenticate with their JWT.
    ```json
    { "jwt": "<signed-jwt>", "channelUUID": "<uuid>" }
    ```
-3. SFU verifies JWT using channel's key (or global key if none)
-4. SFU creates/joins session and sends startup data:
+   returns:
    ```json
    {
      "availableFeatures": {
-       "rtc": true,
-       "recording": false,
-       "videoRecording": false
+       "rtc": false,
+        "transcription": false,
+        "audioRecording": false,
+        "videoRecording": false
      },
      "recordingState": null
    }
