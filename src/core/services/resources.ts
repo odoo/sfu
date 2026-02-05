@@ -74,6 +74,9 @@ export async function start(): Promise<void> {
      * folder.create => provides expected size, increment _expectedSize (static on Folder)
      * folder.move (to rename "seal") => decrement _expectedSize and update real usage
      * folder.delete => decrement _expectedSize
+     *
+     * TODO reserve dynamic ports for recordings ahead of time (conservative estimate),
+     * and block recording start when remaining ports are too low.
      */
     logger.info("starting...");
     logger.info(`cleaning resources folder (${config.RESOURCES_PATH})...`);

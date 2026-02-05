@@ -1,6 +1,6 @@
 import path from "node:path";
 import { PassThrough } from "node:stream";
-import { once } from "node:events";
+import { EventEmitter, once } from "node:events";
 
 import { describe, expect, jest, test, beforeEach, afterEach } from "@jest/globals";
 import { FakeMediaStreamTrack } from "fake-mediastreamtrack";
@@ -10,6 +10,7 @@ import { CLIENT_UPDATE } from "#src/client";
 import { TIME_TAG } from "#src/recording/models/recorder.ts";
 
 import { recordingSetup, setupUnitTestsEnv } from "#tests/utils/testHelpers.ts";
+import { withMockEnv } from "#tests/utils/utils.ts";
 import {
     mockFfmpeg,
     mockSpawn,
@@ -17,11 +18,79 @@ import {
     MockChildProcess
 } from "#tests/utils/mockFfmpeg.ts";
 import { mockNodeFS } from "#tests/utils/mockFileSystem.ts";
+import type { Channel } from "#src/core/models/channel.ts";
 
 mockNodeFS();
 mockFfmpeg();
 
 describe("Recording & Transcription", () => {
+    test("serializes channelKey as Buffer JSON in metadata", async () => {
+        const baseDir = `/mock/recorder-metadata-${Date.now()}`;
+        const resourcesPath = path.join(baseDir, "resources");
+        const recordingPath = path.join(baseDir, "recordings");
+        const authKey = "u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng=";
+        const localKey = "24qvOuliAKWt1gnSzSvkYUD3s31pO1hPcchbekMHCyA=";
+        const channelKey = "6A9Q5An1oSpYkzVv5QhYlGpx2wJg1TjJe3WnV0X4B3Y=";
+
+        const restoreEnv = withMockEnv({
+            AUTH_KEY: authKey,
+            PUBLIC_IP: "127.0.0.1",
+            LOCAL_KEY: localKey,
+            RECORDING_PATH: recordingPath,
+            RESOURCES_PATH: resourcesPath,
+            RECORDING: "true"
+        });
+
+        const auth = await import("#src/core/services/auth.ts");
+        try {
+            const fs = await import("node:fs/promises");
+            await fs.mkdir(resourcesPath, { recursive: true });
+            await fs.mkdir(recordingPath, { recursive: true });
+
+            auth.start();
+
+            const { Recorder } = await import("#src/recording/models/recorder.ts");
+            const { recording } = await import("#src/config.ts");
+
+            class FakeChannel extends EventEmitter {
+                name = "test-channel";
+                uuid = "test-uuid";
+                key: Buffer;
+                sessions = new Map();
+
+                constructor(key: Buffer) {
+                    super();
+                    this.key = key;
+                }
+            }
+
+            const channelKeyBuffer = Buffer.from(channelKey, "base64");
+            const channel = new FakeChannel(channelKeyBuffer);
+            const recorder = new Recorder(channel as unknown as Channel, "http://routing.local");
+
+            await recorder.start({ audio: true });
+            await recorder.stop();
+
+            const dirs = await fs.readdir(recordingPath, { withFileTypes: true });
+            expect(dirs).toHaveLength(1);
+            const recordingDir = path.join(recordingPath, dirs[0].name);
+            const encrypted = await fs.readFile(
+                path.join(recordingDir, recording.metadataFileName),
+                "utf-8"
+            );
+            const decrypted = auth.decrypt(encrypted);
+            const metadata = JSON.parse(decrypted);
+
+            expect(metadata.channelKey).toEqual({
+                type: "Buffer",
+                data: expect.any(Array)
+            });
+            expect(Buffer.from(metadata.channelKey.data)).toEqual(channelKeyBuffer);
+        } finally {
+            auth.close();
+            restoreEnv();
+        }
+    });
     test("Does not record when the feature is disabled", async () => {
         const { restore } = await recordingSetup({
             RECORDING: undefined
