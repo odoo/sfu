@@ -22,6 +22,12 @@ type RecordingData = {
     active: boolean;
     type: STREAM_TYPE;
     mediaOutput?: MediaOutput;
+    fileStateChangeListener?: (payload: {
+        active: boolean;
+        available: boolean;
+        filename: string;
+        eof?: boolean;
+    }) => void;
 };
 
 type RecordingDataByStreamType = {
@@ -115,28 +121,29 @@ export class RecordingTask extends EventEmitter {
                     name: `${this._session.id}-${type}`,
                     directory: path.join(this._recorder.path!, type)
                 });
-                data.mediaOutput.on(
-                    MediaOutput.Events.FILE_STATE_CHANGE,
-                    ({
+                data.fileStateChangeListener = ({
+                    active,
+                    available,
+                    filename,
+                    eof
+                }: {
+                    active: boolean;
+                    available: boolean;
+                    filename: string;
+                    eof?: boolean;
+                }) => {
+                    this._recorder.mark(TIME_TAG.FILE_STATE_CHANGE, {
                         active,
                         available,
                         filename,
+                        type,
+                        sessionId: this._session.id,
                         eof
-                    }: {
-                        active: boolean;
-                        available: boolean;
-                        filename: string;
-                        eof?: boolean;
-                    }) => {
-                        this._recorder.mark(TIME_TAG.FILE_STATE_CHANGE, {
-                            active,
-                            available,
-                            filename,
-                            type,
-                            sessionId: this._session.id,
-                            eof
-                        });
-                    }
+                    });
+                };
+                data.mediaOutput.on(
+                    MediaOutput.Events.FILE_STATE_CHANGE,
+                    data.fileStateChangeListener
                 );
                 if (data.active) {
                     return;
@@ -160,6 +167,13 @@ export class RecordingTask extends EventEmitter {
     private async _clearData(type: STREAM_TYPE) {
         const data = this.recordingDataByStreamType[type];
         data.active = false;
+        if (data.mediaOutput && data.fileStateChangeListener) {
+            data.mediaOutput.off(
+                MediaOutput.Events.FILE_STATE_CHANGE,
+                data.fileStateChangeListener
+            );
+        }
+        data.fileStateChangeListener = undefined;
         await data.mediaOutput?.close();
         data.mediaOutput = undefined;
     }

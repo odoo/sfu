@@ -81,24 +81,31 @@ export function close() {
 }
 
 async function checkSystemAndProcess() {
-    logger.debug("checking for media processing");
-    const work = (async () => {
+    processingQueue = processingQueue.then(async () => {
+        logger.debug("checking for media processing");
         try {
             if (isCpuLoaded()) {
                 logger.warn("CPU is too loaded, skipping recording processing");
                 return;
             }
-            const didWork = await processRecordings();
-            if (didWork) {
+            // Loop until no recordings remain or CPU becomes too loaded.
+            let didWork = true;
+            while (didWork) {
+                didWork = await processRecordings();
+                if (!didWork) {
+                    return;
+                }
                 await new Promise((resolve) => setTimeout(resolve, recording.processingCooldown));
-                await checkSystemAndProcess();
+                if (isCpuLoaded()) {
+                    logger.warn("CPU is too loaded, skipping recording processing");
+                    return;
+                }
             }
         } catch (error) {
             logger.error(`Error in media service check: ${error}`);
         }
-    })();
-    processingQueue = processingQueue.then(() => work);
-    await work;
+    });
+    await processingQueue;
 }
 
 function isCpuLoaded(): boolean {
@@ -135,7 +142,6 @@ async function processRecordings(): Promise<boolean> {
 }
 
 /**
- * TODO: node:zlib
  * TODO: when using ffmpeg for compilation, give lower priority to the process
  */
 async function processRecording(folderName: string) {
