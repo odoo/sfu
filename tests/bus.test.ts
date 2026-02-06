@@ -77,6 +77,18 @@ describe("Bus API", () => {
         const response = await aliceBus.request("ping" as unknown as RequestMessage);
         expect(response).toBe("pong");
     });
+    test("request() responds with empty object when onRequest throws", async () => {
+        const { aliceSocket, bobSocket } = mockSocketPair();
+        const aliceBus = new Bus(aliceSocket as unknown as WebSocket);
+        const bobBus = new Bus(bobSocket as unknown as WebSocket);
+        bobBus.onRequest = async () => {
+            throw new Error("boom");
+        };
+        const response = await aliceBus.request("ping" as unknown as RequestMessage, {
+            timeout: 50
+        });
+        expect(response).toStrictEqual({});
+    });
     test("promises are rejected when the bus is closed", async () => {
         const { aliceSocket } = mockSocketPair();
         const aliceBus = new Bus(aliceSocket as unknown as WebSocket);
