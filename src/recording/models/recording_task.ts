@@ -20,6 +20,7 @@ export enum RECORDING_TASK_EVENT {
 
 type RecordingData = {
     active: boolean;
+    allowed: boolean;
     type: STREAM_TYPE;
     mediaOutput?: MediaOutput;
     fileStateChangeListener?: (payload: {
@@ -48,14 +49,17 @@ export class RecordingTask extends EventEmitter {
     private readonly recordingDataByStreamType: RecordingDataByStreamType = {
         [STREAM_TYPE.AUDIO]: {
             active: false,
+            allowed: true,
             type: STREAM_TYPE.AUDIO
         },
         [STREAM_TYPE.CAMERA]: {
             active: false,
+            allowed: true,
             type: STREAM_TYPE.CAMERA
         },
         [STREAM_TYPE.SCREEN]: {
             active: false,
+            allowed: true,
             type: STREAM_TYPE.SCREEN
         }
     };
@@ -68,6 +72,25 @@ export class RecordingTask extends EventEmitter {
     }
     set screen(value: boolean) {
         this._setRecording(STREAM_TYPE.SCREEN, value);
+    }
+
+    /**
+     * Toggles whether an already-recording video stream is allowed to be active.
+     *
+     * This is controlled by recorder-wide prioritization rules (screen-over-camera
+     * and latest-N limits). The method does not create or destroy recording outputs;
+     * it only forwards the allow/deny state to `MediaOutput.allowed`, so availability
+     * can continue to be observed while active writing is gated.
+     */
+    setAllowed(type: STREAM_TYPE.CAMERA | STREAM_TYPE.SCREEN, allowed: boolean) {
+        const data = this.recordingDataByStreamType[type];
+        if (data.allowed === allowed) {
+            return;
+        }
+        data.allowed = allowed;
+        if (data.mediaOutput) {
+            data.mediaOutput.allowed = allowed;
+        }
     }
 
     constructor(recorder: Recorder, session: Session, { audio, camera, screen }: RecordingStates) {
@@ -145,6 +168,7 @@ export class RecordingTask extends EventEmitter {
                     MediaOutput.Events.FILE_STATE_CHANGE,
                     data.fileStateChangeListener
                 );
+                data.mediaOutput.allowed = data.allowed;
                 if (data.active) {
                     return;
                 }

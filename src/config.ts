@@ -226,11 +226,11 @@ export const recording = Object.freeze({
     directory: RECORDING_PATH,
     enabled: RECORDING,
     metadataFileName: "metadata.bin",
-    minDuration: 30 /* sec */ * 1000, // TODO
+    minDuration: 30 /* sec */ * 1000,
     maxDuration: 60 /* min */ * 60 * 1000,
     fileTTL: 24 /* hours */ * 60 * 60 * 1000,
     processingCooldown: 5 /* sec */ * 1000,
-    // TODO could be env variables
+    // TODO could be env variables?
     videoCodec: "libsvtav1",
     videoPreset: "10",
     videoExt: "mp4",
@@ -239,13 +239,9 @@ export const recording = Object.freeze({
     audioBitRate: "8k",
     audioExt: "ogg",
     /*
-     * TODO below rules are currently not enforced
-     * should limit the amount of streams that are recorded
-     * expensive and essentially useless to show too many cameras.
-     * showing multiple share screens is also not useful as it will
-     * make them unreadable.
-     *
-     * see comment in recorder.ts ( mark() )
+     * Limits the amount of video streams recorded at once.
+     * Screen sharing has precedence over cameras and keeps only
+     * the most recent streams up to the configured limits.
      */
     cameraLimit: 4,
     screenLimit: 1
