@@ -25,6 +25,7 @@ mockFfmpeg();
 
 describe("Recording & Transcription", () => {
     test("serializes channelKey as Buffer JSON in metadata", async () => {
+        jest.useFakeTimers();
         const baseDir = `/mock/recorder-metadata-${Date.now()}`;
         const resourcesPath = path.join(baseDir, "resources");
         const recordingPath = path.join(baseDir, "recordings");
@@ -69,6 +70,7 @@ describe("Recording & Transcription", () => {
             const recorder = new Recorder(channel as unknown as Channel, "http://routing.local");
 
             await recorder.start({ audio: true });
+            jest.advanceTimersByTime(recording.minDuration + 1);
             await recorder.stop();
 
             const dirs = await fs.readdir(recordingPath, { withFileTypes: true });
@@ -89,6 +91,7 @@ describe("Recording & Transcription", () => {
         } finally {
             auth.close();
             restoreEnv();
+            jest.useRealTimers();
         }
     });
     test("Does not record when the feature is disabled", async () => {
