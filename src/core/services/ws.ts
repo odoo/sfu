@@ -26,6 +26,15 @@ const authenticatedWebSockets = new Set<WebSocket>();
 let pendingId = 0;
 let server: WebSocketServer | undefined;
 
+export const __testing__ = {
+    get unauthenticatedWebSocketCount(): number {
+        return unauthenticatedWebSockets.size;
+    },
+    get authenticatedWebSocketCount(): number {
+        return authenticatedWebSockets.size;
+    }
+};
+
 export async function start(
     options: ConstructorParameters<typeof WebSocketServer>[0]
 ): Promise<WebSocketServer> {
@@ -54,6 +63,7 @@ export async function start(
 
         // Handle first message (authentication)
         webSocket.once("message", (message: string) => {
+            let isAuthenticated = false;
             try {
                 const payload = JSON.parse(message) as AuthenticationPayload;
                 const credentials: WebSocketCredentials =
@@ -62,6 +72,7 @@ export async function start(
                 const session = connect(webSocket, credentials);
                 session.remote = remoteAddress;
                 logger.info(`session [${session.name}] authenticated and created`);
+                isAuthenticated = true;
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : String(error);
                 logger.warn(`${errorMessage} : ${error instanceof Error ? error.cause ?? "" : ""}`);
@@ -74,7 +85,9 @@ export async function start(
                 }
             }
             unauthenticatedWebSockets.delete(currentPendingId);
-            authenticatedWebSockets.add(webSocket);
+            if (isAuthenticated) {
+                authenticatedWebSockets.add(webSocket);
+            }
             clearTimeout(timeout);
         });
     });

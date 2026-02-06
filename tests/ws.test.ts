@@ -7,6 +7,7 @@ import { Channel } from "#src/core/models/channel";
 import { WS_CLOSE_CODE } from "#src/shared/enums";
 import { OvercrowdedError } from "#src/utils/errors";
 import { timeouts } from "#src/config";
+import { __testing__ as wsTesting } from "#src/core/services/ws";
 
 const HTTP_INTERFACE = "0.0.0.0";
 const PORT = 62345;
@@ -37,6 +38,8 @@ describe("WebSocket Service", () => {
 
         const [code] = await once(ws, "close");
         expect(code).toBe(WS_CLOSE_CODE.ERROR);
+        expect(wsTesting.unauthenticatedWebSocketCount).toBe(0);
+        expect(wsTesting.authenticatedWebSocketCount).toBe(0);
     });
     test("Closes connection on invalid auth credentials (invalid JWT)", async () => {
         const ws = new WebSocket(`ws://localhost:${PORT}`);
