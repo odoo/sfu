@@ -3,6 +3,7 @@ node_modules
 # made with jest coverage
 coverage
 /bundle
+/profiling
 
 # whitelist
 !.eslintrc.json
