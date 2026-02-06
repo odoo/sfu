@@ -8,6 +8,8 @@
   "scripts": {
     "build": "rollup -c",
     "start": "node --experimental-transform-types ./src/server.ts",
+    "profiling:cpu": "mkdir -p ./profiling && node --cpu-prof --cpu-prof-dir=./profiling --cpu-prof-name=sfu.cpuprofile --experimental-transform-types ./src/server.ts",
+    "profiling:heap": "mkdir -p ./profiling && node --heap-prof --heap-prof-dir=./profiling --heap-prof-name=sfu.heapprofile --heapsnapshot-signal=SIGUSR2 --experimental-transform-types ./src/server.ts",
     "test": "LOG_LEVEL=none node ./node_modules/.bin/jest -i",
     "test:dev": "node ./node_modules/.bin/jest --detectOpenHandles --verbose --collectCoverage",
     "test:watch": "LOG_LEVEL=warn node ./node_modules/.bin/jest --watch -i"
@@ -31,7 +33,6 @@
     "@rollup/plugin-commonjs": "^25.0.7",
     "@rollup/plugin-node-resolve": "^13.0.4",
     "@rollup/plugin-typescript": "^12.1.2",
-    "tslib": "^2.8.1",
     "@types/jest": "^29.5.0",
     "@types/node": "^22.13.14",
     "@types/ws": "^8.18.1",
@@ -51,6 +52,7 @@
     "rollup": "^2.79.1",
     "rollup-plugin-license": "3.2.0",
     "ts-jest": "^29.3.4",
+    "tslib": "^2.8.1",
     "typescript": "~5.9.3"
   }
 }
