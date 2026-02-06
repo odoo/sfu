@@ -239,6 +239,9 @@ export class Recorder extends EventEmitter {
         if (!this.isRecording) {
             return;
         }
+        const startedAt = this._metaData.startedAt;
+        const shouldSave =
+            save && (startedAt ? Date.now() - startedAt >= recording.minDuration : true);
         this.isRecording = false;
         this.audio = false;
         this.video = false;
@@ -251,7 +254,7 @@ export class Recorder extends EventEmitter {
         this._timeout = undefined;
         this._channel.off(Channel.Events.SESSION_JOIN, this._onSessionJoin);
         this._channel.off(Channel.Events.SESSION_LEAVE, this._onSessionLeave);
-        const metaData = save ? this._sealMetaData() : undefined;
+        const metaData = shouldSave ? this._sealMetaData() : undefined;
         this._metaData.timeStamps = [];
         this._metaData.startedAt = undefined;
         this._metaData.labels = {};
@@ -259,7 +262,7 @@ export class Recorder extends EventEmitter {
         this._folder = undefined;
         const results = await this._stopRecordingTasks();
         const failed = results.some((result) => result.status === "rejected");
-        if (save && !failed && currentFolder) {
+        if (shouldSave && !failed && currentFolder) {
             currentFolder.add(recording.metadataFileName, metaData!);
             currentFolder.move(recording.directory);
         } else {
