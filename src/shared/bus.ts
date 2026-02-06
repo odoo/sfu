@@ -202,7 +202,15 @@ export class Bus {
         const payloads: Payload[] = JSON.parse(normalizedMessage);
         // Handle each payload in parallel (not awaited)
         for (const payload of payloads) {
-            this._handlePayload(payload);
+            void this._handlePayload(payload).catch(() => {
+                if (payload.needResponse) {
+                    try {
+                        this._sendPayload({}, { responseTo: payload.needResponse });
+                    } catch {
+                        return;
+                    }
+                }
+            });
         }
     }
 
