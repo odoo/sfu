@@ -23,7 +23,8 @@ export type RtpData = {
  * Bridges a mediasoup producer through a RTP to an FFMPEG recording process.
  *
  * The class opens a plain transport/consumer pair on a dynamic port,
- * extracts the RTP parameters, and spawns FFMPEG when the producer is active.
+ * extracts the RTP parameters, and spawns FFMPEG only when the producer is
+ * both available and allowed to record.
  * Construction calls {@link _init}, which provisions the mediasoup
  * transport/consumer, caches RTP metadata, and subscribes to producer pause/resume
  * events to drive {@link _refreshProcess}.
@@ -43,6 +44,7 @@ export class MediaOutput extends EventEmitter {
     private _isClosed = false;
     private _directory: string;
     private _allowed = true;
+    private readonly _availabilityMarker: string;
 
     set allowed(value: boolean) {
         if (this._allowed === value) {
@@ -69,6 +71,7 @@ export class MediaOutput extends EventEmitter {
         this.name = name;
         this._producer = producer;
         this._directory = directory;
+        this._availabilityMarker = `availability-${name}`;
         this._init();
     }
 
@@ -135,7 +138,7 @@ export class MediaOutput extends EventEmitter {
         if (this._consumer!.producerPaused) {
             this._updateConsumer(false);
         } else {
-            if (!this._mediaWriter) {
+            if (!this._mediaWriter && this._allowed) {
                 const fileName = `${Date.now()}-${this.name}`;
                 logger.verbose(`new recording file${this._directory}/${fileName}`);
                 this._mediaWriter = new MediaWriter(this._rtpData, this._directory, fileName);
@@ -157,9 +160,6 @@ export class MediaOutput extends EventEmitter {
         } else {
             this._consumer?.pause();
         }
-        if (!this._mediaWriter) {
-            return;
-        }
         this.emit(MediaOutput.Events.FILE_STATE_CHANGE, {
             active,
             /**
@@ -168,7 +168,7 @@ export class MediaOutput extends EventEmitter {
              * then update this.allowed accordingly
              */
             available,
-            filename: this._mediaWriter.filename
+            filename: this._mediaWriter?.filename ?? this._availabilityMarker
         });
     }
 

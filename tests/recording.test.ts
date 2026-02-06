@@ -414,6 +414,63 @@ describe("Recording & Transcription", () => {
             restore();
         }
     });
+
+    test("does not spawn camera ffmpeg while screen is active", async () => {
+        mockSpawn.mockClear();
+        mockSpawn.mockImplementation((_cmd, args) => {
+            const mp = new MockChildProcess("ffmpeg", args || []);
+            mp.stdin = new PassThrough();
+            return mp;
+        });
+
+        const { restore, network } = await recordingSetup({ RECORDING: "true" });
+        const hasPath = (args: readonly string[] | undefined, folder: "screen" | "camera") =>
+            Boolean(args?.some((arg) => arg.includes(`/${folder}/`)));
+        const waitFor = async (predicate: () => boolean, timeoutMs = 2000) => {
+            const start = Date.now();
+            while (!predicate()) {
+                if (Date.now() - start > timeoutMs) {
+                    throw new Error("timeout waiting for condition");
+                }
+                await new Promise((resolve) => setTimeout(resolve, 50));
+            }
+        };
+
+        try {
+            const channelUUID = await network.getChannelUUID();
+            const user = await network.connect(channelUUID, 1);
+            await user.isConnected;
+
+            await user.sfuClient.startRecording({ video: true });
+
+            const screenTrack = new FakeMediaStreamTrack({ kind: "video" });
+            await user.sfuClient.updateUpload(STREAM_TYPE.SCREEN, screenTrack);
+            await waitFor(() =>
+                mockSpawn.mock.calls.some((call) =>
+                    hasPath(call[1] as readonly string[] | undefined, "screen")
+                )
+            );
+
+            mockSpawn.mockClear();
+            const cameraTrack = new FakeMediaStreamTrack({ kind: "video" });
+            await user.sfuClient.updateUpload(STREAM_TYPE.CAMERA, cameraTrack);
+            await new Promise((resolve) => setTimeout(resolve, 400));
+            expect(
+                mockSpawn.mock.calls.some((call) =>
+                    hasPath(call[1] as readonly string[] | undefined, "camera")
+                )
+            ).toBe(false);
+
+            await user.sfuClient.updateUpload(STREAM_TYPE.SCREEN, null);
+            await waitFor(() =>
+                mockSpawn.mock.calls.some((call) =>
+                    hasPath(call[1] as readonly string[] | undefined, "camera")
+                )
+            );
+        } finally {
+            restore();
+        }
+    });
 });
 
 describe("Media Service", () => {

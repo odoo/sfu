@@ -82,6 +82,11 @@ export enum STOP_CODE {
 }
 
 const logger = new Logger("RECORDER");
+type LimitedVideoStreamType = STREAM_TYPE.CAMERA | STREAM_TYPE.SCREEN;
+type TrackedVideoSessions = {
+    [STREAM_TYPE.CAMERA]: SessionId[];
+    [STREAM_TYPE.SCREEN]: SessionId[];
+};
 
 /**
  * The recorder generates a "raw" file bundle, of recordings of individual
@@ -109,6 +114,10 @@ export class Recorder extends EventEmitter {
     private _timeout?: NodeJS.Timeout;
     private readonly _channel: Channel;
     private readonly _tasks = new Map<SessionId, RecordingTask>();
+    private readonly _trackedVideoSessions: TrackedVideoSessions = {
+        [STREAM_TYPE.CAMERA]: [],
+        [STREAM_TYPE.SCREEN]: []
+    };
     private readonly _metaData: Metadata = {
         channelName: "",
         channelUUID: "",
@@ -184,51 +193,43 @@ export class Recorder extends EventEmitter {
         }
     }
 
+    /**
+     * Records a timestamp entry and updates runtime stream gating for camera/screen streams.
+     *
+     * This is the entry point used by `RecordingTask`/`MediaOutput` to report stream lifecycle
+     * changes. Beyond metadata persistence, it also maintains the recorder's video selection
+     * policy in real time:
+     * - We track "availability" per session and stream type from FILE_STATE_CHANGE events.
+     * - Availability is normalized to false when EOF is emitted.
+     * - We keep recency order (latest available sessions at the end of each tracked list).
+     * - Selection precedence is screen-first:
+     *   1. If at least one screen is available, cameras are disallowed.
+     *   2. Only the latest `recording.screenLimit` screens are allowed.
+     *   3. If no screen is available, the latest `recording.cameraLimit` cameras are allowed.
+     *
+     * The resulting allowed/disallowed state is pushed to each `RecordingTask`, which updates
+     * `MediaOutput.allowed` without tearing down the recording pipeline. This preserves stream
+     * availability observability while controlling which streams are actively written.
+     */
     mark(tag: TIME_TAG, info: TimeTagInfo) {
+        const available = info.eof ? false : info.available;
+        const isAvailable = available === true;
         this._metaData.timeStamps.push({
             tag,
             timestamp: Date.now(),
-            info
+            info: {
+                ...info,
+                available: isAvailable
+            }
         } as TimeStampData);
-        /**
-         * TODO, version 2.
-         *
-         * Enforce config.recording.cameraLimit and config.recording.screenLimit.
-         * screen limit is at 1:
-         *
-         * A recording that has multiple screen share is not useful, as the
-         * content of the screen may become unreadable due to the lowered resolution.
-         * Thus, a logic that decides which screen share to keep, and that stops
-         * the recording of the superfluous streams (other cameras and screens)
-         * should be implemented.
-         *
-         * When recording video, we should
-         * only record the latest x screens, and record cameras only if there is no
-         * screen being shared (and only up to the limit). That is because in the compiled
-         * version, the screen takes precedence over the camera, and all the visual space.
-         * That is because when a screen is shared it should be the focus of the attention
-         * and is only useful when taking all of the visual space (it wouldn't make
-         * sense to divide the space available in the final video between multiple
-         * screens, or between screens and cameras).
-         *
-         * Therefore a mechanism to track the latest screens/cameras produced should be
-         * implemented. We can extract that information from the
-         * TIME_TAG.FILE_STATE_CHANGE events, where `type` and `available` is all
-         * we need to know when and if a screen or a camera is being shared, then we can
-         * control which streams are recorded by swapping the "allowed" flag of the MediaOutput
-         * of each stream.
-         *
-         * example: someone starts screen sharing => his session id is added to a stack of screensharing sessions
-         *          someone starts camera sharing => his session id is added to a stack of camerasharing sessions
-         * if screen sharing stack is not empty, then all camera have allowed set to false. and only the last N
-         * (config.recording.screenLimit) have the allowed flag for their screen share.
-         * if screen sharing stack is empty, then we can consider cameras, and only the N
-         * (config.recording.cameraLimit) have the allowed flag for their camera share.
-         *
-         * A new nechanism to control that allowed flag should be implemented, similar to _getRecordingStates
-         * but it's not the same as it acts in parallel and does not cut the output (otherwise we couldn't know
-         * if a stream becomes available if it is not allowed, that's what dinstinguishes allowed and active)
-         */
+        if (tag !== TIME_TAG.FILE_STATE_CHANGE) {
+            return;
+        }
+        if (info.type !== STREAM_TYPE.CAMERA && info.type !== STREAM_TYPE.SCREEN) {
+            return;
+        }
+        this._trackVideoAvailability(info.type, info.sessionId, isAvailable);
+        this._enforceVideoLimits();
     }
 
     /**
@@ -258,6 +259,7 @@ export class Recorder extends EventEmitter {
         this._metaData.timeStamps = [];
         this._metaData.startedAt = undefined;
         this._metaData.labels = {};
+        this._resetTrackedVideoSessions();
         const currentFolder = this._folder;
         this._folder = undefined;
         const results = await this._stopRecordingTasks();
@@ -300,6 +302,9 @@ export class Recorder extends EventEmitter {
         }
         this._metaData.labels[id] = session.label || "unknown";
         this._tasks.set(session.id, new RecordingTask(this, session, this._getRecordingStates()));
+        if (this._hasTrackedVideoSessions()) {
+            this._enforceVideoLimits();
+        }
     }
 
     private _onSessionLeave(id: SessionId) {
@@ -308,6 +313,8 @@ export class Recorder extends EventEmitter {
             task.stop();
             this._tasks.delete(id);
         }
+        this._removeTrackedVideoSession(id);
+        this._enforceVideoLimits();
     }
 
     private _emitStatus(stopCode?: STOP_CODE) {
@@ -320,6 +327,7 @@ export class Recorder extends EventEmitter {
         } as UpdateData);
     }
     private async _start() {
+        this._resetTrackedVideoSessions();
         this._folder = await Folder.create(`${Date.now()}-${this._channel.uuid}`, [
             "audio",
             "camera",
@@ -356,5 +364,82 @@ export class Recorder extends EventEmitter {
             camera: this.isRecording && this.video,
             screen: this.isRecording && this.video
         };
+    }
+
+    /**
+     * Updates the recency-ordered list of available sessions for a given video type.
+     *
+     * The list behaves like an ordered set:
+     * - A session appears at most once.
+     * - Re-availability moves the session to the end (most recent).
+     * - Unavailability removes the session.
+     */
+    private _trackVideoAvailability(
+        type: LimitedVideoStreamType,
+        sessionId: SessionId,
+        available: boolean
+    ) {
+        const trackedSessions = this._trackedVideoSessions[type];
+        const index = trackedSessions.indexOf(sessionId);
+        if (index !== -1) {
+            trackedSessions.splice(index, 1);
+        }
+        if (available) {
+            trackedSessions.push(sessionId);
+        }
+    }
+
+    private _removeTrackedVideoSession(sessionId: SessionId) {
+        this._trackVideoAvailability(STREAM_TYPE.CAMERA, sessionId, false);
+        this._trackVideoAvailability(STREAM_TYPE.SCREEN, sessionId, false);
+    }
+
+    private _resetTrackedVideoSessions() {
+        this._trackedVideoSessions[STREAM_TYPE.CAMERA].length = 0;
+        this._trackedVideoSessions[STREAM_TYPE.SCREEN].length = 0;
+    }
+
+    private _hasTrackedVideoSessions() {
+        return (
+            this._trackedVideoSessions[STREAM_TYPE.CAMERA].length > 0 ||
+            this._trackedVideoSessions[STREAM_TYPE.SCREEN].length > 0
+        );
+    }
+
+    private _getAllowedSessions(sessions: SessionId[], limit: number) {
+        if (limit <= 0 || sessions.length === 0) {
+            return new Set<SessionId>();
+        }
+        return new Set(sessions.slice(-limit));
+    }
+
+    /**
+     * Applies the configured camera/screen limits across all current recording tasks.
+     *
+     * Policy:
+     * - Screen streams always take precedence over camera streams.
+     * - When screens are present, only the latest `screenLimit` screen sessions are allowed,
+     *   and all cameras are disallowed.
+     * - When no screens are present, only the latest `cameraLimit` camera sessions are allowed.
+     *
+     * A non-positive limit is treated as "allow none" for that stream category.
+     */
+    private _enforceVideoLimits() {
+        const screens = this._trackedVideoSessions[STREAM_TYPE.SCREEN];
+        const hasScreenSharing = screens.length > 0;
+        const allowedScreenSessions = hasScreenSharing
+            ? this._getAllowedSessions(screens, recording.screenLimit)
+            : new Set<SessionId>();
+        const allowedCameraSessions = hasScreenSharing
+            ? new Set<SessionId>()
+            : this._getAllowedSessions(
+                  this._trackedVideoSessions[STREAM_TYPE.CAMERA],
+                  recording.cameraLimit
+              );
+
+        for (const [sessionId, task] of this._tasks) {
+            task.setAllowed(STREAM_TYPE.CAMERA, allowedCameraSessions.has(sessionId));
+            task.setAllowed(STREAM_TYPE.SCREEN, allowedScreenSessions.has(sessionId));
+        }
     }
 }
