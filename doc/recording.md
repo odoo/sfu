@@ -1,7 +1,7 @@
 # Recording
 see [media.ts](../src/recording/services/media.ts) and [recording/*](../src/recording/models) for more details.
 
-The recording feature in the SFU allows for capturing audio, video from camera, and screen sharing streams from a channel. It is designed to handle each stream independently to produce raw recording files that can be processed later (e.g., for transcription, composition, or playback).
+The recording feature in the SFU allows for capturing audio, video from camera, and screen sharing streams from a channel. It is designed to handle each stream independently to produce raw recording files that can be processed later (e.g., for transcription, composition, or playback) (by thhe media service).
 
 ## Architecture
 
@@ -37,30 +37,16 @@ flowchart TB
 
 2.  **RecordingTask (Session Level)**
     *   **Scope:** Bound to a specific rtc `Session`.
-    *   **Responsibility:** Monitors the user's producers (audio, camera, screen). When a user releases a stream (e.g., turns on camera), the `RecordingTask` detects it and delegates the recording logic to a `MediaOutput`.
+    *   **Responsibility:** Monitors the user's producers (audio, camera, screen). When a user releases a stream (e.g., turns on camera), the `RecordingTask` detects it and manage a `MediaOutput` for each.
     *   **Inputs:** `audio`, `camera`, `screen` flags determine which streams to record.
 
 3.  **MediaOutput (Stream Level / RTP)**
     *   **Scope:** Handles a single stream type (e.g., just the camera) for a session.
-    *   **Responsibility:** Bridges the Mediasoup `Producer` (source) to the `MediaWriter` (ffmpeg) process (sink), and manages the lifecycle of the port, transport, consumer, and ffmpeg process.
+    *   **Responsibility:** Bridges the Mediasoup `Producer` (source) to the `MediaWriter` (ffmpeg) process (sink), and manages the lifecycle of the port, transport, consumer, and ffmpeg process. It also handles thhe "allowed"/"active" flags.
 
 4.  **MediaWriter (Process Level)**
     *   **Scope:** Represents a single child process writing to a file.
     *   **Responsibility:** Receives RTP packets on a specified port and writes them to a file container. Essentially a wrapper around the ffmpeg API.
-
-
-## Settings & Environment Variables
-
-The recording feature is configured via environment variables in `src/config.ts`.
-
-| Variable           | Type    | Description                                                               | Default                    |
-| :----------------- | :------ | :------------------------------------------------------------------------ | :------------------------- |
-| `RECORDING`        | boolean | Master switch to enable/disable the recording feature.                    | `false`                    |
-| `RECORDING_PATH`   | string  | Directory where the raw recordings are saved.                             | `/tmp/odoo_sfu/recordings` |
-| `DYNAMIC_MIN_PORT` | number  | Start of the port range for internal RTP routing (MediaOutput -> FFMPEG). | `50000`                    |
-| `DYNAMIC_MAX_PORT` | number  | End of the port range for internal RTP routing.                           | `59999`                    |
-
-**Important Note:** The `DYNAMIC_MIN_PORT` and `DYNAMIC_MAX_PORT` range **MUST NOT** overlap with the `RTC_MIN_PORT` and `RTC_MAX_PORT` range used for client connections.
 
 ## Output Structure
 
@@ -89,6 +75,7 @@ Recordings are saved in a directory `{channelUUID}/{timestamp}` inside `RECORDIN
 *   **screen/:** Folder containing all screen sharing stream recordings.
 
 #### Metadata File (`metadata.json`)
+// TODO: reminder, need to check when code is more stable, keys are not final
 
 Contains the timestamps of the recording, and the address to which the file should be uploaded to.
 
@@ -129,5 +116,7 @@ TODO
 
 The compiler transforms raw recording files into compiled recordings.
 
-#### Upload (Planned)
+#### Upload
+TODO: not decided yet, waiting on PR: https://github.com/odoo/odoo/pull/233836
+
 After compilation, the service is responsible for uploading the generated artifacts based on the routing information obtained from the `routingAddress`.
