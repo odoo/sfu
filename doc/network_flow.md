@@ -138,13 +138,6 @@ Once authenticated, the session initializes WebRTC transports:
    - **STC (Server-to-Client)**: sends media to client (consumers)
 
 2. **SFU sends transport configs to client:**
-   ```json
-   {
-     "capabilities": { /* Router RTP capabilities */ },
-     "ctsConfig": { "id": "...", "iceParameters": {...}, "iceCandidates": [...], "dtlsParameters": {...} },
-     "stcConfig": { "id": "...", "iceParameters": {...}, "iceCandidates": [...], "dtlsParameters": {...} }
-   }
-   ```
 
 3. **Client responds with RTP capabilities**
 
@@ -173,24 +166,3 @@ The session is now fully connected and streaming.
 | [WebSocket Service](../src/core/services/ws.ts) | Client connections and authentication                |
 | [Channel](../src/core/models/channel.ts)        | Room management and media routing                    |
 | [Session](../src/core/models/session.ts)        | Per-client WebRTC transports and producers/consumers |
-
-## Security Model
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      Global AUTH_KEY                        │
-│   Used for: Server-to-SFU authentication (/v1/channel)      │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Channel Key (optional)                   │
-│   Provided in: JWT claim "key" during channel creation      │
-│   Used for: Client-to-SFU authentication (WebSocket)        │
-│   Benefit: Channel isolation - compromised key only         │
-│            affects one channel                              │
-└─────────────────────────────────────────────────────────────┘
-```
-
-- **Without channel key**: Clients authenticate using the global `AUTH_KEY`
-- **With channel key**: Clients authenticate using the channel-specific key, providing isolation between channels (this is useful when deploying one SFU for multiple tenants)

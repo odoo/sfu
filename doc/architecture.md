@@ -73,7 +73,9 @@ The Authentication service is responsible for the security of the application. I
 ### 2. HTTP Service ([`http.ts`](../src/core/services/http.ts))
 more at [http.md](./http.md)
 
-The HTTP service provides the REST API for the SFU, intended to be used by other (odoo) servers. It handles channel creation, status checks, and session management.
+The HTTP service provides the REST API for the SFU, intended to be used by other (odoo) servers (and server managers). It handles channel creation, status checks, and session management.
+
+Note that some routes like `stats` and `noop` are not protected by authentication, it is up to the server manager to make them available or not.
 
 ### 3. WebSocket Service ([`ws.ts`](../src/core/services/ws.ts))
 
@@ -106,6 +108,8 @@ The Resources service acts as the interface to the underlying system and Mediaso
 -  Managers the pool of Mediasoup workers and balanse their load.
 -  Manages temporary folders.
 -  Manages dynamic ports for media transport.
+  
+TODO: maybe guards resource allocation if starved
 
 ### 5. Media Service ([`media.ts`](../src/recording/services/media.ts))
 more at [recording.md](./recording.md)
@@ -116,7 +120,7 @@ The Media service is responsible for the processing and dispatching of media fil
 
 ### 1. Channel ([`channel.ts`](../src/core/models/channel.ts))
 
-The `Channel` represents a room or lobby where multiple users can connect. It acts as the central hub for a group of participants.
+The `Channel` represents a room or lobby where multiple users can connect (typically mirrors Odoo's "discuss.channel" model). It acts as the central hub for a group of participants.
 
 - **Session Management**: Maintains the list of active `Session`s.
 - **Media Router**: Creates and holds the mediasoup `Router` instance used for media routing within the channel.

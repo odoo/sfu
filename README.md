@@ -9,7 +9,7 @@ between users and providing channels to coordinate these connections.
 The server is not stand-alone, it does not serve any HTML or any interface code for calls. It only contains
 the SFU and a [client bundle/library](#client-api-bundle) to connect to it.
 
-The SFU is powered by the [Mediasoup](https://mediasoup.org/) WebRTC library.
+The SFU uses [Mediasoup](https://mediasoup.org/) WebRTC library for the routing/transport of streams.
 
 ## Prerequisites
 - [Node.js 24.13.0 (LTS)](https://nodejs.org/en/download)
@@ -35,7 +35,7 @@ interacted with as described [here](#client-api-bundle).
     ```
 2. Run the SFU server.
     ```bash
-        npm PROXY=1 PUBLIC_IP=134.123.222.111 AUTH_KEY=u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng= run start
+        npm PROXY=1 PUBLIC_IP=sfu.example.com AUTH_KEY=u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng= run start
     ```
 
 The available environment variables are:
@@ -78,7 +78,7 @@ Recording specific env variables:
 | `KEEP_RECORDINGS`                       | `false`                    |    No    | If true, keeps raw recording files after they are uploaded.                                        |
 | `FFMPEG_LOGGING`                        | `false`                    |    No    | If true, generates `.log` files alongside ffmpeg outputs.                                          |
 
-See [config.js](./src/config.js) for more details and examples.
+See [config.js](./src/config.js) for more details.
 
 ## Binding the SFU and the Odoo server together
 
@@ -87,7 +87,7 @@ Set the `AUTH_KEY` env variable with  the base64 encryption key that can be used
 
 ### On Odoo 
 Go to the Discuss settings and configure the `RTC Server URL` and `RTC server KEY` fields. The `RTC server KEY`
-must be the same base64 encoded string as `AUTH_KEY` on the SFU server.
+must be the same base64 encoded string as `AUTH_KEY` on the SFU server. Or pass the as env variables (`ODOO_SFU_URL` and `ODOO_SFU_KEY`).
 
 ## Inter-process communication with the SFU server
 
