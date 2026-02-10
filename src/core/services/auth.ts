@@ -72,7 +72,7 @@ let jwtKey: Buffer | undefined;
 let localKey: Buffer | undefined;
 const logger = new Logger("AUTH");
 
-export function start(key?: string | Buffer): void {
+export function start(key?: StringLike): void {
     const authKeyB64str = key || config.AUTH_KEY;
     if (!authKeyB64str) {
         throw new Error("AUTH_KEY is required for authentication service");
@@ -100,7 +100,7 @@ export function close(): void {
     localKey = undefined;
 }
 
-export function base64Encode(data: Buffer | string): string {
+export function base64Encode(data: StringLike): string {
     if (typeof data === "string") {
         data = Buffer.from(data);
     }
@@ -221,7 +221,7 @@ export function verify<T>(jsonWebToken: string, key: StringLike = jwtKey!): T & 
  * @param str The string to encrypt
  * @param key Must be a 32bytes Buffer
  */
-export function encrypt(str: string | Buffer, key: Buffer = localKey!) {
+export function encrypt(str: StringLike, key: Buffer = localKey!) {
     const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
     const encrypted = Buffer.concat([cipher.update(str), cipher.final()]);
@@ -229,7 +229,7 @@ export function encrypt(str: string | Buffer, key: Buffer = localKey!) {
     return `${iv.toString("hex")}:${tag.toString("hex")}:${encrypted.toString("hex")}`;
 }
 
-export function decrypt(str: string | Buffer, key: Buffer = localKey!) {
+export function decrypt(str: StringLike, key: Buffer = localKey!) {
     if (Buffer.isBuffer(str)) {
         str = str.toString("utf-8");
     }
