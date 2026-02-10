@@ -1,5 +1,6 @@
-import { jest } from "@jest/globals";
 import path from "node:path";
+
+import { jest } from "@jest/globals";
 
 /**
  * Mock file system to avoid interacting with the disk during tests.

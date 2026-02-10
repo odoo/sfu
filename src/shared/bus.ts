@@ -6,7 +6,7 @@ import type {
     RequestMessage,
     RequestName,
     ResponseFrom
-} from "./types";
+} from "#src/shared/types.ts";
 
 export type Payload = {
     /** The actual message content */

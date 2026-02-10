@@ -9,8 +9,8 @@ import { SESSION_STATE } from "#src/core/models/session.ts";
 import { Channel } from "#src/core/models/channel.ts";
 import * as config from "#src/config";
 import { API_VERSION, RouteListener } from "#src/core/services/http";
-import { LocalNetwork, makeJwt } from "#tests/utils/network";
 
+import { LocalNetwork, makeJwt } from "#tests/utils/network";
 import { withMockEnv } from "#tests/utils/utils";
 
 const HTTP_INTERFACE = "0.0.0.0";

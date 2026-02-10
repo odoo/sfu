@@ -1,8 +1,9 @@
 import { describe, expect, test } from "@jest/globals";
 
+import { RECORDING_RESERVATION_BYTES } from "#src/core/services/resources.ts";
+
 import { mockNodeFS } from "#tests/utils/mockFileSystem.ts";
 import { withMockEnv } from "#tests/utils/utils.ts";
-import { RECORDING_RESERVATION_BYTES } from "#src/core/services/resources.ts";
 
 mockNodeFS();
 
