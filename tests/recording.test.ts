@@ -8,6 +8,7 @@ import { FakeMediaStreamTrack } from "fake-mediastreamtrack";
 import { STREAM_TYPE } from "#src/shared/enums.ts";
 import { CLIENT_UPDATE } from "#src/client";
 import { STOP_CODE, TIME_TAG } from "#src/recording/models/recorder.ts";
+import type { Channel } from "#src/core/models/channel.ts";
 
 import { recordingSetup, setupUnitTestsEnv } from "#tests/utils/testHelpers.ts";
 import { withMockEnv } from "#tests/utils/utils.ts";
@@ -18,7 +19,6 @@ import {
     MockChildProcess
 } from "#tests/utils/mockFfmpeg.ts";
 import { mockNodeFS } from "#tests/utils/mockFileSystem.ts";
-import type { Channel } from "#src/core/models/channel.ts";
 
 mockNodeFS();
 mockFfmpeg();

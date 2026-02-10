@@ -1,5 +1,7 @@
-import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "node:http";
+import type { AddressInfo } from "node:net";
+
+import { WebSocketServer, WebSocket } from "ws";
 
 import * as config from "#src/config.ts";
 import { WS_CLOSE_CODE } from "#src/shared/enums.ts";
@@ -10,7 +12,6 @@ import { Session, SESSION_CLOSE_CODE, type SessionPermissions } from "#src/core/
 import { Channel } from "#src/core/models/channel.ts";
 import { verify } from "#src/core/services/auth.ts";
 import type { WebSocketCredentials } from "#src/shared/types.ts";
-import type { AddressInfo } from "node:net";
 
 type WSConnectClaims = {
     sfu_channel_uuid: string;

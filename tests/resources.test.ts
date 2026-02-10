@@ -2,13 +2,13 @@ import { afterEach, beforeEach, describe, expect, test } from "@jest/globals";
 import path from "node:path";
 import fs from "node:fs/promises";
 
-import { mockFs, mockNodeFS } from "./utils/mockFileSystem.ts";
-mockNodeFS();
-
-import * as resources from "#src/core/services/resources.ts";
 import * as config from "#src/config.ts";
 import { DiskSpaceLimitReachedError } from "#src/utils/errors.ts";
-import { RECORDING_RESERVATION_BYTES } from "#src/core/services/resources.ts";
+
+import { mockFs, mockNodeFS } from "#tests/utils/mockFileSystem.ts";
+
+mockNodeFS(); // mocking FS before importing resources
+import * as resources from "#src/core/services/resources.ts";
 
 describe("resources service", () => {
     beforeEach(async () => {
@@ -106,7 +106,8 @@ describe("resources service", () => {
 
     test("folder should reserve disk space and reject over-allocation", async () => {
         mockFs.setAvailableDiskSpace(
-            RECORDING_RESERVATION_BYTES + Math.floor(RECORDING_RESERVATION_BYTES / 2)
+            resources.RECORDING_RESERVATION_BYTES +
+                Math.floor(resources.RECORDING_RESERVATION_BYTES / 2)
         );
         const first = await resources.Folder.create("first", []);
 
