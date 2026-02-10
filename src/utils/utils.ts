@@ -140,6 +140,13 @@ export class Logger {
     }
 }
 
+export function toBigInt(value: number | bigint) {
+    if (typeof value === "bigint") {
+        return value;
+    }
+    return BigInt(Math.max(0, Math.floor(value)));
+}
+
 /**
  * Parses HTTP request body
  *

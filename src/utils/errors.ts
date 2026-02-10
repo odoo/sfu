@@ -9,3 +9,7 @@ export class OvercrowdedError extends Error {
 export class PortLimitReachedError extends Error {
     name = "PortLimitReachedError";
 }
+
+export class DiskSpaceLimitReachedError extends Error {
+    name = "DiskSpaceLimitReachedError";
+}

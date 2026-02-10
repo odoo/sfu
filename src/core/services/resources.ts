@@ -4,11 +4,21 @@ import path from "node:path";
 import * as mediasoup from "mediasoup";
 
 import * as config from "#src/config.ts";
-import { Logger } from "#src/utils/utils.ts";
-import { PortLimitReachedError } from "#src/utils/errors.ts";
+import { Logger, toBigInt } from "#src/utils/utils.ts";
+import { DiskSpaceLimitReachedError, PortLimitReachedError } from "#src/utils/errors.ts";
 
 const availablePorts: number[] = [];
 let unique = 1;
+const HOUR = 60 * 60 * 1000;
+const AV1_BYTES_PER_HOUR = 700 * 1024 * 1024;
+const RAW_RECORDING_MULTIPLIER = 4;
+const RESERVATION_MARGIN = 1.2;
+export const RECORDING_RESERVATION_BYTES = Math.ceil(
+    (config.recording.maxDuration / HOUR) *
+        AV1_BYTES_PER_HOUR *
+        RAW_RECORDING_MULTIPLIER *
+        RESERVATION_MARGIN
+);
 
 type RtcAppData = mediasoup.types.AppData & {
     webRtcServer?: mediasoup.types.WebRtcServer;
@@ -64,22 +74,20 @@ export const __testing__ = {
     },
     get workerCount() {
         return workers.size;
+    },
+    get reservedRecordingBytes() {
+        return Folder.reservedRecordingBytes;
     }
 };
 
 export async function start(): Promise<void> {
     /**
-     * TODO use statfs to know the available space on the disk, and keep track of the used space
-     * reserve disk space at Folder.create(), then return null/undefined (or throw) if not enough space
-     * folder.create => provides expected size, increment _expectedSize (static on Folder)
-     * folder.move (to rename "seal") => decrement _expectedSize and update real usage
-     * folder.delete => decrement _expectedSize
-     *
      * TODO reserve dynamic ports for recordings ahead of time (conservative estimate),
      * and block recording start when remaining ports are too low.
      */
     logger.info("starting...");
     logger.info(`cleaning resources folder (${config.RESOURCES_PATH})...`);
+    Folder.resetReservations();
     await setupFileSystem();
     for (let i = 0; i < config.NUM_WORKERS; ++i) {
         await makeWorker();
@@ -109,6 +117,7 @@ export function close() {
     clearFileSystem();
     workers.clear();
     availablePorts.length = 0;
+    Folder.resetReservations();
 }
 
 async function makeWorker(): Promise<void> {
@@ -157,8 +166,19 @@ export async function getWorker(): Promise<RtcWorker> {
 export class Folder {
     path: string;
     name: string;
+    private _reservedBytes = 0;
+    private static _reservedRecordingBytes = 0;
+
+    static get reservedRecordingBytes() {
+        return Folder._reservedRecordingBytes;
+    }
+
+    static resetReservations() {
+        Folder._reservedRecordingBytes = 0;
+    }
 
     static async create(name: string, subDirectories: string[]) {
+        await Folder._checkMemoryAllocation();
         const p: string = path.join(config.RESOURCES_PATH, `${name}-${unique++}`);
         await fs.mkdir(p);
         const proms = [];
@@ -169,9 +189,41 @@ export class Folder {
         return new Folder(p, name);
     }
 
+    private static async _checkMemoryAllocation() {
+        const size = RECORDING_RESERVATION_BYTES;
+        const stats = await fs.statfs(config.RESOURCES_PATH);
+        const blockSize = toBigInt(stats.bsize);
+        const availableBlocks = toBigInt(stats.bavail);
+        const availableDiskBytes = blockSize * availableBlocks;
+        const remaining = availableDiskBytes - BigInt(Folder._reservedRecordingBytes);
+        if (remaining < BigInt(size)) {
+            throw new DiskSpaceLimitReachedError(
+                `Not enough disk space to reserve ${size} bytes for recording`
+            );
+        }
+    }
+
+    private _reserveMemory() {
+        const size = RECORDING_RESERVATION_BYTES;
+        Folder._reservedRecordingBytes += size;
+        this._reservedBytes = size;
+    }
+
+    private _releaseMemory() {
+        if (!this._reservedBytes) {
+            return;
+        }
+        Folder._reservedRecordingBytes = Math.max(
+            0,
+            Folder._reservedRecordingBytes - this._reservedBytes
+        );
+        this._reservedBytes = 0;
+    }
+
     constructor(path: string, name: string) {
         this.path = path;
         this.name = name;
+        this._reserveMemory();
     }
 
     async add(name: string, content: string) {
@@ -187,6 +239,8 @@ export class Folder {
             this.path = fullPath;
         } catch (error) {
             logger.error(`Failed to move folder from ${this.path} to ${fullPath}: ${error}`);
+        } finally {
+            this._releaseMemory();
         }
     }
     async delete() {
@@ -195,6 +249,8 @@ export class Folder {
             logger.verbose(`Deleted folder ${this.path}`);
         } catch (error) {
             logger.error(`Failed to delete folder ${this.path}: ${error}`);
+        } finally {
+            this._releaseMemory();
         }
     }
 }

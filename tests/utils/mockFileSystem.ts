@@ -7,6 +7,7 @@ import path from "node:path";
 export class MockFileSystem {
     private files = new Map<string, string>();
     private dirs = new Set<string>();
+    private availableDiskSpace = 512 * 1024 * 1024 * 1024;
 
     constructor() {
         this.dirs.add("/");
@@ -16,12 +17,25 @@ export class MockFileSystem {
         this.files.clear();
         this.dirs.clear();
         this.dirs.add("/");
+        this.availableDiskSpace = 512 * 1024 * 1024 * 1024;
     }
 
     stat(path: string): { size: number } {
         return {
             size: 999
         };
+    }
+
+    statfs(path: string): { bsize: number; bavail: number } {
+        const blockSize = 4096;
+        return {
+            bsize: blockSize,
+            bavail: Math.floor(this.availableDiskSpace / blockSize)
+        };
+    }
+
+    setAvailableDiskSpace(bytes: number) {
+        this.availableDiskSpace = Math.max(0, Math.floor(bytes));
     }
 
     createReadStream(path: string) {
@@ -203,6 +217,7 @@ export const mockFsModule = {
         mockFs.readdir(path, opts as { withFileTypes?: boolean })
     ),
     stat: jest.fn((path: string) => mockFs.stat(path)),
+    statfs: jest.fn((path: string) => Promise.resolve(mockFs.statfs(path))),
     readFile: jest.fn((path: string, enc: unknown) => mockFs.readFile(path, enc as string)),
     access: jest.fn((path: string) => mockFs.access(path)),
     rm: jest.fn((path: string, opts: unknown) =>
