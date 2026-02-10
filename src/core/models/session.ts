@@ -69,6 +69,10 @@ export type SessionPermissions = {
     audioRecording?: boolean;
     videoRecording?: boolean;
 };
+export type SessionOptions = {
+    label?: string;
+    permissions?: SessionPermissions;
+};
 export type TransportConfig = {
     /** Transport identifier */
     id: string;
@@ -176,10 +180,14 @@ export class Session extends EventEmitter {
     /**
      * @param id - Unique session identifier
      * @param channel - Parent channel containing this session
+     * @param options - Session options set at creation
      */
-    constructor(id: SessionId, channel: Channel) {
+    constructor(id: SessionId, channel: Channel, options: SessionOptions = {}) {
+        const { label, permissions } = options;
         super();
         this.id = id;
+        this.label = label;
+        this.updatePermissions(permissions);
         this._channel = channel;
         this.info = Object.seal({
             isRaisingHand: undefined,

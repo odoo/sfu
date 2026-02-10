@@ -6,7 +6,12 @@ import type { Router, WebRtcServer } from "mediasoup/node/lib/types";
 import * as config from "#src/config.ts";
 import { getAllowedCodecs, Logger } from "#src/utils/utils.ts";
 import { AuthenticationError, OvercrowdedError } from "#src/utils/errors.ts";
-import { Session, SESSION_CLOSE_CODE, type SessionId } from "#src/core/models/session.ts";
+import {
+    Session,
+    SESSION_CLOSE_CODE,
+    type SessionId,
+    type SessionOptions
+} from "#src/core/models/session.ts";
 import { Recorder, STOP_CODE, type UpdateData } from "#src/recording/models/recorder.ts";
 import { getWorker, type RtcWorker } from "#src/core/services/resources.ts";
 import { SERVER_MESSAGE } from "#src/shared/enums.ts";
@@ -151,11 +156,12 @@ export class Channel extends EventEmitter {
     /**
      * @param uuid - Channel UUID
      * @param sessionId - Session identifier
+     * @param sessionOptions - Session options set at creation
      * @returns Object containing the channel and created session
      * @throws {AuthenticationError} If channel doesn't exist
      * @throws {OvercrowdedError} If channel is at capacity
      */
-    static join(uuid: string, sessionId: SessionId): JoinResult {
+    static join(uuid: string, sessionId: SessionId, sessionOptions?: SessionOptions): JoinResult {
         const channel = Channel.records.get(uuid);
         if (!channel) {
             throw new AuthenticationError(`channel [${uuid}] does not exist`);
@@ -163,7 +169,7 @@ export class Channel extends EventEmitter {
         if (channel.sessions.size >= config.CHANNEL_SIZE) {
             throw new OvercrowdedError(`channel [${uuid}] is full`);
         }
-        const session = channel.join(sessionId);
+        const session = channel.join(sessionId, sessionOptions);
         return { channel, session };
     }
 
@@ -267,13 +273,13 @@ export class Channel extends EventEmitter {
         };
     }
 
-    join(sessionId: SessionId): Session {
+    join(sessionId: SessionId, sessionOptions?: SessionOptions): Session {
         const oldSession = this.sessions.get(sessionId);
         if (oldSession) {
             oldSession.off("close", this._onSessionClose);
             oldSession.close({ code: SESSION_CLOSE_CODE.REPLACED });
         }
-        const session = new Session(sessionId, this);
+        const session = new Session(sessionId, this, sessionOptions);
         this.sessions.set(session.id, session);
         if (this.sessions.size > 1) {
             this.setCloseTimeout(false);
