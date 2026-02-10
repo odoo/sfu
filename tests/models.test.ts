@@ -19,6 +19,19 @@ describe("Models", () => {
         expect(channel.sessions.size).toBe(1);
         expect(channel.sessions.get(7)).toBeDefined();
     });
+    test("Create channel session with initial options", async () => {
+        const channel = await Channel.create("testRemote", "testIssuer");
+        Channel.join(channel.uuid, 7, {
+            label: "test-label",
+            permissions: { audioRecording: true, transcription: true }
+        });
+        const session = channel.sessions.get(7);
+        expect(session).toBeDefined();
+        expect(session?.label).toBe("test-label");
+        expect(session?.permissions.audioRecording).toBe(true);
+        expect(session?.permissions.transcription).toBe(true);
+        expect(session?.permissions.videoRecording).toBe(false);
+    });
     test("should clear channel and session when leaving", async () => {
         const channel = await Channel.create("testRemote", "testIssuer");
         Channel.join(channel.uuid, 3);
