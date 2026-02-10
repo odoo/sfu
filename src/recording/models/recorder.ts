@@ -5,6 +5,7 @@ import { Folder } from "#src/core/services/resources.ts";
 import { RecordingTask, type RecordingStates } from "#src/recording/models/recording_task.ts";
 import { encrypt } from "#src/core/services/auth.ts";
 import { Logger } from "#src/utils/utils.ts";
+import { DiskSpaceLimitReachedError } from "#src/utils/errors.ts";
 
 import { Channel } from "#src/core/models/channel.ts";
 import { STREAM_TYPE } from "#src/shared/enums.ts";
@@ -78,7 +79,8 @@ export enum STOP_CODE {
     USER_REQUEST = "user_request",
     CHANNEL_CLOSED = "channel_closed",
     RECORDING_TIMEOUT = "recording_timeout",
-    RECORDING_FAILED = "recording_failed"
+    RECORDING_FAILED = "recording_failed",
+    DISK_SPACE_EXHAUSTED = "disk_space_exhausted"
 }
 
 const logger = new Logger("RECORDER");
@@ -185,11 +187,15 @@ export class Recorder extends EventEmitter {
             await this._start();
             this._emitStatus();
         } catch (error) {
-            // if error is memory type (see resources), close code should be memory_full or something
-            // then the channel may disable the feature until the resource is available again?
-            // something like resourceService.diskAvailable < config.recording.expectedSize becoming a condition for "can record"?
-            logger.error(`Failed to start recording for ${this._channel.name}: ${error}`);
-            this.stop({ save: false, stopCode: STOP_CODE.RECORDING_FAILED });
+            if (error instanceof DiskSpaceLimitReachedError) {
+                logger.warn(
+                    `Recording blocked for ${this._channel.name}: insufficient available disk space`
+                );
+                await this.stop({ save: false, stopCode: STOP_CODE.DISK_SPACE_EXHAUSTED });
+            } else {
+                logger.error(`Failed to start recording for ${this._channel.name}: ${error}`);
+                await this.stop({ save: false, stopCode: STOP_CODE.RECORDING_FAILED });
+            }
         }
     }
 
@@ -265,11 +271,17 @@ export class Recorder extends EventEmitter {
         const results = await this._stopRecordingTasks();
         const failed = results.some((result) => result.status === "rejected");
         if (shouldSave && !failed && currentFolder) {
-            currentFolder.add(recording.metadataFileName, metaData!);
-            currentFolder.move(recording.directory);
-        } else {
-            currentFolder?.delete();
+            try {
+                await currentFolder.add(recording.metadataFileName, metaData!);
+                await currentFolder.move(recording.directory);
+                return;
+            } catch (error) {
+                logger.error(
+                    `Failed to finalize recording for channel ${this._channel.name}: ${error}`
+                );
+            }
         }
+        await currentFolder?.delete();
     }
 
     /**

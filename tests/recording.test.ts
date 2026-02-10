@@ -7,7 +7,7 @@ import { FakeMediaStreamTrack } from "fake-mediastreamtrack";
 
 import { STREAM_TYPE } from "#src/shared/enums.ts";
 import { CLIENT_UPDATE } from "#src/client";
-import { TIME_TAG } from "#src/recording/models/recorder.ts";
+import { STOP_CODE, TIME_TAG } from "#src/recording/models/recorder.ts";
 
 import { recordingSetup, setupUnitTestsEnv } from "#tests/utils/testHelpers.ts";
 import { withMockEnv } from "#tests/utils/utils.ts";
@@ -92,6 +92,54 @@ describe("Recording & Transcription", () => {
             auth.close();
             restoreEnv();
             jest.useRealTimers();
+        }
+    });
+    test("rejects recording start when disk reservation cannot be made", async () => {
+        const baseDir = `/mock/recorder-disk-guard-${Date.now()}`;
+        const resourcesPath = path.join(baseDir, "resources");
+        const recordingPath = path.join(baseDir, "recordings");
+        const authKey = "u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng=";
+        const localKey = "24qvOuliAKWt1gnSzSvkYUD3s31pO1hPcchbekMHCyA=";
+
+        const restoreEnv = withMockEnv({
+            AUTH_KEY: authKey,
+            PUBLIC_IP: "127.0.0.1",
+            LOCAL_KEY: localKey,
+            RECORDING_PATH: recordingPath,
+            RESOURCES_PATH: resourcesPath,
+            RECORDING: "true"
+        });
+        const auth = await import("#src/core/services/auth.ts");
+        const disk = await import("#tests/utils/mockFileSystem.ts");
+
+        try {
+            disk.mockFs.setAvailableDiskSpace(1);
+            auth.start();
+
+            const { Recorder } = await import("#src/recording/models/recorder.ts");
+
+            class FakeChannel extends EventEmitter {
+                name = "test-channel";
+                uuid = "test-uuid";
+                key = Buffer.from("test-channel-key");
+                sessions = new Map();
+            }
+
+            const recorder = new Recorder(
+                new FakeChannel() as unknown as Channel,
+                "http://routing.local"
+            );
+            const recorderUpdate = once(recorder, Recorder.Events.UPDATE);
+            await recorder.start({ audio: true });
+            const [update] = await recorderUpdate;
+
+            expect(recorder.state.recording).toBe(false);
+            expect(recorder.path).toBeUndefined();
+            expect(update.stopCode).toBe(STOP_CODE.DISK_SPACE_EXHAUSTED);
+        } finally {
+            disk.mockFs.setAvailableDiskSpace(512 * 1024 * 1024 * 1024);
+            auth.close();
+            restoreEnv();
         }
     });
     test("Does not record when the feature is disabled", async () => {
