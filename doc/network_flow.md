@@ -1,7 +1,5 @@
 # Core Network Flow
 
-This document describes the complete flow from channel creation to an active WebRTC streaming session.
-
 ```mermaid
 sequenceDiagram
     box Odoo Server
@@ -59,35 +57,31 @@ sequenceDiagram
     Sess->>C2: SERVER_REQUEST.INIT_CONSUMER<br>{ producerId, rtpParameters, sessionId }
     C2-->>Sess: OK
 
-    Note over C1,C2: ✅ Streaming Active
+    Note over C1,C2: Streaming Active
 ```
 
 ## Flow Steps
 
 ### 1. Channel Creation
 
-The Odoo server initiates a channel by calling `GET /v1/channel` with a signed JWT in the `Authorization` header.
-
-**Request:**
-- **Header**: `Authorization: Bearer <JWT>`
-  - JWT must contain `iss` (issuer) claim for idempotency
-  - Optional `key` claim for channel-specific authentication
-- **Query params** (optional):
-  - `webRTC=true|false` — enables/disables WebRTC (default: true)
-  - `recordingAddress` — enables recording with specified callback URL
-
-**Response:**
-```json
-{
-  "uuid": "31dcc5dc-4d26-453e-9bca-ab1f5d268303",
-  "url": "https://sfu.example.com"
-}
-```
+The Odoo server initiates a channel by calling `GET /v1/channel` with a signed (with the AUTH_KEY) JWT in the `Authorization` header.
 
 The SFU:
 1. Verifies the JWT using the global `AUTH_KEY`
 2. Creates (or retrieves) a channel identified by the `iss` claim
-3. If a `key` is provided, it's stored for client authentication
+3. If a `key` is provided, it's associated to the channel for futur authentication
+
+reponds with:
+```json
+{
+  "uuid": "31dcc5dc-4d26-453e-9bca-ab1f5d268303", // the uuid of the channel
+  "url": "https://sfu.example.com" // the url of the sfu for the clients
+}
+```
+
+// TODO maybe explain why it serves the url (since we already know the url), the reason is because
+// it was suggested during the initial design of the SFU to make it easier to implement load balancing
+// sinec a load balancer could serve the url of a server that is not itself
 
 ### 2. JWT Distribution
 
@@ -143,26 +137,7 @@ Once authenticated, the session initializes WebRTC transports:
 
 ### 5. DTLS Handshake
 
-The client completes the secure connection by exchanging DTLS parameters:
-
-1. `CLIENT_REQUEST.CONNECT_CTS_TRANSPORT` — connects the upload transport
-2. `CLIENT_REQUEST.CONNECT_STC_TRANSPORT` — connects the download transport
+The client exchange device information with the serve
+the webrtc connection
 
 ### 6. Ready to Stream
-
-With transports connected, the client can:
-
-- **Produce media**: `CLIENT_REQUEST.INIT_PRODUCER` to start sending audio/video/screen
-- **Consume media**: SFU automatically creates consumers for other sessions' producers
-
-The session is now fully connected and streaming.
-
-## Key Components
-
-| Component                                       | Role                                                 |
-| ----------------------------------------------- | ---------------------------------------------------- |
-| [HTTP Service](../src/core/services/http.ts)    | REST API for server-to-server communication          |
-| [Auth Service](../src/core/services/auth.ts)    | JWT signing and verification                         |
-| [WebSocket Service](../src/core/services/ws.ts) | Client connections and authentication                |
-| [Channel](../src/core/models/channel.ts)        | Room management and media routing                    |
-| [Session](../src/core/models/session.ts)        | Per-client WebRTC transports and producers/consumers |
