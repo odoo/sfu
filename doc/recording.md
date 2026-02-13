@@ -1,11 +1,11 @@
 # Recording
 see [media.ts](../src/recording/services/media.ts) and [recording/*](../src/recording/models) for more details.
 
-The recording feature in the SFU allows for capturing audio, video from camera, and screen sharing streams from a channel. It is designed to handle each stream independently to produce raw recording files that can be processed later (e.g., for transcription, composition, or playback) (by thhe media service).
+The recording feature in the SFU allows for capturing streams from a channel (depending on permissions and sfu setup). It record each stream independently (the "raw recording") that can be processed later (e.g., for transcription, composition, or playback) (by thhe media service).
+
+The two phase approach allow for teh real time part to be light (only writing packets to file, no transcoding), and then the compiling phase (composition/mixing and transcoding) can be done later with no real time constraint.
 
 ## Architecture
-
-The recording architecture follows a hierarchical structure, managing resources from the channel level down to individual system processes.
 
 ```mermaid
 flowchart TB
@@ -43,8 +43,10 @@ flowchart TB
 3.  **MediaOutput (Stream Level / RTP)**
     *   **Scope:** Handles a single stream type (e.g., just the camera) for a session.
     *   **Responsibility:** Bridges the Mediasoup `Producer` (source) to the `MediaWriter` (ffmpeg) process (sink), and manages the lifecycle of the port, transport, consumer, and ffmpeg process. It also handles thhe "allowed"/"active" flags.
+*   
+// TODO write about "allowed"/"active"
 
-4.  **MediaWriter (Process Level)**
+1.  **MediaWriter (Process Level)**
     *   **Scope:** Represents a single child process writing to a file.
     *   **Responsibility:** Receives RTP packets on a specified port and writes them to a file container. Essentially a wrapper around the ffmpeg API.
 
@@ -67,12 +69,6 @@ Recordings are saved in a directory `{channelUUID}/{timestamp}` inside `RECORDIN
 └── screen/
     └── 1765292341216-987-screen.mp4
 ```
-
-#### Contents:
-*   **metadata.json:** Top-level metadata file containing timestamps and upload info.
-*   **audio/:** Folder containing all audio stream recordings.
-*   **video/:** Folder containing all camera stream recordings.
-*   **screen/:** Folder containing all screen sharing stream recordings.
 
 #### Metadata File (`metadata.json`)
 // TODO: reminder, need to check when code is more stable, keys are not final
@@ -103,6 +99,8 @@ Contains the timestamps of the recording, and the address to which the file shou
 ```
 The first occurence of `file_state_change` with `active: true` marks the start of a file, and the last one with `active: false` marks the end, 
 each file can have any arbitrary amount of state changes, when not active the content is essentially empty but the inner timestamps are still being marked.
+
+note: the timestamp are the source of truth, a file can span over a period of time during which its underlying stream is active and also inactive (will just be no sound / no video) because we do not estroy/rebuild the recording process for each state change (would lead to loss/latency) 
 
 ## Media Service & Post-Processing
 

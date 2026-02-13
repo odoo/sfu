@@ -1,4 +1,7 @@
 # Client API (bundle)
+
+// TODO startRecording API re-check before merge
+
 See [client.js](./src/client.js), and check the `build` script in [package.json](./package.json) for more details on how to build the bundle.
 
 The bundle can be imported in the client(js) code that implements the call feature like this:

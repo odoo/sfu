@@ -106,3 +106,7 @@ See [server.js](./src/server.js) for more details.
 - [HTTP API](./doc/http.md)
 - [Recording](./doc/recording.md)
 - [Client API bundle](./doc/client.md)
+
+// TODO maybe a section for dev (testing, profiling,...),
+already written a bit at https://www.odoo.com/odoo/knowledge/46743 so
+could unify
