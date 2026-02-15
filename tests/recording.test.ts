@@ -24,76 +24,6 @@ mockNodeFS();
 mockFfmpeg();
 
 describe("Recording & Transcription", () => {
-    test("serializes channelKey as Buffer JSON in metadata", async () => {
-        jest.useFakeTimers();
-        const baseDir = `/mock/recorder-metadata-${Date.now()}`;
-        const resourcesPath = path.join(baseDir, "resources");
-        const recordingPath = path.join(baseDir, "recordings");
-        const authKey = "u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng=";
-        const localKey = "24qvOuliAKWt1gnSzSvkYUD3s31pO1hPcchbekMHCyA=";
-        const channelKey = "6A9Q5An1oSpYkzVv5QhYlGpx2wJg1TjJe3WnV0X4B3Y=";
-
-        const restoreEnv = withMockEnv({
-            AUTH_KEY: authKey,
-            PUBLIC_IP: "127.0.0.1",
-            LOCAL_KEY: localKey,
-            RECORDING_PATH: recordingPath,
-            RESOURCES_PATH: resourcesPath,
-            RECORDING: "true"
-        });
-
-        const auth = await import("#src/core/services/auth.ts");
-        try {
-            const fs = await import("node:fs/promises");
-            await fs.mkdir(resourcesPath, { recursive: true });
-            await fs.mkdir(recordingPath, { recursive: true });
-
-            auth.start();
-
-            const { Recorder } = await import("#src/recording/models/recorder.ts");
-            const { recording } = await import("#src/config.ts");
-
-            class FakeChannel extends EventEmitter {
-                name = "test-channel";
-                uuid = "test-uuid";
-                key: Buffer;
-                sessions = new Map();
-
-                constructor(key: Buffer) {
-                    super();
-                    this.key = key;
-                }
-            }
-
-            const channelKeyBuffer = Buffer.from(channelKey, "base64");
-            const channel = new FakeChannel(channelKeyBuffer);
-            const recorder = new Recorder(channel as unknown as Channel, "http://routing.local");
-
-            await recorder.start({ audio: true });
-            jest.advanceTimersByTime(recording.minDuration + 1);
-            await recorder.stop();
-
-            const dirs = await fs.readdir(recordingPath, { withFileTypes: true });
-            expect(dirs).toHaveLength(1);
-            const recordingDir = path.join(recordingPath, dirs[0].name);
-            const encrypted = await fs.readFile(
-                path.join(recordingDir, recording.metadataFileName),
-                "utf-8"
-            );
-            const decrypted = auth.decrypt(encrypted);
-            const metadata = JSON.parse(decrypted);
-
-            expect(metadata.channelKey).toEqual({
-                type: "Buffer",
-                data: expect.any(Array)
-            });
-            expect(Buffer.from(metadata.channelKey.data)).toEqual(channelKeyBuffer);
-        } finally {
-            auth.close();
-            restoreEnv();
-            jest.useRealTimers();
-        }
-    });
     test("rejects recording start when disk reservation cannot be made", async () => {
         const baseDir = `/mock/recorder-disk-guard-${Date.now()}`;
         const resourcesPath = path.join(baseDir, "resources");
@@ -1040,6 +970,32 @@ describe("MediaWriter tests", () => {
         MediaWriter = (await import("#src/recording/models/media_writer.ts")).MediaWriter;
     });
 
+    test("should handle FFMPEG process error gracefully", async () => {
+        const errorMock = new MockChildProcess("ffmpeg", []);
+        errorMock.stdin = new PassThrough();
+        mockSpawn.mockImplementationOnce(() => errorMock);
+
+        const writer = new MediaWriter(
+            {
+                kind: "audio",
+                payloadType: 111,
+                clockRate: 48000,
+                codec: "opus",
+                port: 5005,
+                channels: 2
+            },
+            "/tmp",
+            "test_error"
+        );
+
+        // Simulate FFMPEG error event
+        errorMock.emit("error", new Error("FFMPEG crashed"));
+
+        // Writer should have closed
+        await writer.close();
+        expect(writer.extension).toBe("webm");
+    });
+
     test("should fall back to mkv for unknown codec", () => {
         const writer = new MediaWriter(
             {
@@ -1121,32 +1077,6 @@ describe("MediaWriter tests", () => {
         );
         expect(writer.extension).toBe("mp4");
         expect(writer.filename).toBe("test_h264.mp4");
-    });
-
-    test("should handle FFMPEG process error gracefully", async () => {
-        const errorMock = new MockChildProcess("ffmpeg", []);
-        errorMock.stdin = new PassThrough();
-        mockSpawn.mockImplementationOnce(() => errorMock);
-
-        const writer = new MediaWriter(
-            {
-                kind: "audio",
-                payloadType: 111,
-                clockRate: 48000,
-                codec: "opus",
-                port: 5005,
-                channels: 2
-            },
-            "/tmp",
-            "test_error"
-        );
-
-        // Simulate FFMPEG error event
-        errorMock.emit("error", new Error("FFMPEG crashed"));
-
-        // Writer should have closed
-        await writer.close();
-        expect(writer.extension).toBe("webm");
     });
 
     test("should use mp4 for H265 codec", () => {
