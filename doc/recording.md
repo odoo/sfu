@@ -52,7 +52,7 @@ flowchart TB
 
 ## Output Structure
 
-Recordings are saved in a directory `{channelUUID}/{timestamp}` inside `RECORDING_PATH`.
+Recordings are saved in a directory `{channelUUID}/{timestamp}` inside `config.dir.recordings` (`${DATA_PATH}/recordings`).
 
 ```text
 {channelUUID}/{timestamp}/

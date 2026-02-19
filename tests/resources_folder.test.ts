@@ -13,8 +13,7 @@ describe("Folder disk reservation guard", () => {
             AUTH_KEY: "u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng=",
             PUBLIC_IP: "127.0.0.1",
             RECORDING: "true",
-            RESOURCES_PATH: "/mock/resources",
-            RECORDING_PATH: "/mock/recordings"
+            DATA_PATH: "/mock"
         });
         const disk = await import("#tests/utils/mockFileSystem.ts");
         const resources = await import("#src/core/services/resources.ts");
@@ -34,8 +33,7 @@ describe("Folder disk reservation guard", () => {
             AUTH_KEY: "u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng=",
             PUBLIC_IP: "127.0.0.1",
             RECORDING: "true",
-            RESOURCES_PATH: "/mock/resources",
-            RECORDING_PATH: "/mock/recordings"
+            DATA_PATH: "/mock"
         });
         const resources = await import("#src/core/services/resources.ts");
 

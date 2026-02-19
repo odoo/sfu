@@ -3,7 +3,7 @@ import { createReadStream } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-import { recording, RECORDING_PATH, ARCHIVES_PATH } from "#src/config.ts";
+import { recording, dir, FFMPEG_LOGGING } from "#src/config.ts";
 import { decrypt, sign } from "#src/core/services/auth.ts";
 import { MediaCompiler } from "#src/recording/models/media_compiler.ts";
 import type { SealedMetaData } from "#src/recording/models/recorder.ts";
@@ -121,12 +121,12 @@ function isCpuLoaded(): boolean {
  * @returns `true` if a recording was processed (more may remain), `false` if none found.
  */
 async function processRecordings(): Promise<boolean> {
-    logger.verbose(`Checking recordings in ${RECORDING_PATH}`);
+    logger.verbose(`Checking recordings in ${dir.recordings}`);
     try {
-        const recordingDirectories = await fs.readdir(RECORDING_PATH, { withFileTypes: true });
-        for (const dir of recordingDirectories) {
-            if (dir.isDirectory()) {
-                await processRecording(dir.name);
+        const recordingDirectories = await fs.readdir(dir.recordings, { withFileTypes: true });
+        for (const recordingEntry of recordingDirectories) {
+            if (recordingEntry.isDirectory()) {
+                await processRecording(recordingEntry.name);
                 return true;
             }
         }
@@ -144,10 +144,10 @@ async function processRecordings(): Promise<boolean> {
  * TODO: when using ffmpeg for compilation, give lower priority to the process
  */
 async function processRecording(folderName: string) {
-    const dir = path.join(RECORDING_PATH, folderName);
+    const recordingDir = path.join(dir.recordings, folderName);
     let filePath;
     try {
-        const metadataPath = path.join(dir, recording.metadataFileName);
+        const metadataPath = path.join(recordingDir, recording.metadataFileName);
         const content = await fs.readFile(metadataPath, "utf-8");
         const metadata: SealedMetaData = JSON.parse(decrypt(content));
         /**
@@ -164,7 +164,7 @@ async function processRecording(folderName: string) {
         }
         logger.debug(`Read metadata for recording ${folderName}: ${metadata.channelName}`);
         const compiler = new MediaCompiler({
-            workingDir: dir,
+            workingDir: recordingDir,
             startedAt: metadata.startedAt,
             stoppedAt: metadata.stoppedAt,
             timeStamps: metadata.timeStamps
@@ -181,10 +181,10 @@ async function processRecording(folderName: string) {
     } catch (error) {
         logger.error(`Failed to process recording ${folderName}: ${error}`);
     }
-    if (ARCHIVES_PATH) {
-        await fs.rename(dir, path.join(ARCHIVES_PATH, folderName));
+    if (FFMPEG_LOGGING) {
+        await fs.rename(recordingDir, path.join(dir.debug, folderName));
     } else {
-        await fs.rm(dir, { recursive: true });
+        await fs.rm(recordingDir, { recursive: true });
     }
     return filePath;
 }

@@ -170,15 +170,9 @@ export const LOG_COLOR: boolean = process.env.LOG_COLOR
 export const RECORDING: boolean = Boolean(process.env.RECORDING);
 
 /**
- * The path where the recordings will be saved, defaults to `${tmpDir}/recordings`.
+ * Base path used by local SFU storage directories, defaults to `${tmpDir}`.
  */
-export const RECORDING_PATH: string = process.env.RECORDING_PATH || path.join(tmpDir, "recordings");
-/**
- * The path use by the resources service for temporary files, defaults to `${tmpDir}/resources`,
- * Keeping the default is fine as this is only used for temporary files used for internal process, but it can
- * be changed for debugging.
- */
-export const RESOURCES_PATH: string = process.env.RESOURCES_PATH || path.join(tmpDir, "resources");
+export const DATA_PATH: string = process.env.DATA_PATH || tmpDir;
 /**
  * Lower bound for the range of ports that the SFU server can use for dynamic ports, used for
  * routing streams to internal processes (recording).
@@ -190,11 +184,6 @@ export const DYNAMIC_MIN_PORT: number =
  */
 export const DYNAMIC_MAX_PORT: number =
     (process.env.DYNAMIC_MAX_PORT && Number(process.env.DYNAMIC_MAX_PORT)) || 59999;
-/**
- * The path where the archives will be saved, will not be archived if unspecified,
- * this is mostly for debugging (collecting corrupt files and ffmpeg logs)
- */
-export const ARCHIVES_PATH: string | undefined = process.env.ARCHIVES_PATH;
 /**
  * If set, generates `.log` files alongside all ffmpeg file outputs.
  * eg: `recording_1768377901321.mp4` will have an associated `recording_1768377901321.mp4.log`
@@ -221,9 +210,19 @@ export const timeouts = Object.freeze({
     busBatch: testingMode ? 10 : 300
 });
 
+/**
+ * Internal SFU directorie.
+ */
+export const dir = Object.freeze({
+    root: DATA_PATH,
+    recordings: path.join(DATA_PATH, "recordings"),
+    resources: path.join(DATA_PATH, "resources"),
+    debug: path.join(DATA_PATH, "debug")
+});
+
 export const recording = Object.freeze({
     routingInterface: "127.0.0.1",
-    directory: RECORDING_PATH,
+    directory: dir.recordings,
     enabled: RECORDING,
     metadataFileName: "metadata.bin",
     minDuration: 30 /* sec */ * 1000,
