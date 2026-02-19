@@ -26,8 +26,6 @@ mockFfmpeg();
 describe("Recording & Transcription", () => {
     test("rejects recording start when disk reservation cannot be made", async () => {
         const baseDir = `/mock/recorder-disk-guard-${Date.now()}`;
-        const resourcesPath = path.join(baseDir, "resources");
-        const recordingPath = path.join(baseDir, "recordings");
         const authKey = "u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng=";
         const localKey = "24qvOuliAKWt1gnSzSvkYUD3s31pO1hPcchbekMHCyA=";
 
@@ -35,8 +33,7 @@ describe("Recording & Transcription", () => {
             AUTH_KEY: authKey,
             PUBLIC_IP: "127.0.0.1",
             LOCAL_KEY: localKey,
-            RECORDING_PATH: recordingPath,
-            RESOURCES_PATH: resourcesPath,
+            DATA_PATH: baseDir,
             RECORDING: "true"
         });
         const auth = await import("#src/core/services/auth.ts");

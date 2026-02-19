@@ -33,6 +33,20 @@ export type RtcWorker = mediasoup.types.Worker<RtcAppData>;
 
 const logger = new Logger("RESOURCES");
 
+async function setupFileSystem() {
+    await clearFileSystem();
+    if (config.recording.enabled) {
+        await fs.mkdir(config.dir.resources, { recursive: true });
+        await fs.mkdir(config.dir.recordings, { recursive: true });
+        if (config.FFMPEG_LOGGING) {
+            await fs.mkdir(config.dir.debug, { recursive: true });
+        }
+    } else {
+        logger.info("Recording is disabled, media service will not start");
+        return;
+    }
+}
+
 async function clearFileSystem() {
     try {
         if (!config.LOCAL_KEY) {
@@ -42,24 +56,11 @@ async function clearFileSystem() {
              * be decrypted.
              */
             logger.warn("LOCAL_KEY missing from the environment, removing old recordings");
-            await fs.rm(config.RECORDING_PATH, { recursive: true, force: true });
+            await fs.rm(config.dir.recordings, { recursive: true, force: true });
         }
-        await fs.rm(config.RESOURCES_PATH, { recursive: true });
+        await fs.rm(config.dir.resources, { recursive: true });
     } catch (error) {
         logger.error(`Failed to clear file system: ${error}`);
-    }
-}
-async function setupFileSystem() {
-    await clearFileSystem();
-    if (config.recording.enabled) {
-        await fs.mkdir(config.RESOURCES_PATH, { recursive: true });
-        await fs.mkdir(config.RECORDING_PATH, { recursive: true });
-        if (config.ARCHIVES_PATH) {
-            await fs.mkdir(config.ARCHIVES_PATH, { recursive: true });
-        }
-    } else {
-        logger.info("Recording is disabled, media service will not start");
-        return;
     }
 }
 
@@ -86,7 +87,7 @@ export async function start(): Promise<void> {
      * and block recording start when remaining ports are too low.
      */
     logger.info("starting...");
-    logger.info(`cleaning resources folder (${config.RESOURCES_PATH})...`);
+    logger.info(`cleaning resources folder (${config.dir.resources})...`);
     Folder.resetReservations();
     await setupFileSystem();
     for (let i = 0; i < config.NUM_WORKERS; ++i) {
@@ -179,7 +180,7 @@ export class Folder {
 
     static async create(name: string, subDirectories: string[]) {
         await Folder._checkMemoryAllocation();
-        const p: string = path.join(config.RESOURCES_PATH, `${name}-${unique++}`);
+        const p: string = path.join(config.dir.resources, `${name}-${unique++}`);
         await fs.mkdir(p);
         const proms = [];
         for (const subDirectory of subDirectories) {
@@ -191,7 +192,7 @@ export class Folder {
 
     private static async _checkMemoryAllocation() {
         const size = RECORDING_RESERVATION_BYTES;
-        const stats = await fs.statfs(config.RESOURCES_PATH);
+        const stats = await fs.statfs(config.dir.resources);
         const blockSize = toBigInt(stats.bsize);
         const availableBlocks = toBigInt(stats.bavail);
         const availableDiskBytes = blockSize * availableBlocks;

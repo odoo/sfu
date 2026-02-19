@@ -20,8 +20,7 @@ export async function recordingSetup(env: Record<string, string | undefined>) {
     fs.mkdirSync(recordingPath);
 
     const restoreEnv = withMockEnv({
-        RESOURCES_PATH: resourcesPath,
-        RECORDING_PATH: recordingPath,
+        DATA_PATH: tmpDir,
         ...env
     });
     const { LocalNetwork } = await import("#tests/utils/network");
@@ -60,6 +59,7 @@ export async function setupUnitTestsEnv() {
 
     envMockFs.reset();
     envMockFs.mkdir("/mock/recordings");
+    envMockFs.mkdir("/mock/debug");
     jest.clearAllMocks();
 
     jest.doMock("#src/config.ts", () => ({
@@ -69,7 +69,13 @@ export async function setupUnitTestsEnv() {
             enabled: true,
             processingCooldown: 0
         },
-        RECORDING_PATH: "/mock/recordings",
+        dir: {
+            root: "/mock",
+            recordings: "/mock/recordings",
+            resources: "/mock/resources",
+            debug: "/mock/debug"
+        },
+        FFMPEG_LOGGING: false,
         LOCAL_KEY: "24qvOuliAKWt1gnSzSvkYUD3s31pO1hPcchbekMHCyA=",
         LOG_LEVEL: "none"
     }));
