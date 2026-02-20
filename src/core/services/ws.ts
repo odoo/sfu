@@ -124,7 +124,11 @@ export function close(): void {
  * @param webSocket - WebSocket connection
  * @param credentials - Authentication credentials
  * @returns Created session
- * @throws {AuthenticationError} If authentication fails
+ * @throws {OvercrowdedError}  when:
+ *  - channel capacity is reached.
+ * @throws {AuthenticationError}  when:
+ *  - JWT verification fails.
+ *  - channel access fails.
  */
 function connect(webSocket: WebSocket, credentials: WebSocketCredentials): Session {
     const { channelUUID, jwt } = credentials;
