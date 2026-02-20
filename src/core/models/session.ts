@@ -394,6 +394,9 @@ export class Session extends EventEmitter {
         await Promise.all(promises);
     }
 
+    /**
+     * @throws {Error} Rethrows the exact upstream error from createWebRtcTransport(...), INIT_TRANSPORTS bus request, or bitrate setters.
+     */
     private async _initializeTransports(): Promise<void> {
         try {
             const [ctsTransport, stcTransport] = await Promise.all([
@@ -688,6 +691,11 @@ export class Session extends EventEmitter {
         }
     }
 
+    /**
+     * @throws {Error} when:
+     *  - producer creation fails (rethrows the exact error from _ctsTransport.produce(...)).
+     *  - request name is unsupported.
+     */
     private async _handleRequest({
         name,
         payload

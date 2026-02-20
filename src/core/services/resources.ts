@@ -136,7 +136,7 @@ async function makeWorker(): Promise<void> {
 }
 
 /**
- * @throws {Error} If no workers are available
+ * @throws {Error} when no worker can be selected.
  */
 export async function getWorker(): Promise<RtcWorker> {
     const proms = [];
@@ -175,6 +175,9 @@ export class Folder {
         Folder._reservedRecordingBytes = 0;
     }
 
+    /**
+     * @throws {DiskSpaceLimitReachedError} when reservation exceeds available disk.
+     */
     static async create(name: string, subDirectories: string[]) {
         await Folder._checkMemoryAllocation();
         const p: string = path.join(config.dir.resources, `${name}-${unique++}`);
@@ -187,6 +190,9 @@ export class Folder {
         return new Folder(p, name);
     }
 
+    /**
+     * @throws {DiskSpaceLimitReachedError} when reservation exceeds available disk.
+     */
     private static async _checkMemoryAllocation() {
         const size = RECORDING_RESERVATION_BYTES;
         const stats = await fs.statfs(config.dir.resources);
@@ -255,6 +261,9 @@ export class Folder {
 export class DynamicPort {
     number: number;
 
+    /**
+     * @throws {PortLimitReachedError} when all dynamic ports are exhausted.
+     */
     constructor() {
         const maybeNum = availablePorts.shift();
         if (!maybeNum) {

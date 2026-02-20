@@ -153,6 +153,7 @@ export function toBigInt(value: number | bigint) {
  * @param req - HTTP request object
  * @param options - Parsing options
  * @returns Promise resolving to parsed body (string or JSON)
+ * @throws {SyntaxError} from JSON.parse(...) when `json=true` and the payload is invalid JSON.
  *
  * TODO override definition: if this takes json=true as param,
  * it returns Promise<JsonSerializable>, else returns Promise<string>
@@ -180,6 +181,7 @@ export function parseBody(
  *
  * @param req - HTTP request object
  * @returns Parsed request information
+ * @throws {Error} when req.url is missing or forwarded headers cannot be parsed.
  */
 export function extractRequestInfo(req: IncomingMessage): RequestInfo {
     if (!req.url) {

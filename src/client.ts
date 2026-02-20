@@ -366,6 +366,7 @@ export class SfuClient extends EventTarget {
     /**
      * @param type - Media type to update
      * @param track - MediaStreamTrack to upload (null removes the track)
+     * @throws {Error} when `type` is not one of the supported stream types.
      */
     async updateUpload(type: StreamType, track: MediaStreamTrack | null): Promise<void> {
         if (!SUPPORTED_TYPES.has(type)) {
