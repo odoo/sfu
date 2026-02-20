@@ -9,15 +9,12 @@ import { DiskSpaceLimitReachedError, PortLimitReachedError } from "#src/utils/er
 
 const availablePorts: number[] = [];
 let unique = 1;
-const HOUR = 60 * 60 * 1000;
-const AV1_BYTES_PER_HOUR = 700 * 1024 * 1024;
-const RAW_RECORDING_MULTIPLIER = 4;
-const RESERVATION_MARGIN = 1.2;
+
 export const RECORDING_RESERVATION_BYTES = Math.ceil(
-    (config.recording.maxDuration / HOUR) *
-        AV1_BYTES_PER_HOUR *
-        RAW_RECORDING_MULTIPLIER *
-        RESERVATION_MARGIN
+    (config.recording.maxDuration / (60 * 60 * 1000)) * // 1 hour
+        (700 * 1024 * 1024) * // av1 average byte par hour
+        4 * // raw recording multiplier
+        1.2 // reservation margin
 );
 
 type RtcAppData = mediasoup.types.AppData & {
