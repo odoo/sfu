@@ -3,7 +3,7 @@ see [media.ts](../src/recording/services/media.ts) and [recording/*](../src/reco
 
 The recording feature in the SFU allows for capturing streams from a channel (depending on permissions and sfu setup). It record each stream independently (the "raw recording") that can be processed later (e.g., for transcription, composition, or playback) (by thhe media service).
 
-The two phase approach allow for teh real time part to be light (only writing packets to file, no transcoding), and then the compiling phase (composition/mixing and transcoding) can be done later with no real time constraint.
+The two phase approach allow for the real time part to be light (only writing packets to file, no transcoding), and then the compiling phase (composition/mixing and transcoding) can be done later with no real time constraint (so the heavy work can be done when the SFU is not under too much load).
 
 ## Architecture
 
@@ -32,23 +32,23 @@ flowchart TB
 ### Components
 
 1.  **Recorder (Channel Level)**
-    *   **Scope:** Manages recording for an entire `Channel`.
-    *   **Responsibility:** Handles the lifecycle of recording and holds the  `RecordingTask`s for current sessions and listens for new sessions joining the channel to create tasks for them dynamically.
+    Manages recording for an entire `Channel`.
+    Handles the lifecycle of recording and holds the  `RecordingTask`s for current sessions and listens for new sessions joining the channel to create tasks for them dynamically.
 
 2.  **RecordingTask (Session Level)**
-    *   **Scope:** Bound to a specific rtc `Session`.
-    *   **Responsibility:** Monitors the user's producers (audio, camera, screen). When a user releases a stream (e.g., turns on camera), the `RecordingTask` detects it and manage a `MediaOutput` for each.
+    Bound to a specific rtc `Session`.
+    Monitors the user's producers (audio, camera, screen). When a user releases a stream (e.g., turns on camera), the `RecordingTask` detects it and manage a `MediaOutput` for each.
     *   **Inputs:** `audio`, `camera`, `screen` flags determine which streams to record.
 
 3.  **MediaOutput (Stream Level / RTP)**
-    *   **Scope:** Handles a single stream type (e.g., just the camera) for a session.
-    *   **Responsibility:** Bridges the Mediasoup `Producer` (source) to the `MediaWriter` (ffmpeg) process (sink), and manages the lifecycle of the port, transport, consumer, and ffmpeg process. It also handles thhe "allowed"/"active" flags.
+    Handles a single stream type (e.g., just the camera) for a session.
+    Bridges the Mediasoup `Producer` (source) to the `MediaWriter` (ffmpeg) process (sink), and manages the lifecycle of the port, transport, consumer, and ffmpeg process. It also handles thhe "allowed"/"active" flags.
 *   
 // TODO write about "allowed"/"active"
 
 1.  **MediaWriter (Process Level)**
-    *   **Scope:** Represents a single child process writing to a file.
-    *   **Responsibility:** Receives RTP packets on a specified port and writes them to a file container. Essentially a wrapper around the ffmpeg API.
+    Represents a single child process writing to a file.
+    Receives RTP packets on a specified port and writes them to a file container. Essentially a wrapper around the ffmpeg API.
 
 ## Output Structure
 
@@ -71,7 +71,7 @@ Recordings are saved in a directory `{channelUUID}/{timestamp}` inside `config.d
 ```
 
 #### Metadata File (`metadata.json`)
-// TODO: reminder, need to check when code is more stable, keys are not final
+// TODO: reminder, need to check when code is more stable, keys are not final (may contain more than needed while im debugging/developing)
 
 Contains the timestamps of the recording, and the address to which the file should be uploaded to.
 
@@ -112,9 +112,12 @@ TODO
 
 ### 2. [Media Compiler](../src/recording/models/media_compiler.ts)
 
-The compiler transforms raw recording files into compiled recordings.
+The compiler transforms raw recording files into compiled recordings (1 compiler 1 recording).
 
 #### Upload
 TODO: not decided yet, waiting on PR: https://github.com/odoo/odoo/pull/233836
 
-After compilation, the service is responsible for uploading the generated artifacts based on the routing information obtained from the `routingAddress`.
+After compilation, the service is responsible for uploading the generated artifacts based on the routing information obtained from the `routingAddress`
+
+TODO: should create a call artifact for transcription and for the video, the ir attachment of the artifact
+should be cloud stored (and the upload URL passed to the SFU)

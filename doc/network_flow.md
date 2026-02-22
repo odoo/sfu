@@ -76,16 +76,16 @@ reponds with:
 {
   "uuid": "31dcc5dc-4d26-453e-9bca-ab1f5d268303", // the uuid of the channel
   "url": "https://sfu.example.com" // the url of the sfu for the clients
+  // the reason we serve the URL is because it makes it easier to implement load balancing with the same API
 }
 ```
 
-// TODO maybe explain why it serves the url (since we already know the url), the reason is because
-// it was suggested during the initial design of the SFU to make it easier to implement load balancing
-// sinec a load balancer could serve the url of a server that is not itself
-
 ### 2. JWT Distribution
 
-The Odoo server uses the channel `uuid` and the optional `key` to sign JWTs for its clients. These JWTs are distributed to clients along with the SFU URL.
+The Odoo server uses the channel `uuid` and the optional `key` (fallback to global `AUTH_KEY`) to sign JWTs for its clients. These JWTs are distributed to clients along with the SFU URL.
+
+Note: the diference between `key` and `AUTH_KEY` is that the `key` is specific to the channel, while `AUTH_KEY` is global. `key` is exchanged when requesting the channel and is only known by the specific Odoo server that
+requested the associated channel (this is useful when the SFU has multiple Odoo servers behind it and needs to authenticate clients from different servers, like for SaaS/Odoo.sh).
 
 **JWT Claims for Clients:**
 ```json
@@ -127,13 +127,13 @@ Clients connect to the SFU via WebSocket and authenticate with their JWT.
 
 Once authenticated, the session initializes WebRTC transports:
 
-1. **SFU creates two transports:**
-   - **CTS (Client-to-Server)**: receives media from client (producers)
-   - **STC (Server-to-Client)**: sends media to client (consumers)
-
-2. **SFU sends transport configs to client:**
-
-3. **Client responds with RTP capabilities**
+1. FU creates two transports:
+   - Client-to-Server (CTS): receives media from client (producers)
+   - Server-to-Client (STC): sends media to client (consumers)
+2. SFU sends transport configs to client:
+3. Client responds with RTP capabilities
+4. SFU finalizes the transport with the known capabilities
+5. rtc session state changes to "connected", the client is ready to stream (upload streams)
 
 ### 5. DTLS Handshake
 

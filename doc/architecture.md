@@ -107,30 +107,26 @@ sequenceDiagram
 The Resources service mannages the pool of worker processes and system resources.
 
 -  Managers the pool of Mediasoup workers and balanse their load.
--  Manages temporary folders.
+-  Manages disk usage (folders, space, cleanup...).
 -  Manages dynamic ports for media transport.
-  
-TODO: maybe guards resource allocation if starved
 
 ### 5. Media Service ([`media.ts`](../src/recording/services/media.ts))
 more at [recording.md](./recording.md)
 
-The Media service is responsible for the processing of recordings and the sending to the files.
+The Media service is responsible for the processing of recordings and the upload to the destination server.
 
 ## Models
 
 ### 1. Channel ([`channel.ts`](../src/core/models/channel.ts))
 
-The `Channel` represents a room or lobby where multiple users can connect (typically mirrors Odoo's "discuss.channel" model). It acts as the central hub for a group of participants.
+The `Channel` represents a room or lobby where multiple users can connect (typically mirrors Odoo's "discuss.channel" model).
 
 It is isolated from other channels and can be protected by it own key
-
-// TODO before merge write more about channel segregation (eg: odoo sh)
 
 - **Session Management**: Maintains the list of active `Session`s.
 - **Media Router**: Creates and holds the mediasoup `Router` instance used for media routing within the channel.
 - **Recording**: Manages the `Recorder` instance if recording is enabled.
-- **Signaling**: Serves as a relay for signaling messages between clients.
+- **Signaling**: Serves as a relay for signaling messages and broadcasts between clients.
 
 ### 2. Session ([`session.ts`](../src/core/models/session.ts))
 
