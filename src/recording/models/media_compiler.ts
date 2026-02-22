@@ -137,6 +137,16 @@ export class MediaCompiler {
             recording.audioCodec,
             "-preset",
             recording.videoPreset,
+            /**
+             * Relocates the MP4 moov atom to the beginning of the file.
+             * Without this, the moov atom is written at the end, which
+             * prevents progressive playback (the entire file must be
+             * downloaded before it can start playing). This matters
+             * because the final file is uploaded and may be served
+             * directly for streaming.
+             */
+            "-movflags",
+            "+faststart",
             outputPath
         ];
 
@@ -610,6 +620,10 @@ export class MediaCompiler {
             recording.videoCodec,
             "-preset",
             recording.videoPreset,
+            // Moves the moov atom to the front so segment files can be
+            // read sequentially during concatenation without seeking.
+            "-movflags",
+            "+faststart",
             outputPath
         ];
 

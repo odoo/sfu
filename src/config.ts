@@ -231,11 +231,11 @@ export const recording = Object.freeze({
     processingCooldown: 5 /* sec */ * 1000,
     // TODO could be env variables?
     videoCodec: "libsvtav1",
-    videoPreset: "10",
+    videoPreset: "8",
     videoExt: "mp4",
     frameRate: "30",
     audioCodec: "libopus",
-    audioBitRate: "8k",
+    audioBitRate: "32k", // around 14 MB per hour
     audioExt: "ogg",
     /*
      * Limits the amount of video streams recorded at once.
