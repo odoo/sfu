@@ -243,6 +243,7 @@ export class Folder {
             this.path = fullPath;
         } catch (error) {
             logger.error(`Failed to move folder from ${this.path} to ${fullPath}: ${error}`);
+            throw error;
         } finally {
             this._releaseMemory();
         }

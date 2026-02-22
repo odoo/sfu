@@ -486,6 +486,62 @@ describe("Recording & Transcription", () => {
     });
 });
 
+describe("RecordingTask startup failures", () => {
+    test("media output should expose init failures through ready", async () => {
+        await setupUnitTestsEnv();
+        const resources = await import("#src/core/services/resources.ts");
+        const { PortLimitReachedError } = await import("#src/utils/errors.ts");
+        const { MediaOutput } = await import("#src/recording/models/media_output.ts");
+
+        resources.close();
+
+        const mediaOutput = new MediaOutput({
+            producer: { kind: "audio", id: "producer_1", appData: {} } as any,
+            name: "test-output",
+            directory: "/mock/resources"
+        });
+
+        await expect(mediaOutput.ready).rejects.toBeInstanceOf(PortLimitReachedError);
+    });
+
+    test("recording task should clear data when media output init fails", async () => {
+        await setupUnitTestsEnv();
+        const resources = await import("#src/core/services/resources.ts");
+        const { RecordingTask } = await import("#src/recording/models/recording_task.ts");
+
+        resources.close();
+
+        const producer = { kind: "audio", id: "producer_2", appData: {} } as any;
+        const session = Object.assign(new EventEmitter(), {
+            id: 44,
+            name: "session-44",
+            producers: {
+                [STREAM_TYPE.AUDIO]: producer,
+                [STREAM_TYPE.CAMERA]: undefined,
+                [STREAM_TYPE.SCREEN]: undefined
+            }
+        });
+        const recorder = {
+            path: "/mock/resources/session-44",
+            mark: jest.fn()
+        };
+
+        const task = new RecordingTask(recorder as any, session as any, {
+            audio: false,
+            camera: false,
+            screen: false
+        });
+        const taskData = (task as any).recordingDataByStreamType[STREAM_TYPE.AUDIO];
+        taskData.active = true;
+
+        await (task as any)._updateProcess(taskData, producer, STREAM_TYPE.AUDIO);
+
+        expect(taskData.active).toBe(false);
+        expect(taskData.mediaOutput).toBeUndefined();
+        await task.stop();
+    });
+});
+
 describe("Media Service", () => {
     let mediaService: typeof import("#src/recording/services/media");
     let mockFs: typeof import("#tests/utils/mockFileSystem").mockFs;
@@ -1472,5 +1528,65 @@ describe("Media Service network tests", () => {
         expect(mockFetch).toHaveBeenCalledWith(`${routingAddress}/routing`, expect.anything());
         // Recording should still be cleaned up
         expect(mockFsModuleInstance.rm).toHaveBeenCalledWith(recordingDir, { recursive: true });
+    });
+
+    test("should upload video with a MIME type matching the configured container", async () => {
+        const recordingName = "session_video_mime";
+        const routingAddress = "http://www.odoo.com/routing";
+        const uploadDestination = "http://upload.local/video";
+        const recordingDir = `/mock/recordings/${recordingName}`;
+        const metadata = {
+            channelName: "Test Channel",
+            routingAddress,
+            channelKey: "key123",
+            stoppedAt: Date.now() - 1000,
+            startedAt: 1000,
+            timeStamps: [
+                {
+                    tag: TIME_TAG.FILE_STATE_CHANGE,
+                    timestamp: 1100,
+                    info: { type: STREAM_TYPE.CAMERA, active: true, filename: "cam_1.mp4" }
+                }
+            ],
+            audio: false,
+            video: true,
+            transcription: false
+        };
+
+        mockFsInstance.mkdir(recordingDir);
+        mockFsInstance.mkdir(path.join(recordingDir, "camera"));
+        mockFsInstance.write(path.join(recordingDir, "metadata.bin"), JSON.stringify(metadata));
+        mockFsInstance.write(path.join(recordingDir, "camera", "cam_1.mp4"), "dummy video");
+
+        mockFetch.mockImplementation(async (url: string | URL | Request) => {
+            const urlString = url.toString();
+            if (urlString.includes("/routing")) {
+                return {
+                    ok: true,
+                    json: async () => ({ destination: uploadDestination }),
+                    statusText: "OK"
+                } as Response;
+            }
+            if (urlString === uploadDestination) {
+                return { ok: true, text: async () => "" } as Response;
+            }
+            return { ok: false, statusText: "Not Found" } as Response;
+        });
+
+        await mediaService.start();
+        await mediaService.__testing__.oneProcessingBatch();
+
+        const uploadCall = mockFetch.mock.calls.find(
+            ([url]) => url.toString() === uploadDestination
+        );
+        expect(uploadCall).toBeDefined();
+        expect(uploadCall![1]).toEqual(
+            expect.objectContaining({
+                method: "POST",
+                headers: expect.objectContaining({
+                    "Content-Type": "video/mp4"
+                })
+            })
+        );
     });
 });

@@ -35,6 +35,7 @@ export class MediaOutput extends EventEmitter {
     };
 
     name: string;
+    readonly ready: Promise<void>;
     private _producer: Producer<SessionAppData>;
     private _transport?: PlainTransport;
     private _consumer?: Consumer;
@@ -72,7 +73,7 @@ export class MediaOutput extends EventEmitter {
         this._producer = producer;
         this._directory = directory;
         this._availabilityMarker = `availability-${name}`;
-        this._init();
+        this.ready = this._init();
     }
 
     async close() {
@@ -102,7 +103,7 @@ export class MediaOutput extends EventEmitter {
             });
             if (this._isClosed) {
                 // may be closed by the time the consumer is created
-                this._cleanup();
+                await this._cleanup();
                 return;
             }
             const codecData = this._consumer.rtpParameters.codecs[0];
@@ -115,22 +116,23 @@ export class MediaOutput extends EventEmitter {
                 channels: this._producer.kind === "audio" ? codecData.channels : undefined
             };
             if (this._isClosed) {
-                this._cleanup();
+                await this._cleanup();
                 return;
             }
             const refreshProcess = this._refreshProcess.bind(this);
             this._consumer.on("producerresume", refreshProcess);
             this._consumer.on("producerpause", refreshProcess);
             this._refreshProcess();
-        } catch {
-            this.close();
+        } catch (error) {
+            await this.close();
+            throw error;
         }
     }
 
     /**
      * Refreshes the MediaWriter process based on the producer state.
      */
-    private async _refreshProcess() {
+    private _refreshProcess() {
         if (this._isClosed || !this._rtpData) {
             return;
         }

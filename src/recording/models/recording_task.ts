@@ -104,7 +104,7 @@ export class RecordingTask extends EventEmitter {
         this._session.on(Session.Events.PRODUCER, this._onSessionProducer);
     }
 
-    private async _setRecording(type: STREAM_TYPE, state: boolean) {
+    private _setRecording(type: STREAM_TYPE, state: boolean) {
         const data = this.recordingDataByStreamType[type];
         if (data.active === state) {
             return;
@@ -114,10 +114,10 @@ export class RecordingTask extends EventEmitter {
         if (!producer) {
             return; // will be handled later when the session starts producing
         }
-        this._updateProcess(data, producer, type);
+        this._scheduleUpdateProcess(data, producer, type);
     }
 
-    private async _onSessionProducer({
+    private _onSessionProducer({
         type,
         producer
     }: {
@@ -125,7 +125,19 @@ export class RecordingTask extends EventEmitter {
         producer: SessionProducer;
     }) {
         const data = this.recordingDataByStreamType[type];
-        this._updateProcess(data, producer, type);
+        this._scheduleUpdateProcess(data, producer, type);
+    }
+
+    private _scheduleUpdateProcess(
+        data: RecordingData,
+        producer: SessionProducer,
+        type: STREAM_TYPE
+    ) {
+        void this._updateProcess(data, producer, type).catch((error) => {
+            logger.error(
+                `unexpected recording update failure for ${this._session.name} ${type} - error: ${error}`
+            );
+        });
     }
 
     private async _updateProcess(
@@ -169,6 +181,7 @@ export class RecordingTask extends EventEmitter {
                     data.fileStateChangeListener
                 );
                 data.mediaOutput.allowed = data.allowed;
+                await data.mediaOutput.ready;
                 if (data.active) {
                     return;
                 }
@@ -185,7 +198,7 @@ export class RecordingTask extends EventEmitter {
                 }
             }
         }
-        this._clearData(data.type);
+        await this._clearData(data.type);
     }
 
     private async _clearData(type: STREAM_TYPE) {

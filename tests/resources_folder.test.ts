@@ -47,4 +47,25 @@ describe("Folder disk reservation guard", () => {
             restoreEnv();
         }
     });
+
+    test("rethrows move failure and releases reservation", async () => {
+        const restoreEnv = withMockEnv({
+            AUTH_KEY: "u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng=",
+            PUBLIC_IP: "127.0.0.1",
+            RECORDING: "true",
+            DATA_PATH: "/mock"
+        });
+        const resources = await import("#src/core/services/resources.ts");
+        const { mockFsModule } = await import("#tests/utils/mockFileSystem.ts");
+
+        try {
+            const folder = await resources.Folder.create("move-failure", []);
+            mockFsModule.rename.mockRejectedValueOnce(new Error("rename failed"));
+
+            await expect(folder.move("/mock/recordings/final")).rejects.toThrow("rename failed");
+            expect(resources.__testing__.reservedRecordingBytes).toBe(0);
+        } finally {
+            restoreEnv();
+        }
+    });
 });
