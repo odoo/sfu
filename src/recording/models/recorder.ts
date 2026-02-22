@@ -248,6 +248,11 @@ export class Recorder extends EventEmitter {
         const startedAt = this._metaData.startedAt;
         const shouldSave =
             save && (startedAt ? Date.now() - startedAt >= recording.minDuration : true);
+        const finalState = {
+            audio: this.audio,
+            video: this.video,
+            transcription: this.transcription
+        };
         this.isRecording = false;
         this.audio = false;
         this.video = false;
@@ -260,7 +265,7 @@ export class Recorder extends EventEmitter {
         this._timeout = undefined;
         this._channel.off(Channel.Events.SESSION_JOIN, this._onSessionJoin);
         this._channel.off(Channel.Events.SESSION_LEAVE, this._onSessionLeave);
-        const metaData = shouldSave ? this._sealMetaData() : undefined;
+        const sealedMetadata = shouldSave ? this._sealMetaData(finalState) : undefined;
         this._metaData.timeStamps = [];
         this._metaData.startedAt = undefined;
         this._metaData.labels = {};
@@ -271,7 +276,7 @@ export class Recorder extends EventEmitter {
         const failed = results.some((result) => result.status === "rejected");
         if (shouldSave && !failed && currentFolder) {
             try {
-                await currentFolder.add(recording.metadataFileName, metaData!);
+                await currentFolder.add(recording.metadataFileName, sealedMetadata!);
                 await currentFolder.move(recording.directory);
                 return;
             } catch (error) {
@@ -288,12 +293,20 @@ export class Recorder extends EventEmitter {
      *
      * @returns encrypted metadata
      */
-    private _sealMetaData() {
+    private _sealMetaData({
+        audio,
+        video,
+        transcription
+    }: {
+        audio: boolean;
+        video: boolean;
+        transcription: boolean;
+    }) {
         const metadata = JSON.stringify({
             ...this._metaData,
-            audio: this.audio,
-            video: this.video,
-            transcription: this.transcription,
+            audio,
+            video,
+            transcription,
             channelKey: this._channel.key,
             stoppedAt: Date.now()
         });

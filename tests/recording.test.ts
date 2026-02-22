@@ -69,6 +69,44 @@ describe("Recording & Transcription", () => {
             restoreEnv();
         }
     });
+    test("seals final recording flags before state reset", async () => {
+        const { Recorder } = await import("#src/recording/models/recorder.ts");
+        const { recording } = await import("#src/config.ts");
+
+        class FakeChannel extends EventEmitter {
+            name = "test-channel";
+            uuid = "test-uuid";
+            key = Buffer.from("AQID", "base64");
+            sessions = new Map();
+        }
+
+        const recorder = new Recorder(new FakeChannel() as unknown as Channel, "http://routing.local");
+        const folder = {
+            path: "/mock/resources/folder",
+            add: jest.fn(async () => {}),
+            move: jest.fn(async () => {}),
+            delete: jest.fn(async () => {})
+        };
+        const recorderPrivate = recorder as any;
+        const sealSpy = jest.spyOn(recorderPrivate, "_sealMetaData").mockReturnValue("sealed");
+        jest.spyOn(recorderPrivate, "_stopRecordingTasks").mockResolvedValue([]);
+
+        recorderPrivate.isRecording = true;
+        recorderPrivate.audio = true;
+        recorderPrivate.video = true;
+        recorderPrivate.transcription = true;
+        recorderPrivate._metaData.startedAt = Date.now() - recording.minDuration - 1000;
+        recorderPrivate._folder = folder;
+
+        await recorder.stop();
+
+        expect(sealSpy).toHaveBeenCalledWith({
+            audio: true,
+            video: true,
+            transcription: true
+        });
+        expect(folder.add).toHaveBeenCalledWith(recording.metadataFileName, "sealed");
+    });
     test("Does not record when the feature is disabled", async () => {
         const { restore } = await recordingSetup({
             RECORDING: undefined
@@ -1329,10 +1367,11 @@ describe("Media Service network tests", () => {
         mockFetch.mockRejectedValue(new Error("Network error"));
 
         await mediaService.start();
-        await mediaService.__testing__.oneProcessingBatch;
+        await mediaService.__testing__.oneProcessingBatch();
 
-        // Recording should be cleaned up despite network failure
-        expect(mockFsModuleInstance.rm).toHaveBeenCalledWith(recordingDir, { recursive: true });
+        // Recording should be retained for retry after transient network failures
+        expect(mockFsModuleInstance.rm).not.toHaveBeenCalledWith(recordingDir, { recursive: true });
+        expect(mockFsInstance.exists(recordingDir)).toBe(true);
     });
 
     test("should handle routing failure gracefully", async () => {
@@ -1371,8 +1410,9 @@ describe("Media Service network tests", () => {
         await mediaService.start();
         await mediaService.__testing__.oneProcessingBatch();
 
-        // Recording should be cleaned up despite upload failure
-        expect(mockFsModuleInstance.rm).toHaveBeenCalledWith(recordingDir, { recursive: true });
+        // Recording should be retained for retry after routing failures
+        expect(mockFsModuleInstance.rm).not.toHaveBeenCalledWith(recordingDir, { recursive: true });
+        expect(mockFsInstance.exists(recordingDir)).toBe(true);
     });
 
     test("should handle empty destination in routing response", async () => {
