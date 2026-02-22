@@ -12,10 +12,13 @@ import { Logger } from "#src/utils/utils.ts";
 const logger = new Logger("MEDIA");
 const CHECK_INTERVAL = 2 * 60 * 1000; // 2 minutes
 const CPU_LOAD_THRESHOLD = 0.8;
+const REQUEST_TIMEOUT = 30_000;
 
 type RoutingResponse = {
     destination: string;
 };
+
+class DiscardRecordingError extends Error {}
 
 let interval: NodeJS.Timeout | undefined;
 
@@ -41,6 +44,31 @@ function makeJwt(key: string) {
         },
         key
     );
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = REQUEST_TIMEOUT) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, {
+            ...init,
+            signal: controller.signal
+        });
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+async function finalizeRecordingFolder(recordingDir: string, folderName: string) {
+    try {
+        if (FFMPEG_LOGGING) {
+            await fs.rename(recordingDir, path.join(dir.debug, folderName));
+        } else {
+            await fs.rm(recordingDir, { recursive: true });
+        }
+    } catch (error) {
+        logger.error(`Failed to cleanup recording folder ${folderName}: ${error}`);
+    }
 }
 
 /**
@@ -118,7 +146,7 @@ function isCpuLoaded(): boolean {
 }
 
 /**
- * @returns `true` if a recording was processed (more may remain), `false` if none found.
+ * @returns `true` if a recording directory was finalized, `false` otherwise.
  */
 async function processRecordings(): Promise<boolean> {
     logger.verbose(`Checking recordings in ${dir.recordings}`);
@@ -126,8 +154,10 @@ async function processRecordings(): Promise<boolean> {
         const recordingDirectories = await fs.readdir(dir.recordings, { withFileTypes: true });
         for (const recordingEntry of recordingDirectories) {
             if (recordingEntry.isDirectory()) {
-                await processRecording(recordingEntry.name);
-                return true;
+                const finalized = await processRecording(recordingEntry.name);
+                if (finalized) {
+                    return true;
+                }
             }
         }
     } catch (error) {
@@ -143,24 +173,33 @@ async function processRecordings(): Promise<boolean> {
 /**
  * TODO: when using ffmpeg for compilation, give lower priority to the process
  */
-async function processRecording(folderName: string) {
+async function processRecording(folderName: string): Promise<boolean> {
     const recordingDir = path.join(dir.recordings, folderName);
-    let filePath;
     try {
         const metadataPath = path.join(recordingDir, recording.metadataFileName);
-        const content = await fs.readFile(metadataPath, "utf-8");
-        const metadata: SealedMetaData = JSON.parse(decrypt(content));
+        let content: string;
+        try {
+            content = await fs.readFile(metadataPath, "utf-8");
+        } catch (error) {
+            throw new DiscardRecordingError(`Cannot read metadata: ${error}`);
+        }
+        let metadata: SealedMetaData;
+        try {
+            metadata = JSON.parse(decrypt(content));
+        } catch (error) {
+            throw new DiscardRecordingError(`Cannot parse metadata: ${error}`);
+        }
         /**
          * TODO should add channelId to the metadata, if the channel is still alive, we skip it,
          * then we will combine all recordings of the same channel
          */
         if (!metadata.startedAt || !metadata.stoppedAt) {
-            throw new Error("No startedAt or stoppedAt found in metadata");
+            throw new DiscardRecordingError("No startedAt or stoppedAt found in metadata");
         }
         const expirationDate = metadata.stoppedAt + recording.fileTTL;
         if (expirationDate < Date.now()) {
             logger.debug(`Recording ${folderName} is older than ${recording.fileTTL}ms, removing`);
-            throw new Error("expired recording");
+            throw new DiscardRecordingError("expired recording");
         }
         logger.debug(`Read metadata for recording ${folderName}: ${metadata.channelName}`);
         const compiler = new MediaCompiler({
@@ -178,15 +217,17 @@ async function processRecording(folderName: string) {
             await uploadVideo({ filePath: videoPath, metadata });
         }
         logger.info(`recording ${recording.metadataFileName} was succesfully processed`);
+        await finalizeRecordingFolder(recordingDir, folderName);
+        return true;
     } catch (error) {
-        logger.error(`Failed to process recording ${folderName}: ${error}`);
+        if (error instanceof DiscardRecordingError) {
+            logger.error(`Discarding recording ${folderName}: ${error.message}`);
+            await finalizeRecordingFolder(recordingDir, folderName);
+            return true;
+        }
+        logger.error(`Failed to process recording ${folderName}, keeping for retry: ${error}`);
+        return false;
     }
-    if (FFMPEG_LOGGING) {
-        await fs.rename(recordingDir, path.join(dir.debug, folderName));
-    } else {
-        await fs.rm(recordingDir, { recursive: true });
-    }
-    return filePath;
 }
 
 async function uploadAudio({
@@ -207,7 +248,7 @@ async function uploadAudio({
         queryParams.push("main_media=True");
     }
     const paramString = queryParams.length ? "?" + queryParams.join("&") : "";
-    const response = await fetch(`${metadata.routingAddress}/audio${paramString}`, {
+    const response = await fetchWithTimeout(`${metadata.routingAddress}/audio${paramString}`, {
         method: "POST",
         headers: {
             Authorization: `Bearer ${makeJwt(metadata.channelKey)}`,
@@ -225,46 +266,45 @@ async function uploadAudio({
         duplex: "half"
     });
     if (!response.ok) {
-        logger.warn(`Failed to obtain transcription for recording`);
-        return;
+        throw new Error(
+            `Failed to upload audio to ${metadata.routingAddress}: ${response.status} ${response.statusText}`
+        );
     }
     return await response.text();
 }
 
 async function uploadVideo({ filePath, metadata }: { filePath: string; metadata: SealedMetaData }) {
     logger.debug(`Uploading files to ${metadata.routingAddress}`);
-    try {
-        const response = await fetch(`${metadata.routingAddress}/routing`, {
-            method: "GET",
-            headers: {
-                Authorization: `Bearer ${makeJwt(metadata.channelKey)}`
-            }
-        });
-        if (!response.ok) {
-            throw new Error(
-                `Failed to obtain routing from ${metadata.routingAddress}: ${response.statusText}`
-            );
+    const response = await fetchWithTimeout(`${metadata.routingAddress}/routing`, {
+        method: "GET",
+        headers: {
+            Authorization: `Bearer ${makeJwt(metadata.channelKey)}`
         }
-        const jsonResponse = (await response.json()) as RoutingResponse;
-        if (jsonResponse.destination) {
-            const fileStats = await fs.stat(filePath);
-            const response = await fetch(jsonResponse.destination, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "video/av1", // TODO should depend on config
-                    "Content-Length": fileStats.size.toString()
-                },
-                // @ts-expect-error: same as above
-                body: createReadStream(filePath),
-                duplex: "half"
-            });
-            if (!response.ok) {
-                throw new Error(
-                    `Failed to upload files to ${metadata.routingAddress}: ${response.statusText}`
-                );
-            }
-        }
-    } catch (e) {
-        logger.error(`Failed to upload files to ${metadata.routingAddress}: ${e}`);
+    });
+    if (!response.ok) {
+        throw new Error(
+            `Failed to obtain routing from ${metadata.routingAddress}: ${response.status} ${response.statusText}`
+        );
+    }
+    const jsonResponse = (await response.json()) as RoutingResponse;
+    if (!jsonResponse.destination) {
+        logger.warn(`No upload destination returned by ${metadata.routingAddress}/routing`);
+        return;
+    }
+    const fileStats = await fs.stat(filePath);
+    const uploadResponse = await fetchWithTimeout(jsonResponse.destination, {
+        method: "POST",
+        headers: {
+            "Content-Type": "video/av1", // TODO should depend on config
+            "Content-Length": fileStats.size.toString()
+        },
+        // @ts-expect-error: same as above
+        body: createReadStream(filePath),
+        duplex: "half"
+    });
+    if (!uploadResponse.ok) {
+        throw new Error(
+            `Failed to upload files to ${metadata.routingAddress}: ${uploadResponse.status} ${uploadResponse.statusText}`
+        );
     }
 }
