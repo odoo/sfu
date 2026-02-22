@@ -13,6 +13,15 @@ const logger = new Logger("MEDIA");
 const CHECK_INTERVAL = 2 * 60 * 1000; // 2 minutes
 const CPU_LOAD_THRESHOLD = 0.8;
 const REQUEST_TIMEOUT = 30_000;
+const VIDEO_MIME_TYPE_BY_EXTENSION: Readonly<Record<string, string>> = Object.freeze({
+    mp4: "video/mp4",
+    webm: "video/webm",
+    mkv: "video/x-matroska",
+    ogv: "video/ogg",
+    mov: "video/quicktime",
+    avi: "video/x-msvideo",
+    ts: "video/mp2t"
+});
 
 type RoutingResponse = {
     destination: string;
@@ -44,6 +53,11 @@ function makeJwt(key: string) {
         },
         key
     );
+}
+
+function getVideoContentType(extension: string): string {
+    const ext = extension.toLowerCase().replace(/^\./, "");
+    return VIDEO_MIME_TYPE_BY_EXTENSION[ext] ?? "application/octet-stream";
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = REQUEST_TIMEOUT) {
@@ -292,10 +306,11 @@ async function uploadVideo({ filePath, metadata }: { filePath: string; metadata:
         return;
     }
     const fileStats = await fs.stat(filePath);
+    const contentType = getVideoContentType(recording.videoExt);
     const uploadResponse = await fetchWithTimeout(jsonResponse.destination, {
         method: "POST",
         headers: {
-            "Content-Type": "video/av1", // TODO should depend on config
+            "Content-Type": contentType,
             "Content-Length": fileStats.size.toString()
         },
         // @ts-expect-error: same as above
