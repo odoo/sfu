@@ -13,7 +13,7 @@ flowchart TB
         Channel["Channel"]
         Resources["Resources Service"]
         Recorder["Recorder"]
-        Media["Media Service<br>(scheduling/monitoring)"]
+        Media["Sheduler Service<br>(scheduling/monitoring)"]
         Session["Session"]
         Disk["Disk<br>(raw recordings)"]
         MC["Media Compiler"]
@@ -67,7 +67,9 @@ end
     classDef service fill:#f96,stroke:#333,stroke-width:2px,color:#000
 ```
 
-## Service Modules
+## Services
+
+Services are the main element of the SFU runtime, they are live for the whole duration of the SFU process.
 
 ### 1. Auth Service ([`auth.ts`](../src/core/services/auth.ts))
 
@@ -110,10 +112,10 @@ The Resources service mannages the pool of worker processes and system resources
 -  Manages disk usage (folders, space, cleanup...).
 -  Manages dynamic ports for media transport.
 
-### 5. Media Service ([`media.ts`](../src/recording/services/media.ts))
+### 5. Scheduler Service ([`scheduler.ts`](../src/recording/services/scheduler.ts))
 more at [recording.md](./recording.md)
 
-The Media service is responsible for the processing of recordings and the upload to the destination server.
+The scheduler service is responsible for the processing of recordings and the upload to the destination server.
 
 ## Models
 

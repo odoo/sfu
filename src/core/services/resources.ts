@@ -39,7 +39,7 @@ async function setupFileSystem() {
             await fs.mkdir(config.dir.debug, { recursive: true });
         }
     } else {
-        logger.info("Recording is disabled, media service will not start");
+        logger.info("Recording is disabled, scheduler service will not start");
         return;
     }
 }
