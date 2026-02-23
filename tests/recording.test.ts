@@ -542,8 +542,8 @@ describe("RecordingTask startup failures", () => {
     });
 });
 
-describe("Media Service", () => {
-    let mediaService: typeof import("#src/recording/services/media");
+describe("Scheduler Service", () => {
+    let mediaService: typeof import("#src/recording/services/scheduler");
     let mockFs: typeof import("#tests/utils/mockFileSystem").mockFs;
     let mockFsModule: typeof import("#tests/utils/mockFileSystem").mockFsModule;
 
@@ -563,7 +563,7 @@ describe("Media Service", () => {
             statusText: "OK"
         } as Response);
 
-        mediaService = await import("#src/recording/services/media");
+        mediaService = await import("#src/recording/services/scheduler");
     });
 
     afterEach(() => {
@@ -1367,8 +1367,8 @@ describe("Media Compiler edge cases tests", () => {
     });
 });
 
-describe("Media Service network tests", () => {
-    let mediaService: typeof import("#src/recording/services/media");
+describe("Scheduler Service network tests", () => {
+    let mediaService: typeof import("#src/recording/services/scheduler");
     let mockFsInstance: typeof import("#tests/utils/mockFileSystem").mockFs;
     let mockFsModuleInstance: typeof import("#tests/utils/mockFileSystem").mockFsModule;
 
@@ -1382,7 +1382,7 @@ describe("Media Service network tests", () => {
 
         global.fetch = mockFetch;
         mockFetch.mockClear();
-        mediaService = await import("#src/recording/services/media");
+        mediaService = await import("#src/recording/services/scheduler");
     });
 
     afterEach(() => {

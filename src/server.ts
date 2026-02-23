@@ -1,7 +1,7 @@
 import * as resources from "#src/core/services/resources.ts";
 import * as http from "#src/core/services/http.ts";
 import * as auth from "#src/core/services/auth.ts";
-import * as media from "#src/recording/services/media.ts";
+import * as scheduler from "#src/recording/services/scheduler.ts";
 import { Logger } from "#src/utils/utils.ts";
 import { Channel } from "#src/core/models/channel.ts";
 
@@ -12,7 +12,7 @@ async function run(): Promise<void> {
     auth.start();
     await resources.start();
     await http.start();
-    await media.start();
+    await scheduler.start();
     logger.debug(`===============================================`);
     logger.debug(`================ TO IMPLEMENT =================`);
     logger.debug(`===============================================`);
@@ -30,7 +30,7 @@ function cleanup(): void {
     Channel.closeAll();
     http.close();
     resources.close();
-    media.close();
+    scheduler.close();
     logger.info("cleanup complete");
 }
 

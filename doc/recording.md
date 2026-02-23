@@ -1,7 +1,7 @@
 # Recording
-see [media.ts](../src/recording/services/media.ts) and [recording/*](../src/recording/models) for more details.
+see [recording/*](../src/recording) for more details.
 
-The recording feature in the SFU allows for capturing streams from a channel (depending on permissions and sfu setup). It record each stream independently (the "raw recording") that can be processed later (e.g., for transcription, composition, or playback) (by thhe media service).
+The recording feature in the SFU allows for capturing streams from a channel (depending on permissions and sfu setup). It record each stream independently (the "raw recording") that can be processed later (e.g., for transcription, composition, or playback) (by the scheduler service).
 
 The two phase approach allow for the real time part to be light (only writing packets to file, no transcoding), and then the compiling phase (composition/mixing and transcoding) can be done later with no real time constraint (so the heavy work can be done when the SFU is not under too much load).
 
@@ -102,11 +102,11 @@ each file can have any arbitrary amount of state changes, when not active the co
 
 note: the timestamp are the source of truth, a file can span over a period of time during which its underlying stream is active and also inactive (will just be no sound / no video) because we do not estroy/rebuild the recording process for each state change (would lead to loss/latency) 
 
-## Media Service & Post-Processing
+## Sheduler Service & Post-Processing
 
-While the **Recorder** handles the real-time capture of streams, the **Media Service** is responsible for the asynchronous post-processing of these raw files.
+While the **Recorder** handles the real-time capture of streams, the **Scheduler Service** is responsible for the asynchronous post-processing of these raw files.
 
-### 1. [Media Service](../src/recording/services/media.ts)
+### 1. [Scheduler Service](../src/recording/services/scheduler.ts)
 
 TODO
 
