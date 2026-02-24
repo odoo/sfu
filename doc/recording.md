@@ -1,7 +1,11 @@
 # Recording
 see [recording/*](../src/recording) for more details.
 
-The recording feature in the SFU allows for capturing streams from a channel (depending on permissions and sfu setup). It record each stream independently (the "raw recording") that can be processed later (e.g., for transcription, composition, or playback) (by the scheduler service).
+The SFu can record streams from a channel (depending on permissions and sfu setup). 
+
+Recording happens in two steps:
+1) each streams is recorded in real time individually (the "raw recording").
+2) later, the raw recordings are processed to produce one "combination" file.
 
 The two phase approach allow for the real time part to be light (only writing packets to file, no transcoding), and then the compiling phase (composition/mixing and transcoding) can be done later with no real time constraint (so the heavy work can be done when the SFU is not under too much load).
 
@@ -44,7 +48,7 @@ flowchart TB
     Handles a single stream type (e.g., just the camera) for a session.
     Bridges the Mediasoup `Producer` (source) to the `MediaWriter` (ffmpeg) process (sink), and manages the lifecycle of the port, transport, consumer, and ffmpeg process. It also handles thhe "allowed"/"active" flags.
 *   
-// TODO write about "allowed"/"active"
+// TODO allowed/active when more stable
 
 1.  **MediaWriter (Process Level)**
     Represents a single child process writing to a file.
@@ -71,7 +75,7 @@ Recordings are saved in a directory `{channelUUID}/{timestamp}` inside `config.d
 ```
 
 #### Metadata File (`metadata.json`)
-// TODO: reminder, need to check when code is more stable, keys are not final (may contain more than needed while im debugging/developing)
+// TODO: reminder, need to check when code is more stable, keys are not final (may contain more than needed while im debugging/developing), need to wait for the call artifact PR to be merged to know exactly what will be needed.
 
 Contains the timestamps of the recording, and the address to which the file should be uploaded to.
 

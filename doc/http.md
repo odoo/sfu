@@ -2,6 +2,7 @@
 see [http.ts](./src/core/services/http.ts) for more details.
 
 - GET `/v1/noop`: health check endpoint.
+
 - GET `/v1/stats`: returns the server statistics as an array with one entry per channel, in JSON:
     ```json
     [
@@ -24,7 +25,8 @@ see [http.ts](./src/core/services/http.ts) for more details.
         }
     ]
     ```
-- GET `/v1/channel`: Creates or retrieves a channel for hosting an RTC conference.
+
+- GET `/v1/channel`: Creates or retrieves a channel for hosting calls
 
     ### Headers
     - `Authorization: Bearer <JWT>` (**Required**)
@@ -52,7 +54,7 @@ see [http.ts](./src/core/services/http.ts) for more details.
     - `uuid`: The unique identifier of the channel.
     - `url`: The base URL of the SFU server, used for WebSocket connections.
 
-- POST `/v1/disconnect` disconnects sessions, expects the body to be a Json Web Token formed as such:
+- POST `/v1/disconnect` disconnects sessions, expects the body to be a Json Web Token formed like that:
     ```js
   jwt.sign(
     {
