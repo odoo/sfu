@@ -72,6 +72,7 @@ const sfu = new SfuClient();
     // see https://w3c.github.io/webrtc-pc/#rtcstatsreport-object
     ```
 - startRecording({ video: boolean, transcription: boolean }) / stopRecording()
+   // TODO add audio option when API is setled
     ```js
         // return if you were allowed to do the action or not
         allowed = await sfuClient.stopRecording();

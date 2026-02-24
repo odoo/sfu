@@ -141,3 +141,5 @@ The client exchange device information with the serve
 the webrtc connection
 
 ### 6. Ready to Stream
+
+can call updateupload / updatedownload
