@@ -749,17 +749,37 @@ export class Session extends EventEmitter {
             }
             case CLIENT_REQUEST.START_RECORDING: {
                 const { audio, video, transcription } = payload || {};
-                const canAudio = audio && this.canAudioRecord;
-                const canVideo = video && this.canVideoRecord;
-                const canTranscription = transcription && this.canTranscriptionRecord;
-                if (canAudio || canVideo || canTranscription) {
+                if (this._channel.recorder?.isRecording) {
+                    /**
+                     * While recording, only transcription can be mutated.
+                     */
+                    if (audio !== undefined || video !== undefined) {
+                        return false;
+                    }
+                    if (transcription === undefined || !this.canTranscriptionRecord) {
+                        return false;
+                    }
                     this._channel.recorder!.start({
-                        audio: canAudio,
-                        video: canVideo,
-                        transcription: canTranscription
+                        transcription: Boolean(transcription)
                     });
+                    return true;
                 }
-                return canAudio || canVideo || canTranscription;
+                if (
+                    (audio && !this.canAudioRecord) ||
+                    (video && !this.canVideoRecord) ||
+                    (transcription && !this.canTranscriptionRecord)
+                ) {
+                    return false;
+                }
+                if (audio || video || transcription) {
+                    this._channel.recorder!.start({
+                        audio: Boolean(audio),
+                        video: Boolean(video),
+                        transcription: Boolean(transcription)
+                    });
+                    return true;
+                }
+                return false;
             }
             case CLIENT_REQUEST.STOP_RECORDING: {
                 if (this.canAudioRecord || this.canVideoRecord || this.canTranscriptionRecord) {
