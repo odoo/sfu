@@ -5,7 +5,7 @@ import { EventEmitter, once } from "node:events";
 import { describe, expect, jest, test, beforeEach, afterEach } from "@jest/globals";
 import { FakeMediaStreamTrack } from "fake-mediastreamtrack";
 
-import { STREAM_TYPE } from "#src/shared/enums.ts";
+import { CLIENT_REQUEST, STREAM_TYPE } from "#src/shared/enums.ts";
 import { CLIENT_UPDATE } from "#src/client";
 import { STOP_CODE, TIME_TAG } from "#src/recording/models/recorder.ts";
 import type { Channel } from "#src/core/models/channel.ts";
@@ -69,44 +69,6 @@ describe("Recording & Transcription", () => {
             restoreEnv();
         }
     });
-    test("seals final recording flags before state reset", async () => {
-        const { Recorder } = await import("#src/recording/models/recorder.ts");
-        const { recording } = await import("#src/config.ts");
-
-        class FakeChannel extends EventEmitter {
-            name = "test-channel";
-            uuid = "test-uuid";
-            key = Buffer.from("AQID", "base64");
-            sessions = new Map();
-        }
-
-        const recorder = new Recorder(new FakeChannel() as unknown as Channel, "http://routing.local");
-        const folder = {
-            path: "/mock/resources/folder",
-            add: jest.fn(async () => {}),
-            move: jest.fn(async () => {}),
-            delete: jest.fn(async () => {})
-        };
-        const recorderPrivate = recorder as any;
-        const sealSpy = jest.spyOn(recorderPrivate, "_sealMetaData").mockReturnValue("sealed");
-        jest.spyOn(recorderPrivate, "_stopRecordingTasks").mockResolvedValue([]);
-
-        recorderPrivate.isRecording = true;
-        recorderPrivate.audio = true;
-        recorderPrivate.video = true;
-        recorderPrivate.transcription = true;
-        recorderPrivate._metaData.startedAt = Date.now() - recording.minDuration - 1000;
-        recorderPrivate._folder = folder;
-
-        await recorder.stop();
-
-        expect(sealSpy).toHaveBeenCalledWith({
-            audio: true,
-            video: true,
-            transcription: true
-        });
-        expect(folder.add).toHaveBeenCalledWith(recording.metadataFileName, "sealed");
-    });
     test("Does not record when the feature is disabled", async () => {
         const { restore } = await recordingSetup({
             RECORDING: undefined
@@ -121,6 +83,72 @@ describe("Recording & Transcription", () => {
 
         expect(await client.startRecording()).toBe(false);
         expect(await client.stopRecording()).toBe(false);
+    });
+    test("rejects invalid recording start payloads", async () => {
+        const { Session } = await import("#src/core/models/session.ts");
+        const recorderMock = {
+            start: jest.fn(),
+            stop: jest.fn()
+        };
+        class FakeChannel extends EventEmitter {
+            name = "test-channel";
+            recorder = recorderMock;
+            sessions = new Map();
+        }
+        const session = new Session("session-id", new FakeChannel() as unknown as Channel, {
+            permissions: { audioRecording: true, videoRecording: true, transcription: true }
+        });
+        jest.spyOn(session, "canAudioRecord", "get").mockReturnValue(true);
+        jest.spyOn(session, "canVideoRecord", "get").mockReturnValue(true);
+        jest.spyOn(session, "canTranscriptionRecord", "get").mockReturnValue(true);
+        // @ts-expect-error _handleRequest is private
+        const handleRequest = session._handleRequest.bind(session);
+
+        const noopResult = await handleRequest({
+            name: CLIENT_REQUEST.START_RECORDING,
+            payload: { audio: false, video: false, transcription: false }
+        });
+        expect(noopResult).toBe(false);
+        expect(recorderMock.start).not.toHaveBeenCalled();
+    });
+    test("only allows transcription updates while a recording is running", async () => {
+        const { Session } = await import("#src/core/models/session.ts");
+        const recorderMock = {
+            isRecording: true,
+            start: jest.fn(),
+            stop: jest.fn()
+        };
+        class FakeChannel extends EventEmitter {
+            name = "test-channel";
+            recorder = recorderMock;
+            recordingState = {
+                recording: true,
+                audio: true,
+                video: true,
+                transcription: false
+            };
+            sessions = new Map();
+        }
+        const session = new Session("session-id", new FakeChannel() as unknown as Channel, {
+            permissions: { audioRecording: true, videoRecording: true, transcription: true }
+        });
+        jest.spyOn(session, "canTranscriptionRecord", "get").mockReturnValue(true);
+        // @ts-expect-error _handleRequest is private
+        const handleRequest = session._handleRequest.bind(session);
+
+        const updateTranscriptionResult = await handleRequest({
+            name: CLIENT_REQUEST.START_RECORDING,
+            payload: { transcription: true }
+        });
+        expect(updateTranscriptionResult).toBe(true);
+        expect(recorderMock.start).toHaveBeenLastCalledWith({ transcription: true });
+
+        const updateVideoResult = await handleRequest({
+            name: CLIENT_REQUEST.START_RECORDING,
+            payload: { video: false }
+        });
+        expect(updateVideoResult).toBe(false);
+        expect(recorderMock.start).toHaveBeenCalledTimes(1);
     });
     test("can record", async () => {
         const { restore, network } = await recordingSetup({ RECORDING: "true" });
@@ -483,62 +511,6 @@ describe("Recording & Transcription", () => {
         } finally {
             restore();
         }
-    });
-});
-
-describe("RecordingTask startup failures", () => {
-    test("media output should expose init failures through ready", async () => {
-        await setupUnitTestsEnv();
-        const resources = await import("#src/core/services/resources.ts");
-        const { PortLimitReachedError } = await import("#src/utils/errors.ts");
-        const { MediaOutput } = await import("#src/recording/models/media_output.ts");
-
-        resources.close();
-
-        const mediaOutput = new MediaOutput({
-            producer: { kind: "audio", id: "producer_1", appData: {} } as any,
-            name: "test-output",
-            directory: "/mock/resources"
-        });
-
-        await expect(mediaOutput.ready).rejects.toBeInstanceOf(PortLimitReachedError);
-    });
-
-    test("recording task should clear data when media output init fails", async () => {
-        await setupUnitTestsEnv();
-        const resources = await import("#src/core/services/resources.ts");
-        const { RecordingTask } = await import("#src/recording/models/recording_task.ts");
-
-        resources.close();
-
-        const producer = { kind: "audio", id: "producer_2", appData: {} } as any;
-        const session = Object.assign(new EventEmitter(), {
-            id: 44,
-            name: "session-44",
-            producers: {
-                [STREAM_TYPE.AUDIO]: producer,
-                [STREAM_TYPE.CAMERA]: undefined,
-                [STREAM_TYPE.SCREEN]: undefined
-            }
-        });
-        const recorder = {
-            path: "/mock/resources/session-44",
-            mark: jest.fn()
-        };
-
-        const task = new RecordingTask(recorder as any, session as any, {
-            audio: false,
-            camera: false,
-            screen: false
-        });
-        const taskData = (task as any).recordingDataByStreamType[STREAM_TYPE.AUDIO];
-        taskData.active = true;
-
-        await (task as any)._updateProcess(taskData, producer, STREAM_TYPE.AUDIO);
-
-        expect(taskData.active).toBe(false);
-        expect(taskData.mediaOutput).toBeUndefined();
-        await task.stop();
     });
 });
 

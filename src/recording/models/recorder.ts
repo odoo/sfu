@@ -165,17 +165,17 @@ export class Recorder extends EventEmitter {
      * current recording for transcription, can be changed at runtime.
      */
     async start(options: { audio?: boolean; video?: boolean; transcription?: boolean } = {}) {
+        this.transcription = options.transcription ?? this.transcription;
+        this.audio = options.audio ?? this.audio;
+        if (this.isRecording) {
+            this._emitStatus();
+            return;
+        }
         if (!(options.audio || options.video || options.transcription)) {
             // TODO handle when we only have video
             logger.warn(
                 `Cannot start recording for ${this._channel.name}: no audio, video or transcription requested`
             );
-            return;
-        }
-        this.transcription = options.transcription ?? this.transcription;
-        this.audio = options.audio ?? this.audio;
-        if (this.isRecording) {
-            this._emitStatus();
             return;
         }
         this.isRecording = true;
@@ -384,7 +384,7 @@ export class Recorder extends EventEmitter {
 
     private _getRecordingStates(): RecordingStates {
         return {
-            audio: this.isRecording, // && (this.audio || this.transcription), we always record audio.
+            audio: this.isRecording, // we always record audio as transcription can be requested at any time.
             camera: this.isRecording && this.video,
             screen: this.isRecording && this.video
         };
