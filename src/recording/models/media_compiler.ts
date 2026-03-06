@@ -141,9 +141,9 @@ export class MediaCompiler {
              * Relocates the MP4 moov atom to the beginning of the file.
              * Without this, the moov atom is written at the end, which
              * prevents progressive playback (the entire file must be
-             * downloaded before it can start playing). This matters
-             * because the final file is uploaded and may be served
-             * directly for streaming.
+             * downloaded before it can start playing). (it allws the file
+             * to be used in streaming situations and the remote storage
+             * may stream it)
              */
             "-movflags",
             "+faststart",
@@ -338,6 +338,7 @@ export class MediaCompiler {
     //////////////////////////////////
     //////////// VIDEO ///////////////
     //////////////////////////////////
+    // TODO document somewhere that the output is 1280x720, currently hard-coded
 
     async getVideo(srtFile?: string): Promise<string | undefined> {
         if (!this._videoPath) {
@@ -389,9 +390,8 @@ export class MediaCompiler {
     }
 
     /**
-     * Builds video segments from timestamps. Each segment represents a stable
-     * configuration of active video files. Changes within SEGMENT_COALESCE_THRESHOLD
-     * are merged to reduce fragmentation.
+     * Builds video segments from timestamps. Each segment represents a video "layout"
+     * ( a group if videos that are active at the same time)
      */
     private _buildVideoSegments(): VideoSegment[] {
         const segments: VideoSegment[] = [];
@@ -461,13 +461,6 @@ export class MediaCompiler {
         return segments;
     }
 
-    /**
-     * Compiles a single video segment using FFmpeg.
-     * Shows ALL active video files. Layout rules:
-     * - Screen + cameras: screen takes main area, cameras in bottom bar
-     * - Only cameras: dynamic grid layout
-     * - Only screen: fullscreen
-     */
     private async _compileSegment(
         segment: VideoSegment,
         index: number
@@ -532,35 +525,31 @@ export class MediaCompiler {
 
         let outputLabel: string;
 
+        // TODO write a cleaner comment later
+        // TODO 2 maybe extract layout creation to its own function
+        /**
+         * LAYOUT
+         * * - Screen + cameras: screen takes main area, cameras in bottom bar
+         * - Only cameras: dynamic grid layout
+         * - Only screen: fullscreen (currently only supporting 1 screen share at a time)
+         */
         if (validScreenFiles.length > 0 && validCameraFiles.length > 0) {
+            // TODO: values are hard coded but the recording format is fiexed so it
+            // see if it can be refactored with a more centralized dimensions config
+
             // Screen + cameras: screen takes main area, cameras in bottom bar
             // Layout: 1280x720 total - screen: 1280x580 (top), cameras: 1280x140 (bottom bar)
             const screenHeight = 580;
             const barHeight = 140;
             const camWidth = Math.floor(1280 / validCameraFiles.length);
 
-            /**
-             * Stage 1 - Scale screen share:
-             *   - `[0:v]`: selects video stream from the first input (screen share)
-             *   - `scale=1280:580:force_original_aspect_ratio=decrease`: scales to fit within
-             *     1280x580 while preserving aspect ratio (may be smaller on one axis)
-             *   - `pad=1280:580:(ow-iw)/2:(oh-ih)/2`: adds black bars to center the video
-             *     within the target 1280x580 area. `(ow-iw)/2` and `(oh-ih)/2` compute
-             *     horizontal and vertical offsets for centering
-             *   - `[screen]`: labels the output for later reference
-             */
+            // Scale screen share
             filterComplex.push(
                 `[0:v]scale=1280:${screenHeight}:force_original_aspect_ratio=decrease,` +
                     `pad=1280:${screenHeight}:(ow-iw)/2:(oh-ih)/2[screen]`
             );
 
-            /**
-             * Stage 2 - Scale each camera stream:
-             *   - `[N:v]`: selects video stream from input N (camera inputs come after screen)
-             *   - Same scale + pad logic as stage 1, but for each camera input
-             *   - `camWidth` divides 1280px equally among all cameras
-             *   - Each camera output is labeled `[cam0]`, `[cam1]`, etc.
-             */
+            // Scale camera streams
             for (let i = 0; i < validCameraFiles.length; i++) {
                 const streamIdx = validScreenFiles.length + i;
                 filterComplex.push(
@@ -569,13 +558,7 @@ export class MediaCompiler {
                 );
             }
 
-            /**
-             * Stage 3 - Combine cameras into horizontal bar:
-             *   - Single camera: `[cam0]pad=1280:140:(1280-iw)/2:0[cambar]`
-             *     Centers the lone camera in a 1280px-wide bar
-             *   - Multiple cameras: `[cam0][cam1]...hstack=inputs=N[cambar]`
-             *     Horizontally stacks all camera streams side-by-side
-             */
+            // Combine cameras into horizontal bar
             if (validCameraFiles.length === 1) {
                 filterComplex.push(`[cam0]pad=1280:${barHeight}:(1280-iw)/2:0[cambar]`);
             } else {
@@ -583,16 +566,11 @@ export class MediaCompiler {
                 filterComplex.push(`${camLabels}hstack=inputs=${validCameraFiles.length}[cambar]`);
             }
 
-            /**
-             * Stage 4 - Stack screen and camera bar vertically:
-             *   - `[screen][cambar]vstack=inputs=2[vout]`
-             *   - Places screen (580px) on top, camera bar (140px) on bottom = 720px total
-             */
+            // Stack screen and camera bar vertically
             filterComplex.push(`[screen][cambar]vstack=inputs=2[vout]`);
             outputLabel = "[vout]";
         } else if (validScreenFiles.length > 0) {
             // Only screen(s) - fullscreen (use first if multiple)
-            // TODO upstream (recorder) should implement the logic that discriminates screen shares
             filterComplex.push(
                 `[0:v]scale=1280:720:force_original_aspect_ratio=decrease,` +
                     `pad=1280:720:(ow-iw)/2:(oh-ih)/2[vout]`
@@ -663,13 +641,6 @@ export class MediaCompiler {
      * @returns The FFmpeg filter label for the final combined video stream.
      */
     private _buildCameraGrid(cameraCount: number, filterComplex: string[]): string {
-        /**
-         * Single camera shortcut:
-         *   - If only one camera, scale it to fill the entire 1280x720 frame
-         *   - `force_original_aspect_ratio=decrease`: preserves aspect ratio
-         *   - `pad`: centers the video with black bars if needed
-         *   - Returns `[vout]` immediately, no grid logic needed
-         */
         if (cameraCount === 1) {
             filterComplex.push(
                 `[0:v]scale=1280:720:force_original_aspect_ratio=decrease,` +
@@ -677,26 +648,12 @@ export class MediaCompiler {
             );
             return "[vout]";
         }
-
-        /**
-         * Calculate grid dimensions:
-         *   - `cols = ceil(sqrt(cameraCount))`: optimal columns for near-square grid
-         *   - `rows = ceil(cameraCount / cols)`: rows needed to fit all cameras
-         *   - Example: 5 cameras → 3 cols × 2 rows (last row has 2 cameras)
-         *   - Cell dimensions divide 1280x720 evenly among grid cells
-         */
         const cols = Math.ceil(Math.sqrt(cameraCount));
         const rows = Math.ceil(cameraCount / cols);
         const cellWidth = Math.floor(1280 / cols);
         const cellHeight = Math.floor(720 / rows);
 
-        /**
-         * Scale each camera into a cell:
-         *   - `[i:v]`: selects video stream from input i
-         *   - Scales to cell dimensions while preserving aspect ratio
-         *   - Pads with black bars to center within the cell
-         *   - Labels output as `[v0]`, `[v1]`, etc.
-         */
+        // scaling
         for (let i = 0; i < cameraCount; i++) {
             filterComplex.push(
                 `[${i}:v]scale=${cellWidth}:${cellHeight}:force_original_aspect_ratio=decrease,` +
@@ -704,13 +661,7 @@ export class MediaCompiler {
             );
         }
 
-        /**
-         * Assemble cells into rows:
-         *   - Groups cells by row and combines them horizontally
-         *   - Single cell in row: pads to full width (1280px) and centers
-         *   - Multiple cells: uses `hstack` to join side-by-side
-         *   - Each row labeled as `[row0]`, `[row1]`, etc.
-         */
+        // horizontal
         const rowLabels: string[] = [];
         for (let row = 0; row < rows; row++) {
             const startIdx = row * cols;
@@ -729,11 +680,7 @@ export class MediaCompiler {
             rowLabels.push(`[row${row}]`);
         }
 
-        /**
-         * Stack rows vertically:
-         *   - If only one row exists, return `[row0]` directly (no vstack needed)
-         *   - Otherwise, `vstack` all rows into final `[vout]`
-         */
+        // vertical
         if (rows === 1) {
             return rowLabels[0];
         }
