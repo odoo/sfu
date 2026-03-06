@@ -114,8 +114,8 @@ export class MediaWriter {
      * Build a Session Description Protocol (SDP) payload describing the incoming RTP stream.
      * SDP informs ffmpeg about the media session negotiated elsewhere (port, codec, clock rate,
      * payload type, channels, and whether the track is audio or video) so ffmpeg can attach to
-     * the RTP source. These lines are piped to ffmpeg stdin as a virtual `.sdp` file; they are
-     * separate from the spawn arguments, which configure the ffmpeg process itself (loglevel,
+     * the RTP source. These lines are piped to ffmpeg stdin.
+     * It is different from the spawn arguments, which configure the ffmpeg process itself (loglevel,
      * input pipe, mapping, container, etc.).
      */
     private _createSdpText(): string {
@@ -165,10 +165,6 @@ export class MediaWriter {
         }
     }
 
-    /**
-     * Build the ffmpeg CLI arguments used to consume the SDP from stdin and remux the
-     * incoming RTP stream to disk.
-     */
     private _getCommandArgs(): string[] {
         let args = [
             "-loglevel",

@@ -241,6 +241,8 @@ export const recording = Object.freeze({
      * Limits the amount of video streams recorded at once.
      * Screen sharing has precedence over cameras and keeps only
      * the most recent streams up to the configured limits.
+     *
+     * if screenLimit is increased, the mediaCompiler must implement a compatible layout (see _compileSegment)
      */
     cameraLimit: 4,
     screenLimit: 1

@@ -199,22 +199,7 @@ export class Recorder extends EventEmitter {
     }
 
     /**
-     * Records a timestamp entry and updates runtime stream gating for camera/screen streams.
-     *
-     * This is the entry point used by `RecordingTask`/`MediaOutput` to report stream lifecycle
-     * changes. Beyond metadata persistence, it also maintains the recorder's video selection
-     * policy in real time:
-     * - We track "availability" per session and stream type from FILE_STATE_CHANGE events.
-     * - Availability is normalized to false when EOF is emitted.
-     * - We keep recency order (latest available sessions at the end of each tracked list).
-     * - Selection precedence is screen-first:
-     *   1. If at least one screen is available, cameras are disallowed.
-     *   2. Only the latest `recording.screenLimit` screens are allowed.
-     *   3. If no screen is available, the latest `recording.cameraLimit` cameras are allowed.
-     *
-     * The resulting allowed/disallowed state is pushed to each `RecordingTask`, which updates
-     * `MediaOutput.allowed` without tearing down the recording pipeline. This preserves stream
-     * availability observability while controlling which streams are actively written.
+     * Record a timestamp entry and updates runtime stream gating for camera/screen streams.
      */
     mark(tag: TIME_TAG, info: TimeTagInfo) {
         const available = info.eof ? false : info.available;
@@ -312,7 +297,7 @@ export class Recorder extends EventEmitter {
         });
         /**
          * As the metadata can contain sensitive information,
-         * like routing with tokens, or the channel key,
+         * like routing information or the channel key,
          * or information (names) on the call participants,
          * it is encrypted before being saved on the disk.
          */

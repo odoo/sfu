@@ -25,9 +25,6 @@ export type RtpData = {
  * The class opens a plain transport/consumer pair on a dynamic port,
  * extracts the RTP parameters, and spawns FFMPEG only when the producer is
  * both available and allowed to record.
- * Construction calls {@link _init}, which provisions the mediasoup
- * transport/consumer, caches RTP metadata, and subscribes to producer pause/resume
- * events to drive {@link _refreshProcess}.
  */
 export class MediaOutput extends EventEmitter {
     static Events = {
@@ -153,10 +150,9 @@ export class MediaOutput extends EventEmitter {
         const active = available && this._allowed;
         if (active) {
             this._consumer?.resume();
-            // Request a keyframe when starting/resuming video recording.
-            // This ensures FFmpeg receives a clean decoding start point immediately
-            // instead of waiting for the producer's next natural keyframe interval.
             if (this._consumer?.kind === "video") {
+                // need to request a keyframe so that the recording has a starting frame
+                // otherwise it could have a back screen at the start
                 this._consumer.requestKeyFrame();
             }
         } else {
