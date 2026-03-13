@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import type { Consumer, PlainTransport, MediaKind, Producer } from "mediasoup/node/lib/types";
 
 import { DynamicPort } from "#src/core/services/resources.ts";
-import { recording, rtc } from "#src/config.ts";
+import * as config from "#src/config.ts";
 import { MediaWriter } from "#src/recording/models/media_writer.ts";
 import { Logger } from "#src/utils/utils.ts";
 import type { SessionAppData } from "#src/core/models/session.ts";
@@ -85,12 +85,14 @@ export class MediaOutput extends EventEmitter {
     private async _init() {
         try {
             this._port = new DynamicPort();
-            this._transport = await this._router.createPlainTransport(rtc.plainTransportOptions);
+            this._transport = await this._router.createPlainTransport(
+                config.rtc.plainTransportOptions
+            );
             if (!this._transport) {
                 throw new Error(`Failed at creating a plain transport for`);
             }
             this._transport.connect({
-                ip: recording.routingInterface,
+                ip: config.recording.routingInterface,
                 port: this._port.number
             });
             this._consumer = await this._transport.consume({

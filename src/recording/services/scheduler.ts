@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 
-import { recording, dir, FFMPEG_LOGGING } from "#src/config.ts";
+import * as config from "#src/config.ts";
 import { MediaUploader } from "#src/recording/models/media_uploader.ts";
 import { RecordingProcessor } from "#src/recording/models/recording_processor.ts";
 import { Logger } from "#src/utils/utils.ts";
@@ -29,8 +29,8 @@ export const __testing__ = {
 
 async function finalizeRecordingFolder(recordingDir: string, folderName: string) {
     try {
-        if (FFMPEG_LOGGING) {
-            await fs.rename(recordingDir, path.join(dir.debug, folderName));
+        if (config.FFMPEG_LOGGING) {
+            await fs.rename(recordingDir, path.join(config.dir.debug, folderName));
         } else {
             await fs.rm(recordingDir, { recursive: true });
         }
@@ -96,7 +96,9 @@ async function checkSystemAndProcess() {
                 if (!didWork) {
                     return;
                 }
-                await new Promise((resolve) => setTimeout(resolve, recording.processingCooldown));
+                await new Promise((resolve) =>
+                    setTimeout(resolve, config.recording.processingCooldown)
+                );
                 if (isCpuLoaded()) {
                     logger.warn("CPU is too loaded, skipping recording processing");
                     return;
@@ -123,9 +125,11 @@ function isCpuLoaded(): boolean {
  * @returns `true` if a recording directory was finalized, `false` otherwise.
  */
 async function processRecordings(): Promise<boolean> {
-    logger.verbose(`Checking recordings in ${dir.recordings}`);
+    logger.verbose(`Checking recordings in ${config.dir.recordings}`);
     try {
-        const recordingDirectories = await fs.readdir(dir.recordings, { withFileTypes: true });
+        const recordingDirectories = await fs.readdir(config.dir.recordings, {
+            withFileTypes: true
+        });
         for (const recordingEntry of recordingDirectories) {
             if (recordingEntry.isDirectory()) {
                 const finalized = await recordingProcessor.process(recordingEntry.name);

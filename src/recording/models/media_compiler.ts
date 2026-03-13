@@ -4,7 +4,7 @@ import { access, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 
 import { TIME_TAG, type TimeStampData } from "#src/recording/models/recorder.ts";
-import { recording, FFMPEG_LOGGING } from "#src/config.ts";
+import * as config from "#src/config.ts";
 import { Logger } from "#src/utils/utils.ts";
 import { STREAM_TYPE } from "#src/shared/enums.ts";
 import type { SessionId } from "#src/core/models/session.ts";
@@ -132,11 +132,11 @@ export class MediaCompiler {
             ...(filterComplex.length > 0 ? ["-filter_complex", filterComplex.join(";")] : []),
             ...mapArgs,
             "-c:v",
-            recording.videoCodec,
+            config.recording.videoCodec,
             "-c:a",
-            recording.audioCodec,
+            config.recording.audioCodec,
             "-preset",
-            recording.videoPreset,
+            config.recording.videoPreset,
             /**
              * Relocates the MP4 moov atom to the beginning of the file.
              * Without this, the moov atom is written at the end, which
@@ -156,7 +156,7 @@ export class MediaCompiler {
             const proc = spawn("ffmpeg", args);
             let logStream: fs.WriteStream | undefined;
 
-            if (FFMPEG_LOGGING) {
+            if (config.FFMPEG_LOGGING) {
                 logStream = fs.createWriteStream(`${outputPath}.log`);
                 proc.stderr?.pipe(logStream, { end: false });
                 proc.stdout?.pipe(logStream, { end: false });
@@ -258,7 +258,7 @@ export class MediaCompiler {
 
         const outputName = path.join(
             this._workingDir,
-            `${FILENAME_PREFIX}${this._startedAt}.${recording.audioExt}`
+            `${FILENAME_PREFIX}${this._startedAt}.${config.recording.audioExt}`
         );
         try {
             await access(outputName);
@@ -298,9 +298,9 @@ export class MediaCompiler {
             "-t",
             duration.toFixed(3),
             "-c:a",
-            recording.audioCodec,
+            config.recording.audioCodec,
             "-b:a",
-            recording.audioBitRate,
+            config.recording.audioBitRate,
             outputName
         ];
 
@@ -310,7 +310,7 @@ export class MediaCompiler {
             const proc = spawn("ffmpeg", args);
             let logStream: fs.WriteStream | undefined;
 
-            if (FFMPEG_LOGGING) {
+            if (config.FFMPEG_LOGGING) {
                 logStream = fs.createWriteStream(`${outputName}.log`);
                 proc.stderr?.pipe(logStream, { end: false });
                 proc.stdout?.pipe(logStream, { end: false });
@@ -357,7 +357,7 @@ export class MediaCompiler {
 
         const outputName = path.join(
             this._workingDir,
-            `${FILENAME_PREFIX}${this._startedAt}.${recording.videoExt}`
+            `${FILENAME_PREFIX}${this._startedAt}.${config.recording.videoExt}`
         );
         try {
             await access(outputName);
@@ -466,7 +466,10 @@ export class MediaCompiler {
             return undefined;
         }
 
-        const outputPath = path.join(this._workingDir, `segment_${index}.${recording.videoExt}`);
+        const outputPath = path.join(
+            this._workingDir,
+            `segment_${index}.${config.recording.videoExt}`
+        );
         const duration = (segment.endTime - segment.startTime) / 1000;
 
         const screenFiles = files.filter((f) => f.type === STREAM_TYPE.SCREEN);
@@ -589,11 +592,11 @@ export class MediaCompiler {
             "-t",
             duration.toFixed(3),
             "-r",
-            recording.frameRate,
+            config.recording.frameRate,
             "-c:v",
-            recording.videoCodec,
+            config.recording.videoCodec,
             "-preset",
-            recording.videoPreset,
+            config.recording.videoPreset,
             // Moves the moov atom to the front so segment files can be
             // read sequentially during concatenation without seeking.
             "-movflags",
@@ -607,7 +610,7 @@ export class MediaCompiler {
             const proc = spawn("ffmpeg", args);
             let logStream: fs.WriteStream | undefined;
 
-            if (FFMPEG_LOGGING) {
+            if (config.FFMPEG_LOGGING) {
                 logStream = fs.createWriteStream(`${outputPath}.log`);
                 proc.stderr?.pipe(logStream, { end: false });
                 proc.stdout?.pipe(logStream, { end: false });

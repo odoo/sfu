@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 
-import { recording } from "#src/config.ts";
+import * as config from "#src/config.ts";
 import { Folder } from "#src/core/services/resources.ts";
 import { RecordingTask, type RecordingStates } from "#src/recording/models/recording_task.ts";
 import { encrypt } from "#src/core/services/auth.ts";
@@ -232,7 +232,7 @@ export class Recorder extends EventEmitter {
         }
         const startedAt = this._metaData.startedAt;
         const shouldSave =
-            save && (startedAt ? Date.now() - startedAt >= recording.minDuration : true);
+            save && (startedAt ? Date.now() - startedAt >= config.recording.minDuration : true);
         const finalState = {
             audio: this.audio,
             video: this.video,
@@ -261,8 +261,8 @@ export class Recorder extends EventEmitter {
         const failed = results.some((result) => result.status === "rejected");
         if (shouldSave && !failed && currentFolder) {
             try {
-                await currentFolder.add(recording.metadataFileName, sealedMetadata!);
-                await currentFolder.move(recording.directory);
+                await currentFolder.add(config.recording.metadataFileName, sealedMetadata!);
+                await currentFolder.move(config.recording.directory);
                 return;
             } catch (error) {
                 logger.error(
@@ -345,7 +345,7 @@ export class Recorder extends EventEmitter {
         clearTimeout(this._timeout);
         this._timeout = setTimeout(() => {
             this.stop({ stopCode: STOP_CODE.RECORDING_TIMEOUT });
-        }, recording.maxDuration);
+        }, config.recording.maxDuration);
         logger.verbose(`Initializing recorder for channel: ${this._channel.name}`);
         for (const [sessionId, session] of this._channel.sessions) {
             this._metaData.labels[sessionId] = session.label || "unknown";
@@ -437,13 +437,13 @@ export class Recorder extends EventEmitter {
         const screens = this._trackedVideoSessions[STREAM_TYPE.SCREEN];
         const hasScreenSharing = screens.length > 0;
         const allowedScreenSessions = hasScreenSharing
-            ? this._getAllowedSessions(screens, recording.screenLimit)
+            ? this._getAllowedSessions(screens, config.recording.screenLimit)
             : new Set<SessionId>();
         const allowedCameraSessions = hasScreenSharing
             ? new Set<SessionId>()
             : this._getAllowedSessions(
                   this._trackedVideoSessions[STREAM_TYPE.CAMERA],
-                  recording.cameraLimit
+                  config.recording.cameraLimit
               );
 
         for (const [sessionId, task] of this._tasks) {

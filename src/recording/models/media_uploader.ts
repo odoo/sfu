@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { createReadStream } from "node:fs";
 
-import { recording } from "#src/config.ts";
+import * as config from "#src/config.ts";
 import { sign } from "#src/core/services/auth.ts";
 import type { SealedMetaData } from "#src/recording/models/recorder.ts";
 import { Logger } from "#src/utils/utils.ts";
@@ -43,7 +43,7 @@ export class MediaUploader {
                 method: "POST",
                 headers: {
                     Authorization: `Bearer ${this._makeJwt(metadata.channelKey)}`,
-                    "Content-Type": `audio/${recording.audioExt}`,
+                    "Content-Type": `audio/${config.recording.audioExt}`,
                     "Content-Length": fileStats.size.toString()
                 },
                 // FIXME remove linter error suppression
@@ -84,7 +84,7 @@ export class MediaUploader {
             return;
         }
         const fileStats = await fs.stat(filePath);
-        const contentType = this._getVideoContentType(recording.videoExt);
+        const contentType = this._getVideoContentType(config.recording.videoExt);
         const uploadResponse = await this._fetchWithTimeout(jsonResponse.destination, {
             method: "POST",
             headers: {
