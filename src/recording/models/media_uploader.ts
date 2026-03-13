@@ -11,15 +11,6 @@ type RoutingResponse = {
 };
 
 const logger = new Logger("MEDIA_UPLOADER");
-const VIDEO_MIME_TYPE_BY_EXTENSION: Readonly<Record<string, string>> = Object.freeze({
-    mp4: "video/mp4",
-    webm: "video/webm",
-    mkv: "video/x-matroska",
-    ogv: "video/ogg",
-    mov: "video/quicktime",
-    avi: "video/x-msvideo",
-    ts: "video/mp2t"
-});
 
 export class MediaUploader {
     private readonly _requestTimeoutMs: number;
@@ -124,7 +115,24 @@ export class MediaUploader {
 
     private _getVideoContentType(extension: string): string {
         const ext = extension.toLowerCase().replace(/^\./, "");
-        return VIDEO_MIME_TYPE_BY_EXTENSION[ext] ?? "application/octet-stream";
+        switch (ext) {
+            case "mp4":
+                return "video/mp4";
+            case "webm":
+                return "video/webm";
+            case "mkv":
+                return "video/x-matroska";
+            case "ogv":
+                return "video/ogg";
+            case "mov":
+                return "video/quicktime";
+            case "avi":
+                return "video/x-msvideo";
+            case "ts":
+                return "video/mp2t";
+            default:
+                return "application/octet-stream";
+        }
     }
 
     private async _fetchWithTimeout(url: string, init: RequestInit = {}) {

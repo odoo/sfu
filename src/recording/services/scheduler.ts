@@ -8,7 +8,7 @@ import { RecordingProcessor } from "#src/recording/models/recording_processor.ts
 import { Logger } from "#src/utils/utils.ts";
 
 const logger = new Logger("SCHEDULER");
-const CHECK_INTERVAL = 2 * 60 * 1000; // 2 minutes
+const CHECK_INTERVAL = 2 * 60_000;
 const CPU_LOAD_THRESHOLD = 0.8;
 const REQUEST_TIMEOUT = 30_000;
 
