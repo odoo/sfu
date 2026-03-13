@@ -51,6 +51,10 @@ async function validateVideoFile(filePath: string): Promise<boolean> {
 /**
  * Minimum time gap (ms) between segment boundaries. Changes occurring within
  * this threshold are merged to avoid excessive segment fragmentation.
+ *
+ * Example: 10 different people start their webcam within 500ms of each other,
+ * that would naively generate 10 different layout segments. This threshold
+ * merges them into a single segment, at the cost of missing a few ms of some videos.
  */
 const SEGMENT_COALESCE_THRESHOLD = 500;
 
@@ -77,10 +81,6 @@ export class MediaCompiler {
     private _audioPath?: string;
     private _videoPath?: string;
 
-    /**
-     * TODO make public for meta concatenation (concatenate different recordings of same channel)
-     * Concatenates all video segments with the audio track and optional subtitles.
-     */
     static async concatenateSegments({
         workingDir,
         segmentFiles,
@@ -432,10 +432,6 @@ export class MediaCompiler {
                 continue;
             }
 
-            /**
-             * Coalesceing: if change is far enough from last, flush the current segment.
-             * This is to prevent creating too many small segments.
-             */
             if (timestamp - lastChangeTime > SEGMENT_COALESCE_THRESHOLD && activeFiles.size > 0) {
                 flushSegment(timestamp);
             }
