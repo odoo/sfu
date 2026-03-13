@@ -4,7 +4,7 @@ import { spawn, ChildProcess } from "node:child_process";
 import { Readable } from "node:stream";
 
 import { Logger } from "#src/utils/utils.ts";
-import { recording, FFMPEG_LOGGING } from "#src/config.ts";
+import * as config from "#src/config.ts";
 import type { RtpData } from "#src/recording/models/media_output.ts";
 
 const logger = new Logger("FFMPEG");
@@ -73,7 +73,7 @@ export class MediaWriter {
             logger.debug(`spawning ffmpeg with args: ${args.join(" ")}`);
             this._process = spawn("ffmpeg", args);
 
-            if (FFMPEG_LOGGING) {
+            if (config.FFMPEG_LOGGING) {
                 this._logStream = fs.createWriteStream(
                     `${path.join(this._directory, this.filename)}.log`
                 );
@@ -121,9 +121,9 @@ export class MediaWriter {
     private _createSdpText(): string {
         const { port, payloadType, codec, clockRate, channels, kind } = this._rtp;
         let sdp = `v=0\n`;
-        sdp += `o=- 0 0 IN IP4 ${recording.routingInterface}\n`;
+        sdp += `o=- 0 0 IN IP4 ${config.recording.routingInterface}\n`;
         sdp += `s=FFmpeg\n`;
-        sdp += `c=IN IP4 ${recording.routingInterface}\n`;
+        sdp += `c=IN IP4 ${config.recording.routingInterface}\n`;
         sdp += `t=0 0\n`;
         sdp += `m=${kind} ${port} RTP/AVP ${payloadType}\n`;
         sdp += `a=rtpmap:${payloadType} ${codec}/${clockRate}`;
@@ -168,7 +168,7 @@ export class MediaWriter {
     private _getCommandArgs(): string[] {
         let args = [
             "-loglevel",
-            FFMPEG_LOGGING ? "debug" : "error",
+            config.FFMPEG_LOGGING ? "debug" : "error",
             // Input options for RTP stream
             "-reorder_queue_size",
             "500", // larger reorder queue to handle out-of-order RTP packets

@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { jest } from "@jest/globals";
 
-import { recording } from "#src/config.ts";
+import * as config from "#src/config.ts";
 
 import { withMockEnv } from "#tests/utils/utils";
 import { mockFs } from "#tests/utils/mockFileSystem";
@@ -65,7 +65,7 @@ export async function setupUnitTestsEnv() {
     jest.doMock("#src/config.ts", () => ({
         __esModule: true,
         recording: {
-            ...recording,
+            ...config.recording,
             enabled: true,
             processingCooldown: 0
         },

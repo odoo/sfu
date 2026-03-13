@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { recording, dir } from "#src/config.ts";
+import * as config from "#src/config.ts";
 import { decrypt } from "#src/core/services/auth.ts";
 import { MediaCompiler } from "#src/recording/models/media_compiler.ts";
 import type { SealedMetaData } from "#src/recording/models/recorder.ts";
@@ -34,7 +34,7 @@ export class RecordingProcessor {
      * @returns `true` if the recording was finalized (saved or discarded), `false` if it should be retried.
      */
     async process(folderName: string): Promise<boolean> {
-        const recordingDirectory = path.join(dir.recordings, folderName);
+        const recordingDirectory = path.join(config.dir.recordings, folderName);
         try {
             const metadata = await this._readMetadata(recordingDirectory, folderName);
             logger.debug(`Read metadata for recording ${folderName}: ${metadata.channelName}`);
@@ -56,7 +56,7 @@ export class RecordingProcessor {
             if (videoPath) {
                 await this._uploader.uploadVideo({ filePath: videoPath, metadata });
             }
-            logger.info(`recording ${recording.metadataFileName} was succesfully processed`);
+            logger.info(`recording ${config.recording.metadataFileName} was succesfully processed`);
             await this._finalizeRecordingFolder(recordingDirectory, folderName);
             return true;
         } catch (error) {
@@ -74,7 +74,7 @@ export class RecordingProcessor {
         recordingDirectory: string,
         folderName: string
     ): Promise<SealedMetaData> {
-        const metadataPath = path.join(recordingDirectory, recording.metadataFileName);
+        const metadataPath = path.join(recordingDirectory, config.recording.metadataFileName);
         let content: string;
         try {
             content = await fs.readFile(metadataPath, "utf-8");
@@ -90,9 +90,11 @@ export class RecordingProcessor {
         if (!metadata.startedAt || !metadata.stoppedAt) {
             throw new DiscardRecordingError("No startedAt or stoppedAt found in metadata");
         }
-        const expirationDate = metadata.stoppedAt + recording.fileTTL;
+        const expirationDate = metadata.stoppedAt + config.recording.fileTTL;
         if (expirationDate < Date.now()) {
-            logger.debug(`Recording ${folderName} is older than ${recording.fileTTL}ms, removing`);
+            logger.debug(
+                `Recording ${folderName} is older than ${config.recording.fileTTL}ms, removing`
+            );
             throw new DiscardRecordingError("expired recording");
         }
         return metadata;
