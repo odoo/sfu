@@ -220,7 +220,7 @@ export const dir = Object.freeze({
     debug: path.join(DATA_PATH, "debug")
 });
 
-export const recording = Object.freeze({
+export const recording = {
     routingInterface: "127.0.0.1",
     directory: dir.recordings,
     enabled: RECORDING,
@@ -229,14 +229,17 @@ export const recording = Object.freeze({
     maxDuration: 60 /* min */ * 60 * 1000,
     fileTTL: 24 /* hours */ * 60 * 60 * 1000,
     processingCooldown: 5 /* sec */ * 1000,
-    // TODO could be env variables?
-    videoCodec: "libsvtav1",
-    videoPreset: "8",
-    videoExt: "mp4",
-    frameRate: "30",
-    audioCodec: "libopus",
-    audioBitRate: "32k", // around 14 MB per hour
-    audioExt: "ogg",
+    video: {
+        frameRate: "30",
+        codec: "libsvtav1",
+        preset: "8",
+        ext: "mp4"
+    },
+    audio: {
+        codec: "libopus",
+        bitRate: "32k",
+        ext: "ogg"
+    },
     /*
      * Limits the amount of video streams recorded at once.
      * Screen sharing has precedence over cameras and keeps only
@@ -246,7 +249,7 @@ export const recording = Object.freeze({
      */
     cameraLimit: 4,
     screenLimit: 1
-});
+} as const;
 // check for overlap in ports
 if (recording.enabled && !(DYNAMIC_MAX_PORT < RTC_MIN_PORT || DYNAMIC_MIN_PORT > RTC_MAX_PORT)) {
     throw new Error("Dynamic ports overlap with RTC ports");

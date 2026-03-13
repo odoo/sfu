@@ -43,7 +43,7 @@ export class MediaUploader {
                 method: "POST",
                 headers: {
                     Authorization: `Bearer ${this._makeJwt(metadata.channelKey)}`,
-                    "Content-Type": `audio/${config.recording.audioExt}`,
+                    "Content-Type": `audio/${config.recording.audio.ext}`,
                     "Content-Length": fileStats.size.toString()
                 },
                 // FIXME remove linter error suppression
@@ -84,11 +84,10 @@ export class MediaUploader {
             return;
         }
         const fileStats = await fs.stat(filePath);
-        const contentType = this._getVideoContentType(config.recording.videoExt);
         const uploadResponse = await this._fetchWithTimeout(jsonResponse.destination, {
             method: "POST",
             headers: {
-                "Content-Type": contentType,
+                "Content-Type": `video/${config.recording.video.ext}`,
                 "Content-Length": fileStats.size.toString()
             },
             // @ts-expect-error: same as above
@@ -111,28 +110,6 @@ export class MediaUploader {
             },
             key
         );
-    }
-
-    private _getVideoContentType(extension: string): string {
-        const ext = extension.toLowerCase().replace(/^\./, "");
-        switch (ext) {
-            case "mp4":
-                return "video/mp4";
-            case "webm":
-                return "video/webm";
-            case "mkv":
-                return "video/x-matroska";
-            case "ogv":
-                return "video/ogg";
-            case "mov":
-                return "video/quicktime";
-            case "avi":
-                return "video/x-msvideo";
-            case "ts":
-                return "video/mp2t";
-            default:
-                return "application/octet-stream";
-        }
     }
 
     private async _fetchWithTimeout(url: string, init: RequestInit = {}) {
