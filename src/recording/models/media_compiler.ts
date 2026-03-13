@@ -132,11 +132,11 @@ export class MediaCompiler {
             ...(filterComplex.length > 0 ? ["-filter_complex", filterComplex.join(";")] : []),
             ...mapArgs,
             "-c:v",
-            config.recording.videoCodec,
+            config.recording.video.codec,
             "-c:a",
-            config.recording.audioCodec,
+            config.recording.audio.codec,
             "-preset",
-            config.recording.videoPreset,
+            config.recording.video.preset,
             /**
              * Relocates the MP4 moov atom to the beginning of the file.
              * Without this, the moov atom is written at the end, which
@@ -258,7 +258,7 @@ export class MediaCompiler {
 
         const outputName = path.join(
             this._workingDir,
-            `${FILENAME_PREFIX}${this._startedAt}.${config.recording.audioExt}`
+            `${FILENAME_PREFIX}${this._startedAt}.${config.recording.audio.ext}`
         );
         try {
             await access(outputName);
@@ -298,9 +298,9 @@ export class MediaCompiler {
             "-t",
             duration.toFixed(3),
             "-c:a",
-            config.recording.audioCodec,
+            config.recording.audio.ext,
             "-b:a",
-            config.recording.audioBitRate,
+            config.recording.audio.bitRate,
             outputName
         ];
 
@@ -357,7 +357,7 @@ export class MediaCompiler {
 
         const outputName = path.join(
             this._workingDir,
-            `${FILENAME_PREFIX}${this._startedAt}.${config.recording.videoExt}`
+            `${FILENAME_PREFIX}${this._startedAt}.${config.recording.video.ext}`
         );
         try {
             await access(outputName);
@@ -468,7 +468,7 @@ export class MediaCompiler {
 
         const outputPath = path.join(
             this._workingDir,
-            `segment_${index}.${config.recording.videoExt}`
+            `segment_${index}.${config.recording.video.ext}`
         );
         const duration = (segment.endTime - segment.startTime) / 1000;
 
@@ -592,11 +592,11 @@ export class MediaCompiler {
             "-t",
             duration.toFixed(3),
             "-r",
-            config.recording.frameRate,
+            config.recording.video.frameRate,
             "-c:v",
-            config.recording.videoCodec,
+            config.recording.video.codec,
             "-preset",
-            config.recording.videoPreset,
+            config.recording.video.preset,
             // Moves the moov atom to the front so segment files can be
             // read sequentially during concatenation without seeking.
             "-movflags",
