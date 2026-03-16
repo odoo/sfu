@@ -132,12 +132,12 @@ const logger = new Logger("SESSION");
  * @fires Session#handledError - Emitted when an error is handled
  */
 export class Session extends EventEmitter {
-    static Events = {
+    static readonly Events = {
         STATE_CHANGE: "stateChange",
         CLOSE: "close",
         HANDLED_ERROR: "handledError",
         PRODUCER: "producer"
-    };
+    } as const;
 
     /** Communication bus for WebSocket messaging */
     public bus?: Bus;

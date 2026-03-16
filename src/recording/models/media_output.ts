@@ -27,9 +27,9 @@ export type RtpData = {
  * both available and allowed to record.
  */
 export class MediaOutput extends EventEmitter {
-    static Events = {
+    static readonly Events = {
         FILE_STATE_CHANGE: "fileStateChange"
-    };
+    } as const;
 
     name: string;
     readonly ready: Promise<void>;
