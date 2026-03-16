@@ -71,11 +71,11 @@ type JoinResult = {
  * @fires Channel#close
  */
 export class Channel extends EventEmitter {
-    static Events = {
+    static readonly Events = {
         SESSION_JOIN: "sessionJoin",
         SESSION_LEAVE: "sessionLeave",
         CLOSE: "close"
-    };
+    } as const;
 
     /** Global registry of all active channels by UUID */
     static records = new Map<string, Channel>();

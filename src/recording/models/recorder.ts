@@ -95,9 +95,9 @@ type TrackedVideoSessions = {
  * recording (timestamps, ids,...).
  */
 export class Recorder extends EventEmitter {
-    static Events = {
+    static readonly Events = {
         UPDATE: "update"
-    };
+    } as const;
     isRecording: boolean = false;
     /**
      * Whether audio is recorded
