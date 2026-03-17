@@ -224,7 +224,7 @@ export class Recorder extends EventEmitter {
 
     /**
      * @param param0
-     * @param param0.save - whether to save the recording
+     * @param param0.save - whether to save the recording, defaults to true
      */
     async stop({ save = true, stopCode = STOP_CODE.USER_REQUEST }: StopOptions = {}) {
         if (!this.isRecording) {

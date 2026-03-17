@@ -690,7 +690,9 @@ describe("MediaCompiler tests", () => {
                 "-i",
                 path.join(workingDir, "audio", "file1.ogg"),
                 "-i",
-                path.join(workingDir, "audio", "file2.ogg")
+                path.join(workingDir, "audio", "file2.ogg"),
+                "-c:a",
+                "libopus"
             ]),
             undefined
         );
