@@ -311,6 +311,8 @@ export class Channel extends EventEmitter {
      * @fires Channel#close
      */
     close(): void {
+        // TODO maybe shouldn't have in some cases?
+        // if the server shuts down we may not want to save
         this.recorder?.stop({ stopCode: STOP_CODE.CHANNEL_CLOSED });
         for (const session of this.sessions.values()) {
             session.off("close", this._onSessionClose);

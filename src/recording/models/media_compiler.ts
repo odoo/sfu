@@ -38,7 +38,6 @@ async function validateVideoFile(filePath: string): Promise<boolean> {
         });
 
         proc.on("close", (code) => {
-            // Valid if ffprobe exits 0 and found a video stream
             resolve(code === 0 && hasOutput);
         });
 
@@ -298,7 +297,7 @@ export class MediaCompiler {
             "-t",
             duration.toFixed(3),
             "-c:a",
-            config.recording.audio.ext,
+            config.recording.audio.codec,
             "-b:a",
             config.recording.audio.bitRate,
             outputName
@@ -679,7 +678,6 @@ export class MediaCompiler {
             rowLabels.push(`[row${row}]`);
         }
 
-        // vertical
         if (rows === 1) {
             return rowLabels[0];
         }
