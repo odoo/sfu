@@ -2,6 +2,7 @@
 
 // TODO: remaining things to write:
 // channel segregation with key (multiple server can use the same sfu with different keys)
+// "Media" service is outdated, it is now "Scheduler"
 
 ```mermaid
 flowchart TB
