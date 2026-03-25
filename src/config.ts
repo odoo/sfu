@@ -21,11 +21,7 @@ export const tmpDir = path.join(os.tmpdir(), "odoo_sfu");
  * e.g: AUTH_KEY=u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng=
  */
 export const AUTH_KEY: string = process.env.AUTH_KEY!;
-if (!AUTH_KEY && !testingMode) {
-    throw new Error(
-        "AUTH_KEY env variable is required, it is not possible to authenticate requests without it"
-    );
-}
+
 /**
  * A key used for encrypting/decrypting data locally, if not set one will be randomly generated.
  * It MUST be a 32bytes base64 key, for example generated from `openssl rand 32 | base64`
@@ -38,11 +34,6 @@ export const LOCAL_KEY: string | undefined = process.env.LOCAL_KEY;
  * e.g: PUBLIC_IP=190.165.1.70
  */
 export const PUBLIC_IP: string = process.env.PUBLIC_IP!;
-if (!PUBLIC_IP && !testingMode) {
-    throw new Error(
-        "PUBLIC_IP env variable is required, clients cannot establish webRTC connections without it"
-    );
-}
 
 /**
  * The RTC listening interface
@@ -190,6 +181,26 @@ export const DYNAMIC_MAX_PORT: number =
  */
 export const FFMPEG_LOGGING = Boolean(process.env.FFMPEG_LOGGING);
 
+// ---------------------------------
+// ---------- CHECKS ---------------
+// ---------------------------------
+
+if (!testingMode) {
+    if (!AUTH_KEY) {
+        throw new Error(
+            "AUTH_KEY env variable is required, it is not possible to authenticate requests without it"
+        );
+    }
+    if (!PUBLIC_IP) {
+        throw new Error(
+            "PUBLIC_IP env variable is required, clients cannot establish webRTC connections without it"
+        );
+    }
+}
+if (RECORDING && !(DYNAMIC_MAX_PORT < RTC_MIN_PORT || DYNAMIC_MIN_PORT > RTC_MAX_PORT)) {
+    throw new Error("Dynamic ports overlap with RTC ports");
+}
+
 // ------------------------------------------------------------
 // --------------------   SETTINGS   --------------------------
 // ------------------------------------------------------------
@@ -245,15 +256,12 @@ export const recording = {
      * Screen sharing has precedence over cameras and keeps only
      * the most recent streams up to the configured limits.
      *
-     * if screenLimit is increased, the mediaCompiler must implement a compatible layout (see _compileSegment)
+     * if screenLimit is increased,
+     * the mediaCompiler must implement a compatible layout (see _compileSegment)
      */
     cameraLimit: 4,
     screenLimit: 1
 } as const;
-// check for overlap in ports
-if (recording.enabled && !(DYNAMIC_MAX_PORT < RTC_MIN_PORT || DYNAMIC_MIN_PORT > RTC_MAX_PORT)) {
-    throw new Error("Dynamic ports overlap with RTC ports");
-}
 
 // how many errors can occur before the session is closed, recovery attempts will be made until this limit is reached
 export const maxSessionErrors: number = 6;

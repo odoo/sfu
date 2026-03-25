@@ -38,7 +38,8 @@ see [http.ts](./src/core/services/http.ts) for more details.
 
     ### Query Parameters
     - `webRTC` (string, optional): Defaults to `"true"`.
-        - Set to `"false"` to create a signaling-only channel without WebRTC media capabilities.
+        - Set to `"false"` to create a signaling-only channel without WebRTC media capabilities,
+          this can be usful for example when working in collaborative documents where audio/video are not necessary.
     - `recordingAddress` (string, optional):
         - If provided, enables recording for the channel.
         - Specifies the HTTP endpoint that the SFU can contact for the routing of the recording.
