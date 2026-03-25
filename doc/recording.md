@@ -52,7 +52,7 @@ flowchart TB
 
 1.  **MediaWriter (Process Level)**
     Represents a single child process writing to a file.
-    Receives RTP packets on a specified port and writes them to a file container. Essentially a wrapper around the ffmpeg API.
+    Receives RTP packets on a specified port and writes them to a file container. Essentially a wrapper to abstract ffmpeg.
 
 ## Output Structure
 
@@ -102,9 +102,9 @@ Contains the timestamps of the recording, and the address to which the file shou
 }
 ```
 The first occurence of `file_state_change` with `active: true` marks the start of a file, and the last one with `active: false` marks the end, 
-each file can have any arbitrary amount of state changes, when not active the content is essentially empty but the inner timestamps are still being marked.
+each file can have any arbitrary amount of state changes, when not active the content is essentially empty.
 
-note: the timestamp are the source of truth, a file can span over a period of time during which its underlying stream is active and also inactive (will just be no sound / no video) because we do not estroy/rebuild the recording process for each state change (would lead to loss/latency) 
+note: the timestamp are the source of truth, a file can span over a period of time during which its underlying stream atlernate between active/inactive (will just be no sound / no video) because we do not estroy/rebuild the recording process for each state change (would lead to loss/latency, and an empty segment does not take much space).
 
 ## Sheduler Service & Post-Processing
 
