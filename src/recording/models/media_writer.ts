@@ -66,9 +66,6 @@ export class MediaWriter {
 
     private _init() {
         try {
-            const sdpString = this._createSdpText();
-            logger.debug(`FFMPEG ${this.filename} SDP:\n${sdpString}`);
-            const sdpStream = Readable.from([sdpString]);
             const args = this._getCommandArgs();
             logger.debug(`spawning ffmpeg with args: ${args.join(" ")}`);
             this._process = spawn("ffmpeg", args);
@@ -92,15 +89,15 @@ export class MediaWriter {
                  */
                 this.close();
             });
-
             this._process.on("close", (code) => {
                 logger.verbose(`ffmpeg ${this.filename} exited with code ${code}`);
             });
-
+            const sdpString = this._getSdpText();
+            logger.debug(`FFMPEG ${this.filename} SDP:\n${sdpString}`);
+            const sdpStream = Readable.from([sdpString]);
             sdpStream.on("error", (error) => {
                 logger.error(`sdpStream error: ${error.message}`);
             });
-
             if (this._process.stdin) {
                 sdpStream.pipe(this._process.stdin);
             }
@@ -108,32 +105,6 @@ export class MediaWriter {
             logger.error(`Failed to initialize FFMPEG ${this.filename}: ${error}`);
             this.close();
         }
-    }
-
-    /**
-     * Build a Session Description Protocol (SDP) payload describing the incoming RTP stream.
-     * SDP informs ffmpeg about the media session negotiated elsewhere (port, codec, clock rate,
-     * payload type, channels, and whether the track is audio or video) so ffmpeg can attach to
-     * the RTP source. These lines are piped to ffmpeg stdin.
-     * It is different from the spawn arguments, which configure the ffmpeg process itself (loglevel,
-     * input pipe, mapping, container, etc.).
-     */
-    private _createSdpText(): string {
-        const { port, payloadType, codec, clockRate, channels, kind } = this._rtp;
-        let sdp = `v=0\n`;
-        sdp += `o=- 0 0 IN IP4 ${config.recording.routingInterface}\n`;
-        sdp += `s=FFmpeg\n`;
-        sdp += `c=IN IP4 ${config.recording.routingInterface}\n`;
-        sdp += `t=0 0\n`;
-        sdp += `m=${kind} ${port} RTP/AVP ${payloadType}\n`;
-        sdp += `a=rtpmap:${payloadType} ${codec}/${clockRate}`;
-
-        if (kind === "audio" && channels) {
-            sdp += `/${channels}`;
-        }
-        sdp += `\na=rtcp-mux`;
-        sdp += `\na=recvonly\n`;
-        return sdp;
     }
 
     private _getContainerExtension(): string {
@@ -204,5 +175,22 @@ export class MediaWriter {
         args.push("-output_ts_offset", "0");
         args.push(path.join(this._directory, this.filename));
         return args;
+    }
+
+    private _getSdpText(): string {
+        const { port, payloadType, codec, clockRate, channels, kind } = this._rtp;
+        const channelStr = kind === "audio" && channels ? `/${channels}` : "";
+        return [
+            "v=0",
+            `o=- 0 0 IN IP4 ${config.recording.routingInterface}`,
+            "s=FFmpeg",
+            `c=IN IP4 ${config.recording.routingInterface}`,
+            "t=0 0",
+            `m=${kind} ${port} RTP/AVP ${payloadType}`,
+            `a=rtpmap:${payloadType} ${codec}/${clockRate}${channelStr}`,
+            "a=rtcp-mux",
+            "a=recvonly",
+            ""
+        ].join("\n");
     }
 }
