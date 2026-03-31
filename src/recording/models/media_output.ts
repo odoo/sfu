@@ -49,7 +49,7 @@ export class MediaOutput extends EventEmitter {
             return;
         }
         this._allowed = value;
-        this._refreshProcess();
+        this._syncProcess();
     }
 
     get port() {
@@ -118,20 +118,17 @@ export class MediaOutput extends EventEmitter {
                 await this._cleanup();
                 return;
             }
-            const refreshProcess = this._refreshProcess.bind(this);
-            this._consumer.on("producerresume", refreshProcess);
-            this._consumer.on("producerpause", refreshProcess);
-            this._refreshProcess();
+            const syncProcess = this._syncProcess.bind(this);
+            this._consumer.on("producerresume", syncProcess);
+            this._consumer.on("producerpause", syncProcess);
+            this._syncProcess();
         } catch (error) {
             await this.close();
             throw error;
         }
     }
 
-    /**
-     * Refreshes the MediaWriter process based on the producer state.
-     */
-    private _refreshProcess() {
+    private _syncProcess() {
         if (this._isClosed || !this._rtpData) {
             return;
         }

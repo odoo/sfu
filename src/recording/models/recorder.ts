@@ -423,22 +423,20 @@ export class Recorder extends EventEmitter {
     }
 
     /**
-     * Applies the configured camera/screen limits across all current recording tasks.
-     *
-     * Policy:
-     * - Screen streams always take precedence over camera streams.
-     * - When screens are present, only the latest `screenLimit` screen sessions are allowed,
-     *   and all cameras are disallowed.
-     * - When no screens are present, only the latest `cameraLimit` camera sessions are allowed.
-     *
-     * A non-positive limit is treated as "allow none" for that stream category.
+     * Applies the configured camera/screen limits to all tasks
      */
     private _enforceVideoLimits() {
         const screens = this._trackedVideoSessions[STREAM_TYPE.SCREEN];
+        // Screen streams always take precedence over camera streams because screen sharing
+        // contain important visual information, if we only showed a small screen share it would
+        // be hard to see
         const hasScreenSharing = screens.length > 0;
+        // When screens are present, only the latest `screenLimit` screen sessions are allowed.
         const allowedScreenSessions = hasScreenSharing
             ? this._getAllowedSessions(screens, config.recording.screenLimit)
             : new Set<SessionId>();
+        // When screens are present, all cameras are hidden
+        // When no screens are present, only the latest `cameraLimit` camera session are allowed
         const allowedCameraSessions = hasScreenSharing
             ? new Set<SessionId>()
             : this._getAllowedSessions(
