@@ -144,7 +144,7 @@ export class MediaWriter {
             "-reorder_queue_size",
             "500", // larger reorder queue to handle out-of-order RTP packets
             "-analyzeduration",
-            "5000000", // 5 seconds to properly detect stream properties and wait for keyframe
+            "5000000", // 5 seconds to properly detect stream properties and wait for keyframe TODO: maybe not necessary anymore since we force request keyframe on start
             "-probesize",
             "10000000", // 10 MB probe size for better codec detection
             "-protocol_whitelist",
