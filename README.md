@@ -1,5 +1,12 @@
 # Odoo SFU
 
+> [!WARNING]  
+> Early phase of developments, the readme may not be up to date, or be incorrect,
+> needs some cleanup, remove todos, will finalize when the PR is ready
+> Current documentation is split/rewrite of the old readme, some parts may still be split into
+> secondary documentataion files
+>
+
 ## Overview
 
 Contains the code for the SFU (Selective Forwarding Unit) server 
