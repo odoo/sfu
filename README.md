@@ -2,7 +2,7 @@
 
 > [!WARNING]  
 > Early phase of developments, the readme may not be up to date, or be incorrect,
-> needs some cleanup, remove todos, will finalize when the PR is ready
+> needs some cleanup, remove todos, fix broken links (since some files were moved). will finalize when the PR is ready
 > Current documentation is split/rewrite of the old readme, some parts may still be split into
 > secondary documentataion files
 >
