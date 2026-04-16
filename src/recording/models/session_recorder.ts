@@ -14,7 +14,7 @@ export type RecordingStates = {
     screen: boolean;
 };
 
-export enum RECORDING_TASK_EVENT {
+export enum SESSION_RECORDER_EVENT {
     UPDATE = "update"
 }
 
@@ -37,13 +37,13 @@ type RecordingDataByStreamType = {
     [STREAM_TYPE.SCREEN]: RecordingData;
 };
 
-const logger = new Logger("RECORDING_TASK");
+const logger = new Logger("SESSION_RECORDER");
 
 /**
  * Tracks recording state per stream type and starts MediaOutput instances
  * when producers become available for the current session.
  */
-export class RecordingTask extends EventEmitter {
+export class SessionRecorder extends EventEmitter {
     private _session: Session;
     private _recorder: Recorder;
     private readonly recordingDataByStreamType: RecordingDataByStreamType = {

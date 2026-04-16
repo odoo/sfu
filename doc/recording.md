@@ -14,8 +14,8 @@ The two phase approach allow for the real time part to be light (only writing pa
 ```mermaid
 flowchart TB
    
-    R["Recorder <br> Channel Level"] ---> RT1["RecordingTask <br> Session 1"] & RT2["RecordingTask <br> Session 2"]
-    R ---> RTN["RecordingTask <br> Session N"] & RTN1["RecordingTask <br> Session N+1"] & RTN0["RecordingTask <br> Session N+X"]
+    R["Recorder <br> Channel Level"] ---> RT1["SessionRecorder <br> Session 1"] & RT2["SessionRecorder <br> Session 2"]
+    R ---> RTN["SessionRecorder <br> Session N"] & RTN1["SessionRecorder <br> Session N+1"] & RTN0["SessionRecorder <br> Session N+X"]
     RT1 -- audio --> MOA1["MediaOutput <br> Audio"]
     RT1 -- screen --> MOS1["MediaOutput <br> Screen"]
     RT2 -- screen --> MOS2["MediaOutput <br> Screen"]
@@ -37,11 +37,11 @@ flowchart TB
 
 1.  **Recorder (Channel Level)**
     Manages recording for an entire `Channel`.
-    Handles the lifecycle of recording and holds the  `RecordingTask`s for current sessions and listens for new sessions joining the channel to create tasks for them dynamically.
+    Handles the lifecycle of recording and holds the `SessionRecorder`s for current sessions and listens for new sessions joining the channel to create them dynamically.
 
-2.  **RecordingTask (Session Level)**
+2.  **SessionRecorder (Session Level)**
     Bound to a specific rtc `Session`.
-    Monitors the user's producers (audio, camera, screen). When a user releases a stream (e.g., turns on camera), the `RecordingTask` detects it and manage a `MediaOutput` for each.
+    Monitors the user's producers (audio, camera, screen). When a user releases a stream (e.g., turns on camera), the `SessionRecorder` detects it and manages a `MediaOutput` for each.
     *   **Inputs:** `audio`, `camera`, `screen` flags determine which streams to record.
 
 3.  **MediaOutput (Stream Level / RTP)**

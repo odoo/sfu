@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 
 import * as config from "#src/config.ts";
 import { Folder } from "#src/core/services/resources.ts";
-import { RecordingTask, type RecordingStates } from "#src/recording/models/recording_task.ts";
+import { SessionRecorder, type RecordingStates } from "#src/recording/models/session_recorder.ts";
 import { encrypt } from "#src/core/services/auth.ts";
 import { Logger } from "#src/utils/utils.ts";
 import { DiskSpaceLimitReachedError } from "#src/utils/errors.ts";
@@ -114,7 +114,7 @@ export class Recorder extends EventEmitter {
     private _folder?: Folder;
     private _timeout?: NodeJS.Timeout;
     private readonly _channel: Channel;
-    private readonly _tasks = new Map<SessionId, RecordingTask>();
+    private readonly _sessionRecorders = new Map<SessionId, SessionRecorder>();
     private readonly _trackedVideoSessions: TrackedVideoSessions = {
         [STREAM_TYPE.CAMERA]: [],
         [STREAM_TYPE.SCREEN]: []
@@ -257,7 +257,7 @@ export class Recorder extends EventEmitter {
         this._resetTrackedVideoSessions();
         const currentFolder = this._folder;
         this._folder = undefined;
-        const results = await this._stopRecordingTasks();
+        const results = await this._stopSessionRecorders();
         const failed = results.some((result) => result.status === "rejected");
         if (shouldSave && !failed && currentFolder) {
             try {
@@ -310,17 +310,20 @@ export class Recorder extends EventEmitter {
             return;
         }
         this._metaData.labels[id] = session.label || "unknown";
-        this._tasks.set(session.id, new RecordingTask(this, session, this._getRecordingStates()));
+        this._sessionRecorders.set(
+            session.id,
+            new SessionRecorder(this, session, this._getRecordingStates())
+        );
         if (this._hasTrackedVideoSessions()) {
             this._enforceVideoLimits();
         }
     }
 
     private _onSessionLeave(id: SessionId) {
-        const task = this._tasks.get(id);
-        if (task) {
-            task.stop();
-            this._tasks.delete(id);
+        const sessionRecorder = this._sessionRecorders.get(id);
+        if (sessionRecorder) {
+            sessionRecorder.stop();
+            this._sessionRecorders.delete(id);
         }
         this._removeTrackedVideoSession(id);
         this._enforceVideoLimits();
@@ -349,21 +352,21 @@ export class Recorder extends EventEmitter {
         logger.verbose(`Initializing recorder for channel: ${this._channel.name}`);
         for (const [sessionId, session] of this._channel.sessions) {
             this._metaData.labels[sessionId] = session.label || "unknown";
-            this._tasks.set(
+            this._sessionRecorders.set(
                 sessionId,
-                new RecordingTask(this, session, this._getRecordingStates())
+                new SessionRecorder(this, session, this._getRecordingStates())
             );
         }
         this._channel.on(Channel.Events.SESSION_JOIN, this._onSessionJoin);
         this._channel.on(Channel.Events.SESSION_LEAVE, this._onSessionLeave);
     }
 
-    private async _stopRecordingTasks() {
+    private async _stopSessionRecorders() {
         const proms = [];
-        for (const task of this._tasks.values()) {
-            proms.push(task.stop());
+        for (const sessionRecorder of this._sessionRecorders.values()) {
+            proms.push(sessionRecorder.stop());
         }
-        this._tasks.clear();
+        this._sessionRecorders.clear();
         return Promise.allSettled(proms);
     }
 
@@ -423,7 +426,7 @@ export class Recorder extends EventEmitter {
     }
 
     /**
-     * Applies the configured camera/screen limits to all tasks
+     * Applies the configured camera/screen limits to all session recorders
      */
     private _enforceVideoLimits() {
         const screens = this._trackedVideoSessions[STREAM_TYPE.SCREEN];
@@ -444,9 +447,15 @@ export class Recorder extends EventEmitter {
                   config.recording.cameraLimit
               );
 
-        for (const [sessionId, task] of this._tasks) {
-            task.setAllowed(STREAM_TYPE.CAMERA, allowedCameraSessions.has(sessionId));
-            task.setAllowed(STREAM_TYPE.SCREEN, allowedScreenSessions.has(sessionId));
+        for (const [sessionId, sessionRecorder] of this._sessionRecorders) {
+            sessionRecorder.setAllowed(
+                STREAM_TYPE.CAMERA,
+                allowedCameraSessions.has(sessionId)
+            );
+            sessionRecorder.setAllowed(
+                STREAM_TYPE.SCREEN,
+                allowedScreenSessions.has(sessionId)
+            );
         }
     }
 }
