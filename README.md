@@ -47,42 +47,42 @@ interacted with as described [here](#client-api-bundle).
 
 The available environment variables are:
 
-| Variable            | Default         | Required | Description                                                                        |
-| :------------------ | :-------------- | :------: | :--------------------------------------------------------------------------------- |
-| `PUBLIC_IP`         | -               |   Yes    | Used to establish WebRTC connections to the server.                                |
-| `AUTH_KEY`          | -               |   Yes    | The base64 encoded encryption key used for JWT authentication.                     |
-| `HTTP_INTERFACE`    | `0.0.0.0`       |    No    | HTTP and WebSocket listening interface.                                            |
-| `PORT`              | `8070`          |    No    | Port for HTTP and WebSocket.                                                       |
-| `RTC_INTERFACE`     | `0.0.0.0`       |    No    | Interface address for RTC.                                                         |
-| `PROXY`             | `false`         |    No    | Set to true if behind a proxy to trust forwarding headers.                         |
-| `AUDIO_CODECS`      | All             |    No    | Comma separated list of audio codecs to use (e.g., `opus,PCMU,PCMA`).              |
-| `VIDEO_CODECS`      | All             |    No    | Comma separated list of video codecs to use (e.g., `VP8,H264,VP9`).                |
-| `RTC_MIN_PORT`      | `40000`         |    No    | Lower bound for the range of ports used by the RTC server (TCP/UDP).               |
-| `RTC_MAX_PORT`      | `49999`         |    No    | Upper bound for the range of ports used by the RTC server (TCP/UDP).               |
-| `NUM_WORKERS`       | CPU count       |    No    | Number of mediasoup workers to spawn.                                              |
-| `MAX_BUF_IN`        | `0` (unlimited) |    No    | Maximum incoming buffer size in bytes for SCTP messages per session.               |
-| `MAX_BUF_OUT`       | `0` (unlimited) |    No    | Maximum outgoing buffer size in bytes for SCTP messages per session.               |
-| `MAX_BITRATE_IN`    | `8000000`       |    No    | Maximum incoming bitrate in bps per session (upload).                              |
-| `MAX_BITRATE_OUT`   | `10000000`      |    No    | Maximum outgoing bitrate in bps per session (download).                            |
-| `MAX_VIDEO_BITRATE` | `4000000`       |    No    | Maximum bitrate in bps for the highest simulcast video layer.                      |
-| `CHANNEL_SIZE`      | `100`           |    No    | Maximum amount of concurrent users per channel.                                    |
-| `LOG_LEVEL`         | `error`         |    No    | SFU log level (`none`, `error`, `warn`, `info`, `debug`, `verbose`).               |
-| `LOG_TIMESTAMP`     | `true`          |    No    | Prefix timestamps to log lines.                                                    |
-| `LOG_COLOR`         | TTY detection   |    No    | Colors log lines based on their level.                                             |
-| `DEBUG`             | -               |    No    | Used by the [debug](https://www.npmjs.com/package/debug) module (e.g., `DEBUG=*`). |
-| `WORKER_LOG_LEVEL`  | `none`          |    No    | Mediasoup worker log level. Requires `DEBUG` to be active.                         |
-| `DATA_PATH`         | `/tmp/odoo_sfu` |    No    | Base path for SFU local storage (`recordings`, `resources`, `debug` subfolders).   |
+| Variable              | Default         | Description                                                                        |
+| :-------------------- | :-------------- | :--------------------------------------------------------------------------------- |
+| `PUBLIC_IP` (required)| -               | Used to establish WebRTC connections to the server.                                |
+| `AUTH_KEY` (required) | -               | The base64 encoded encryption key used for JWT authentication.                     |
+| `HTTP_INTERFACE`      | `0.0.0.0`       | HTTP and WebSocket listening interface.                                            |
+| `PORT`                | `8070`          | Port for HTTP and WebSocket.                                                       |
+| `RTC_INTERFACE`       | `0.0.0.0`       | Interface address for RTC.                                                         |
+| `PROXY`               | `false`         | Set to true if behind a proxy to trust forwarding headers.                         |
+| `AUDIO_CODECS`        | All             | Comma separated list of audio codecs to use (e.g., `opus,PCMU,PCMA`).              |
+| `VIDEO_CODECS`        | All             | Comma separated list of video codecs to use (e.g., `VP8,H264,VP9`).                |
+| `RTC_MIN_PORT`        | `40000`         | Lower bound for the range of ports used by the RTC server (TCP/UDP).               |
+| `RTC_MAX_PORT`        | `49999`         | Upper bound for the range of ports used by the RTC server (TCP/UDP).               |
+| `NUM_WORKERS`         | CPU count       | Number of mediasoup workers to spawn.                                              |
+| `MAX_BUF_IN`          | `0` (unlimited) | Maximum incoming buffer size in bytes for SCTP messages per session.               |
+| `MAX_BUF_OUT`         | `0` (unlimited) | Maximum outgoing buffer size in bytes for SCTP messages per session.               |
+| `MAX_BITRATE_IN`      | `8000000`       | Maximum incoming bitrate in bps per session (upload).                              |
+| `MAX_BITRATE_OUT`     | `10000000`      | Maximum outgoing bitrate in bps per session (download).                            |
+| `MAX_VIDEO_BITRATE`   | `4000000`       | Maximum bitrate in bps for the highest simulcast video layer.                      |
+| `CHANNEL_SIZE`        | `100`           | Maximum amount of concurrent users per channel.                                    |
+| `LOG_LEVEL`           | `error`         | SFU log level (`none`, `error`, `warn`, `info`, `debug`, `verbose`).               |
+| `LOG_TIMESTAMP`       | `true`          | Prefix timestamps to log lines.                                                    |
+| `LOG_COLOR`           | TTY detection   | Colors log lines based on their level.                                             |
+| `DEBUG`               | -               | Used by the [debug](https://www.npmjs.com/package/debug) module (e.g., `DEBUG=*`). |
+| `WORKER_LOG_LEVEL`    | `none`          | Mediasoup worker log level. Requires `DEBUG` to be active.                         |
+| `DATA_PATH`           | `/tmp/odoo_sfu` | Base path for SFU local storage (`recordings`, `resources`, `debug` subfolders).   |
 
 
 Recording specific env variables:
 
 | Variable                                | Default            | Required | Description                                                                                                            |
 | :-------------------------------------- | :----------------- | :------: | :--------------------------------------------------------------------------------------------------------------------- |
-| `RECORDING`                             | `false`            |    No    | Enables the recording feature.                                                                                         |
-| `LOCAL_KEY`                             | Randomly generated |    No    | 32-byte base64 key for encrypting local data. If missing, data loses persistence between restarts.                     |
-| `DYNAMIC_MIN_PORT` / `DYNAMIC_MAX_PORT` | `50000` / `59999`  |    No    | Range of ports used for recording routing.                                                                             |
-| `KEEP_RECORDINGS`                       | `false`            |    No    | If true, keeps raw recording files after they are uploaded.                                                            |
-| `FFMPEG_LOGGING`                        | `false`            |    No    | If true, generates `.log` files alongside ffmpeg outputs and archives processed recordings under `${DATA_PATH}/debug`. |
+| `RECORDING`                             | `false`            | Enables the recording feature.                                                                                         |
+| `LOCAL_KEY`                             | Randomly generated | 32-byte base64 key for encrypting local data. If missing, data loses persistence between restarts.                     |
+| `DYNAMIC_MIN_PORT` / `DYNAMIC_MAX_PORT` | `50000` / `59999`  | Range of ports used for recording routing.                                                                             |
+| `KEEP_RECORDINGS`                       | `false`            | If true, keeps raw recording files after they are uploaded.                                                            |
+| `FFMPEG_LOGGING`                        | `false`            | If true, generates `.log` files alongside ffmpeg outputs and archives processed recordings under `${DATA_PATH}/debug`. |
 
 See [config.js](./src/config.js) for more details.
 
