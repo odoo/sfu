@@ -16,16 +16,16 @@ flowchart TB
    
     R["Recorder <br> Channel Level"] ---> RT1["SessionRecorder <br> Session 1"] & RT2["SessionRecorder <br> Session 2"]
     R ---> RTN["SessionRecorder <br> Session N"] & RTN1["SessionRecorder <br> Session N+1"] & RTN0["SessionRecorder <br> Session N+X"]
-    RT1 -- audio --> MOA1["MediaOutput <br> Audio"]
-    RT1 -- screen --> MOS1["MediaOutput <br> Screen"]
-    RT2 -- screen --> MOS2["MediaOutput <br> Screen"]
-    RT2 -- camera --> MOC2["MediaOutput <br> Camera"]
-    RT2 -- audio --> MOA2["MediaOutput <br> Audio"]
-    MOA1 --> FFA1["MediaWriter <br> Audio Process"]
-    MOS1 --> FFS1["MediaWriter <br> Screen Process"]
-    MOA2 --> FFA2["MediaWriter <br> Audio Process"]
-    MOS2 --> FFS2["MediaWriter <br> Screen Process"]
-    MOC2 --> FFC2["MediaWriter <br> Camera Process"]
+    RT1 -- audio --> MSA1["MediaSink <br> Audio"]
+    RT1 -- screen --> MSS1["MediaSink <br> Screen"]
+    RT2 -- screen --> MSS2["MediaSink <br> Screen"]
+    RT2 -- camera --> MSC2["MediaSink <br> Camera"]
+    RT2 -- audio --> MSA2["MediaSink <br> Audio"]
+    MSA1 --> FFA1["MediaWriter <br> Audio Process"]
+    MSS1 --> FFS1["MediaWriter <br> Screen Process"]
+    MSA2 --> FFA2["MediaWriter <br> Audio Process"]
+    MSS2 --> FFS2["MediaWriter <br> Screen Process"]
+    MSC2 --> FFC2["MediaWriter <br> Camera Process"]
     FFS1 --> DIR[("Recording Directory")]
     FFA1 --> DIR
     FFS2 --> DIR
@@ -41,10 +41,10 @@ flowchart TB
 
 2.  **SessionRecorder (Session Level)**
     Bound to a specific rtc `Session`.
-    Monitors the user's producers (audio, camera, screen). When a user releases a stream (e.g., turns on camera), the `SessionRecorder` detects it and manages a `MediaOutput` for each.
+    Monitors the user's producers (audio, camera, screen). When a user releases a stream (e.g., turns on camera), the `SessionRecorder` detects it and manages a `MediaSink` for each.
     *   **Inputs:** `audio`, `camera`, `screen` flags determine which streams to record.
 
-3.  **MediaOutput (Stream Level / RTP)**
+3.  **MediaSink (Stream Level / RTP)**
     Handles a single stream type (e.g., just the camera) for a session.
     Bridges the Mediasoup `Producer` (source) to the `MediaWriter` (ffmpeg) process (sink), and manages the lifecycle of the port, transport, consumer, and ffmpeg process. It also handles thhe "allowed"/"active" flags.
 *   

@@ -8,7 +8,7 @@ import { MediaWriter } from "#src/recording/models/media_writer.ts";
 import { Logger } from "#src/utils/utils.ts";
 import type { SessionAppData } from "#src/core/models/session.ts";
 
-const logger = new Logger("MEDIA_OUTPUT");
+const logger = new Logger("MEDIA_SINK");
 
 export type RtpData = {
     kind: MediaKind;
@@ -26,7 +26,7 @@ export type RtpData = {
  * extracts the RTP parameters, and spawns FFMPEG only when the producer is
  * both available and allowed to record.
  */
-export class MediaOutput extends EventEmitter {
+export class MediaSink extends EventEmitter {
     static readonly Events = {
         FILE_STATE_CHANGE: "fileStateChange"
     } as const;
@@ -157,7 +157,7 @@ export class MediaOutput extends EventEmitter {
         } else {
             this._consumer?.pause();
         }
-        this.emit(MediaOutput.Events.FILE_STATE_CHANGE, {
+        this.emit(MediaSink.Events.FILE_STATE_CHANGE, {
             active,
             /**
              * this should be used by the recorder to know
@@ -171,7 +171,7 @@ export class MediaOutput extends EventEmitter {
 
     private async _cleanup() {
         if (this._mediaWriter) {
-            this.emit(MediaOutput.Events.FILE_STATE_CHANGE, {
+            this.emit(MediaSink.Events.FILE_STATE_CHANGE, {
                 active: false,
                 filename: this._mediaWriter.filename,
                 eof: true
