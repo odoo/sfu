@@ -1,7 +1,7 @@
 import path from "node:path";
 import { EventEmitter } from "node:events";
 
-import { MediaOutput } from "#src/recording/models/media_output.ts";
+import { MediaSink } from "#src/recording/models/media_sink.ts";
 import { Session, type SessionProducer } from "#src/core/models/session.ts";
 import { Logger } from "#src/utils/utils.ts";
 import { TIME_TAG, type Recorder } from "#src/recording/models/recorder.ts";
@@ -22,7 +22,7 @@ type RecordingData = {
     active: boolean;
     allowed: boolean;
     type: STREAM_TYPE;
-    mediaOutput?: MediaOutput;
+    mediaSink?: MediaSink;
     fileStateChangeListener?: (payload: {
         active: boolean;
         available: boolean;
@@ -40,7 +40,7 @@ type RecordingDataByStreamType = {
 const logger = new Logger("SESSION_RECORDER");
 
 /**
- * Tracks recording state per stream type and starts MediaOutput instances
+ * Tracks recording state per stream type and starts MediaSink instances
  * when producers become available for the current session.
  */
 export class SessionRecorder extends EventEmitter {
@@ -79,7 +79,7 @@ export class SessionRecorder extends EventEmitter {
      *
      * This is controlled by recorder-wide prioritization rules (screen-over-camera
      * and latest-N limits). The method does not create or destroy recording outputs;
-     * it only forwards the allow/deny state to `MediaOutput.allowed`, so availability
+     * it only forwards the allow/deny state to `MediaSink.allowed`, so availability
      * can continue to be observed while active writing is gated.
      */
     setAllowed(type: STREAM_TYPE.CAMERA | STREAM_TYPE.SCREEN, allowed: boolean) {
@@ -88,8 +88,8 @@ export class SessionRecorder extends EventEmitter {
             return;
         }
         data.allowed = allowed;
-        if (data.mediaOutput) {
-            data.mediaOutput.allowed = allowed;
+        if (data.mediaSink) {
+            data.mediaSink.allowed = allowed;
         }
     }
 
@@ -146,12 +146,12 @@ export class SessionRecorder extends EventEmitter {
         type: STREAM_TYPE
     ) {
         if (data.active) {
-            if (data.mediaOutput) {
+            if (data.mediaSink) {
                 // already recording
                 return;
             }
             try {
-                data.mediaOutput = new MediaOutput({
+                data.mediaSink = new MediaSink({
                     producer,
                     name: `${this._session.id}-${type}`,
                     directory: path.join(this._recorder.path!, type)
@@ -176,12 +176,9 @@ export class SessionRecorder extends EventEmitter {
                         eof
                     });
                 };
-                data.mediaOutput.on(
-                    MediaOutput.Events.FILE_STATE_CHANGE,
-                    data.fileStateChangeListener
-                );
-                data.mediaOutput.allowed = data.allowed;
-                await data.mediaOutput.ready;
+                data.mediaSink.on(MediaSink.Events.FILE_STATE_CHANGE, data.fileStateChangeListener);
+                data.mediaSink.allowed = data.allowed;
+                await data.mediaSink.ready;
                 if (data.active) {
                     return;
                 }
@@ -204,15 +201,12 @@ export class SessionRecorder extends EventEmitter {
     private async _clearData(type: STREAM_TYPE) {
         const data = this.recordingDataByStreamType[type];
         data.active = false;
-        if (data.mediaOutput && data.fileStateChangeListener) {
-            data.mediaOutput.off(
-                MediaOutput.Events.FILE_STATE_CHANGE,
-                data.fileStateChangeListener
-            );
+        if (data.mediaSink && data.fileStateChangeListener) {
+            data.mediaSink.off(MediaSink.Events.FILE_STATE_CHANGE, data.fileStateChangeListener);
         }
         data.fileStateChangeListener = undefined;
-        await data.mediaOutput?.close();
-        data.mediaOutput = undefined;
+        await data.mediaSink?.close();
+        data.mediaSink = undefined;
     }
 
     async stop() {
