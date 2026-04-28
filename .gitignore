@@ -1,5 +1,7 @@
 node_modules
 
+*.env
+
 # made with jest coverage
 coverage
 /bundle

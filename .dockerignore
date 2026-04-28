@@ -1,0 +1,16 @@
+node_modules
+
+*.env
+
+# Doc
+README.md
+LICENSE
+
+# JS tooling
+.eslintrc.json
+jsconfig.json
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
