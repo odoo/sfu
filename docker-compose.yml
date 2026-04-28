@@ -1,0 +1,9 @@
+services:
+  sfu:
+    build: .
+    env_file: .env
+    ports:
+      - "8070:8070"
+      - "40000-49999:40000-49999/udp"
+      - "40000-49999:40000-49999/tcp"
+    restart: always
