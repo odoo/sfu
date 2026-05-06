@@ -4,7 +4,7 @@ import type { Consumer, PlainTransport, MediaKind, Producer } from "mediasoup/no
 
 import { DynamicPort } from "#src/core/services/resources.ts";
 import * as config from "#src/config.ts";
-import { MediaWriter } from "#src/recording/models/media_writer.ts";
+import { MediaWriter, type MediaWriterFailure } from "#src/recording/models/media_writer.ts";
 import { Logger } from "#src/utils/utils.ts";
 import type { SessionAppData } from "#src/core/models/session.ts";
 
@@ -19,6 +19,10 @@ export type RtpData = {
     channels?: number;
 };
 
+export type MediaSinkFailure = MediaWriterFailure & {
+    sinkName: string;
+};
+
 /**
  * Bridges a mediasoup producer through a RTP to an FFMPEG recording process.
  *
@@ -28,7 +32,8 @@ export type RtpData = {
  */
 export class MediaSink extends EventEmitter {
     static readonly Events = {
-        FILE_STATE_CHANGE: "fileStateChange"
+        FILE_STATE_CHANGE: "fileStateChange",
+        FAILURE: "failure"
     } as const;
 
     name: string;
@@ -40,6 +45,9 @@ export class MediaSink extends EventEmitter {
     private _rtpData?: RtpData;
     private _port?: DynamicPort;
     private _isClosed = false;
+    private _closePromise?: Promise<void>;
+    private _failure?: MediaSinkFailure;
+    private _writerFailureListener?: (failure: MediaWriterFailure) => void;
     private _directory: string;
     private _allowed = true;
     private readonly _availabilityMarker: string;
@@ -74,8 +82,12 @@ export class MediaSink extends EventEmitter {
     }
 
     async close() {
+        if (this._closePromise) {
+            return this._closePromise;
+        }
         this._isClosed = true;
-        await this._cleanup();
+        this._closePromise = this._cleanup();
+        return this._closePromise;
     }
 
     private get _router() {
@@ -140,9 +152,30 @@ export class MediaSink extends EventEmitter {
                 const fileName = `${Date.now()}-${this.name}`;
                 logger.verbose(`new recording file${this._directory}/${fileName}`);
                 this._mediaWriter = new MediaWriter(this._rtpData, this._directory, fileName);
+                this._writerFailureListener = (failure: MediaWriterFailure) => {
+                    this._handleWriterFailure(failure);
+                };
+                this._mediaWriter.once(MediaWriter.Events.FAILURE, this._writerFailureListener);
             }
             this._updateConsumer(true);
         }
+    }
+
+    private _handleWriterFailure(failure: MediaWriterFailure) {
+        if (this._failure) {
+            return;
+        }
+        this._failure = { ...failure, sinkName: this.name };
+        void this._closeAfterFailure(this._failure);
+    }
+
+    private async _closeAfterFailure(failure: MediaSinkFailure) {
+        try {
+            await this.close();
+        } catch (error) {
+            logger.error(`failed to close media sink ${this.name}: ${error}`);
+        }
+        this.emit(MediaSink.Events.FAILURE, failure);
     }
 
     private _updateConsumer(available: boolean) {
@@ -170,17 +203,27 @@ export class MediaSink extends EventEmitter {
     }
 
     private async _cleanup() {
-        if (this._mediaWriter) {
+        const mediaWriter = this._mediaWriter;
+        const writerFailureListener = this._writerFailureListener;
+        if (mediaWriter) {
             this.emit(MediaSink.Events.FILE_STATE_CHANGE, {
                 active: false,
-                filename: this._mediaWriter.filename,
+                filename: mediaWriter.filename,
                 eof: true
             });
         }
-        const prom = this._mediaWriter?.close();
+        const prom = mediaWriter?.close();
         this._consumer?.close();
         this._transport?.close();
         this._port?.release();
-        await prom;
+        try {
+            await prom;
+        } finally {
+            if (mediaWriter && writerFailureListener) {
+                mediaWriter.off(MediaWriter.Events.FAILURE, writerFailureListener);
+            }
+            this._mediaWriter = undefined;
+            this._writerFailureListener = undefined;
+        }
     }
 }

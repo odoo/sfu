@@ -120,6 +120,7 @@ export class Recorder extends EventEmitter {
         [STREAM_TYPE.SCREEN]: []
     };
     private _stopPromise?: Promise<void>;
+    private _hasFailed = false;
     private readonly _metaData: Metadata = {
         channelName: "",
         channelUUID: "",
@@ -181,6 +182,7 @@ export class Recorder extends EventEmitter {
         }
         this.isRecording = true;
         this.video = Boolean(options.video);
+        this._hasFailed = false;
         this._metaData.startedAt = Date.now();
 
         try {
@@ -242,6 +244,17 @@ export class Recorder extends EventEmitter {
         }
     }
 
+    async fail(error?: unknown): Promise<void> {
+        if (!this.isRecording && !this._stopPromise) {
+            return;
+        }
+        this._hasFailed = true;
+        if (error) {
+            logger.error(`Recording failed for channel ${this._channel.name}: ${error}`);
+        }
+        await this.stop({ save: false, stopCode: STOP_CODE.RECORDING_FAILED });
+    }
+
     private async _stop({ save = true, stopCode = STOP_CODE.USER_REQUEST }: StopOptions) {
         const startedAt = this._metaData.startedAt;
         const shouldSave =
@@ -271,11 +284,15 @@ export class Recorder extends EventEmitter {
         const currentFolder = this._folder;
         this._folder = undefined;
         const results = await this._stopSessionRecorders();
-        const failed = results.some((result) => result.status === "rejected");
+        const failed = this._hasFailed || results.some((result) => result.status === "rejected");
+        if (failed && stopCode !== STOP_CODE.RECORDING_FAILED) {
+            this._emitStatus(STOP_CODE.RECORDING_FAILED);
+        }
         if (shouldSave && !failed && currentFolder) {
             try {
                 await currentFolder.add(config.recording.metadataFileName, sealedMetadata!);
                 await currentFolder.move(config.recording.directory);
+                this._hasFailed = false;
                 return;
             } catch (error) {
                 logger.error(
@@ -284,6 +301,7 @@ export class Recorder extends EventEmitter {
             }
         }
         await currentFolder?.delete();
+        this._hasFailed = false;
     }
 
     /**
@@ -461,14 +479,8 @@ export class Recorder extends EventEmitter {
               );
 
         for (const [sessionId, sessionRecorder] of this._sessionRecorders) {
-            sessionRecorder.setAllowed(
-                STREAM_TYPE.CAMERA,
-                allowedCameraSessions.has(sessionId)
-            );
-            sessionRecorder.setAllowed(
-                STREAM_TYPE.SCREEN,
-                allowedScreenSessions.has(sessionId)
-            );
+            sessionRecorder.setAllowed(STREAM_TYPE.CAMERA, allowedCameraSessions.has(sessionId));
+            sessionRecorder.setAllowed(STREAM_TYPE.SCREEN, allowedScreenSessions.has(sessionId));
         }
     }
 }
