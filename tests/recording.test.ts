@@ -23,6 +23,22 @@ import { mockNodeFS } from "#tests/utils/mockFileSystem.ts";
 mockNodeFS();
 mockFfmpeg();
 
+async function waitFor(predicate: () => unknown, timeoutMs = 2000) {
+    const start = Date.now();
+    while (!predicate()) {
+        if (Date.now() - start > timeoutMs) {
+            throw new Error("timeout waiting for condition");
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+}
+
+function makeManualProcess(args: string[] = []) {
+    const process = new MockChildProcess("manual", args);
+    process.stdin = new PassThrough();
+    return process;
+}
+
 describe("Recording & Transcription", () => {
     test("rejects recording start when disk reservation cannot be made", async () => {
         const baseDir = `/mock/recorder-disk-guard-${Date.now()}`;
@@ -257,9 +273,9 @@ describe("Recording & Transcription", () => {
             await closePromise;
 
             expect(mockFs.exists(recordingPath)).toBe(true);
-            expect(
-                mockFs.exists(path.join(recordingPath, config.recording.metadataFileName))
-            ).toBe(true);
+            expect(mockFs.exists(path.join(recordingPath, config.recording.metadataFileName))).toBe(
+                true
+            );
             expect(mockFs.exists(resourcePath)).toBe(false);
         } finally {
             renameGate.resolve();
@@ -561,6 +577,157 @@ describe("Recording & Transcription", () => {
             args = mockSpawn.mock.calls[1][1];
             expect(args.join(" ")).toContain("-c:v");
         } finally {
+            await restore();
+        }
+    });
+
+    test("reports recording_failed when FFMPEG cannot be spawned", async () => {
+        mockSpawn.mockClear();
+        let ffmpegProcess: MockChildProcess | undefined;
+        mockSpawn.mockImplementation((_cmd, args) => {
+            ffmpegProcess = makeManualProcess(args as string[]);
+            return ffmpegProcess;
+        });
+
+        const { restore, network, getChannel } = await recordingSetup({ RECORDING: "true" });
+
+        try {
+            const { mockFs } = await import("#tests/utils/mockFileSystem.ts");
+            const channelUUID = await network.getChannelUUID();
+            const user = await network.connect(channelUUID, 1);
+            await user.isConnected;
+
+            await user.sfuClient.startRecording({ audio: true });
+            await waitFor(() => user.sfuClient.recordingState.recording);
+
+            const channel = getChannel(channelUUID)!;
+            const recorder = channel.recorder!;
+            const resourcePath = recorder.path;
+            const failureEventPromise = once(user.sfuClient, "update");
+
+            const audioTrack = new FakeMediaStreamTrack({ kind: "audio" });
+            await user.sfuClient.updateUpload(STREAM_TYPE.AUDIO, audioTrack);
+            await waitFor(() => Boolean(ffmpegProcess));
+
+            const spawnError = new Error("spawn ffmpeg ENOENT") as NodeJS.ErrnoException;
+            spawnError.code = "ENOENT";
+            ffmpegProcess!.emit("error", spawnError);
+
+            const [failureEvent] = await failureEventPromise;
+            expect(failureEvent.detail).toEqual({
+                name: CLIENT_UPDATE.CHANNEL_INFO_CHANGE,
+                payload: {
+                    state: {
+                        recording: false,
+                        audio: false,
+                        transcription: false,
+                        video: false
+                    },
+                    stopCode: STOP_CODE.RECORDING_FAILED
+                }
+            });
+            await waitFor(() => Boolean(resourcePath && !mockFs.exists(resourcePath)));
+            expect(recorder.state.recording).toBe(false);
+        } finally {
+            await restore();
+        }
+    });
+
+    test("stops and discards recording when FFMPEG reports a process error", async () => {
+        mockSpawn.mockClear();
+        let ffmpegProcess: MockChildProcess | undefined;
+        mockSpawn.mockImplementation((_cmd, args) => {
+            ffmpegProcess = makeManualProcess(args as string[]);
+            return ffmpegProcess;
+        });
+
+        const { restore, network, getChannel } = await recordingSetup({ RECORDING: "true" });
+
+        try {
+            const { mockFs } = await import("#tests/utils/mockFileSystem.ts");
+            const channelUUID = await network.getChannelUUID();
+            const user = await network.connect(channelUUID, 1);
+            await user.isConnected;
+
+            await user.sfuClient.startRecording({ audio: true });
+            await waitFor(() => user.sfuClient.recordingState.recording);
+
+            const channel = getChannel(channelUUID)!;
+            const recorder = channel.recorder!;
+            const resourcePath = recorder.path;
+            const failureEventPromise = once(user.sfuClient, "update");
+
+            const audioTrack = new FakeMediaStreamTrack({ kind: "audio" });
+            await user.sfuClient.updateUpload(STREAM_TYPE.AUDIO, audioTrack);
+            await waitFor(() => Boolean(ffmpegProcess));
+            ffmpegProcess!.emit("error", new Error("FFMPEG crashed"));
+
+            const [failureEvent] = await failureEventPromise;
+            expect(failureEvent.detail.payload.stopCode).toBe(STOP_CODE.RECORDING_FAILED);
+            await waitFor(() => Boolean(resourcePath && !mockFs.exists(resourcePath)));
+            expect(ffmpegProcess!.killed).toBe(true);
+            expect(recorder.state.recording).toBe(false);
+        } finally {
+            await restore();
+        }
+    });
+
+    test("discards recording when FFMPEG must be force killed on stop", async () => {
+        mockSpawn.mockClear();
+        const killSignals: Array<NodeJS.Signals | number | undefined> = [];
+        let ffmpegProcess: MockChildProcess | undefined;
+        mockSpawn.mockImplementation((_cmd, args) => {
+            const process = makeManualProcess(args as string[]);
+            process.kill = (signal?: NodeJS.Signals | number) => {
+                killSignals.push(signal);
+                if (signal === "SIGKILL") {
+                    process.killed = true;
+                    process.emit("close", null, signal);
+                }
+                return true;
+            };
+            ffmpegProcess = process;
+            return process;
+        });
+
+        const { restore, network, getChannel } = await recordingSetup({ RECORDING: "true" });
+
+        try {
+            const { mockFs } = await import("#tests/utils/mockFileSystem.ts");
+            const channelUUID = await network.getChannelUUID();
+            const user = await network.connect(channelUUID, 1);
+            await user.isConnected;
+
+            await user.sfuClient.startRecording({ audio: true });
+            await waitFor(() => user.sfuClient.recordingState.recording);
+
+            const audioTrack = new FakeMediaStreamTrack({ kind: "audio" });
+            await user.sfuClient.updateUpload(STREAM_TYPE.AUDIO, audioTrack);
+            await waitFor(() => Boolean(ffmpegProcess));
+
+            const recorder = getChannel(channelUUID)!.recorder!;
+            const resourcePath = recorder.path;
+            const failureUpdatePromise = new Promise<void>((resolve) => {
+                const listener = (update: { stopCode?: STOP_CODE }) => {
+                    if (update.stopCode === STOP_CODE.RECORDING_FAILED) {
+                        recorder.off("update", listener);
+                        resolve();
+                    }
+                };
+                recorder.on("update", listener);
+            });
+
+            jest.useFakeTimers();
+            const stopPromise = recorder.stop();
+            await jest.advanceTimersByTimeAsync(30_001);
+            await stopPromise;
+            await failureUpdatePromise;
+
+            expect(killSignals).toEqual(["SIGINT", "SIGKILL"]);
+            expect(resourcePath).toBeDefined();
+            expect(mockFs.exists(resourcePath!)).toBe(false);
+        } finally {
+            jest.useRealTimers();
             await restore();
         }
     });
@@ -1170,6 +1337,51 @@ describe("MediaWriter tests", () => {
         expect(writer.extension).toBe("webm");
     });
 
+    test("should reject close when FFMPEG must be force killed", async () => {
+        const hangingProcess = makeManualProcess();
+        const killSignals: Array<NodeJS.Signals | number | undefined> = [];
+        hangingProcess.kill = (signal?: NodeJS.Signals | number) => {
+            killSignals.push(signal);
+            if (signal === "SIGKILL") {
+                hangingProcess.killed = true;
+                hangingProcess.emit("close", null, signal);
+            }
+            return true;
+        };
+        mockSpawn.mockImplementationOnce(() => hangingProcess);
+
+        const writer = new MediaWriter(
+            {
+                kind: "audio",
+                payloadType: 111,
+                clockRate: 48000,
+                codec: "opus",
+                port: 5005,
+                channels: 2
+            },
+            "/tmp",
+            "test_force_kill"
+        );
+
+        try {
+            jest.useFakeTimers();
+            let closeError: unknown;
+            const closePromise = writer.close().catch((error) => {
+                closeError = error;
+            });
+            await jest.advanceTimersByTimeAsync(30_001);
+            await closePromise;
+            expect(closeError).toEqual(
+                expect.objectContaining({
+                    message: expect.stringContaining("did not close gracefully")
+                })
+            );
+            expect(killSignals).toEqual(["SIGINT", "SIGKILL"]);
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
     test("should fall back to mkv for unknown codec", () => {
         const writer = new MediaWriter(
             {
@@ -1411,8 +1623,16 @@ describe("Media Compiler edge cases tests", () => {
         mockFsInstance.mkdir(workingDir);
         mockFsInstance.mkdir(path.join(workingDir, "camera"));
         mockFsInstance.mkdir(path.join(workingDir, "audio"));
-        // Note: no actual video file written - simulates corrupted/missing file
+        mockFsInstance.write(path.join(workingDir, "camera", "corrupted.mp4"), "not a video");
         mockFsInstance.write(path.join(workingDir, "audio", "audio1.ogg"), "audio");
+        mockSpawn.mockImplementation((command, args) => {
+            if (command === "ffprobe") {
+                const process = makeManualProcess(args as string[]);
+                setTimeout(() => process.emit("close", 1), 5);
+                return process;
+            }
+            return new MockChildProcess(command, args as string[]);
+        });
 
         const compiler = new MediaCompiler({
             workingDir,
@@ -1427,7 +1647,7 @@ describe("Media Compiler edge cases tests", () => {
                         sessionId: 1,
                         available: true,
                         active: true,
-                        filename: "corrupted.mp4" // File doesn't exist
+                        filename: "corrupted.mp4"
                     }
                 },
                 {
@@ -1444,9 +1664,11 @@ describe("Media Compiler edge cases tests", () => {
             ]
         });
 
-        // Should fall back to audio since video is corrupted
-        const result = await compiler.getAudio();
-        expect(result).toBe(path.join(workingDir, "recording_1000.ogg"));
+        const videoResult = await compiler.getVideo();
+        expect(videoResult).toBeUndefined();
+
+        const audioResult = await compiler.getAudio();
+        expect(audioResult).toBe(path.join(workingDir, "recording_1000.ogg"));
     });
 });
 

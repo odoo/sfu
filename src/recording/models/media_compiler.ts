@@ -30,17 +30,13 @@ async function validateVideoFile(filePath: string): Promise<boolean> {
             "csv=p=0",
             filePath
         ]);
-
         let hasOutput = false;
-
         proc.stdout.on("data", () => {
             hasOutput = true;
         });
-
         proc.on("close", (code) => {
             resolve(code === 0 && hasOutput);
         });
-
         proc.on("error", () => {
             resolve(false);
         });
@@ -79,7 +75,6 @@ export class MediaCompiler {
     private readonly _timeStamps: TimeStampData[];
     private _audioPath?: string;
     private _videoPath?: string;
-
     static async concatenateSegments({
         workingDir,
         segmentFiles,
@@ -96,22 +91,17 @@ export class MediaCompiler {
         const concatListPath = path.join(workingDir, "concat_list.txt");
         const concatContent = segmentFiles.map((f) => `file '${f}'`).join("\n");
         await writeFile(concatListPath, concatContent);
-
         let srtPath: string | undefined;
         if (srt) {
             srtPath = path.join(workingDir, "subtitles.srt");
             await writeFile(srtPath, srt);
         }
-
         const inputs: string[] = ["-f", "concat", "-safe", "0", "-i", concatListPath];
-
         if (audioPath) {
             inputs.push("-i", audioPath);
         }
-
         const filterComplex: string[] = [];
         let mapArgs: string[];
-
         if (srtPath) {
             inputs.push("-i", srtPath);
             const subtitleIdx = audioPath ? 2 : 1;
@@ -120,11 +110,9 @@ export class MediaCompiler {
         } else {
             mapArgs = ["-map", "0:v"];
         }
-
         if (audioPath) {
             mapArgs.push("-map", "1:a");
         }
-
         const args = [
             "-y",
             ...inputs,
@@ -148,19 +136,15 @@ export class MediaCompiler {
             "+faststart",
             outputPath
         ];
-
         logger.debug(`Concatenating segments: ffmpeg ${args.join(" ")}`);
-
         return new Promise<string>((resolve, reject) => {
             const proc = spawn("ffmpeg", args);
             let logStream: fs.WriteStream | undefined;
-
             if (config.FFMPEG_LOGGING) {
                 logStream = fs.createWriteStream(`${outputPath}.log`);
                 proc.stderr?.pipe(logStream, { end: false });
                 proc.stdout?.pipe(logStream, { end: false });
             }
-
             proc.on("close", async (code) => {
                 logStream?.end();
                 try {
@@ -174,7 +158,6 @@ export class MediaCompiler {
                 } catch {
                     logger.error("Failed to cleanup temp video compilation files");
                 }
-
                 if (code === 0) {
                     logger.info(`Compiled video: ${outputPath}`);
                     resolve(outputPath);
@@ -183,7 +166,6 @@ export class MediaCompiler {
                     reject(new Error(`FFmpeg exited with code ${code}`));
                 }
             });
-
             proc.on("error", (err) => {
                 logStream?.end();
                 logger.error(`Failed to spawn FFmpeg for concatenation: ${err}`);
@@ -249,12 +231,10 @@ export class MediaCompiler {
                 });
             }
         }
-
         if (relevantFiles.length === 0) {
             logger.warn("No audio files found");
             return;
         }
-
         const outputName = path.join(
             this._workingDir,
             `${FILENAME_PREFIX}${this._startedAt}.${config.recording.audio.ext}`
@@ -266,7 +246,6 @@ export class MediaCompiler {
         } catch {
             // File does not exist, continue to compilation
         }
-
         const inputs: string[] = [];
         const filterComplex: string[] = [];
         const duration = (this._stoppedAt - this._startedAt) / 1000;
@@ -286,7 +265,6 @@ export class MediaCompiler {
         filterComplex.push(
             `${mixInputs}amix=inputs=${relevantFiles.length}:dropout_transition=0,volume=${relevantFiles.length}[out]`
         );
-
         const args = [
             "-y",
             ...inputs,
@@ -302,19 +280,15 @@ export class MediaCompiler {
             config.recording.audio.bitRate,
             outputName
         ];
-
         logger.debug(`Running FFMPEG: ffmpeg ${args.join(" ")}`);
-
         return new Promise<string>((resolve, reject) => {
             const proc = spawn("ffmpeg", args);
             let logStream: fs.WriteStream | undefined;
-
             if (config.FFMPEG_LOGGING) {
                 logStream = fs.createWriteStream(`${outputName}.log`);
                 proc.stderr?.pipe(logStream, { end: false });
                 proc.stdout?.pipe(logStream, { end: false });
             }
-
             proc.on("close", (code) => {
                 logStream?.end();
                 if (code === 0) {
@@ -325,7 +299,6 @@ export class MediaCompiler {
                     reject(new Error(`FFMPEG exited with code ${code}`));
                 }
             });
-
             proc.on("error", (err) => {
                 logStream?.end();
                 logger.error(`Failed to spawn FFMPEG: ${err}`);
@@ -348,12 +321,10 @@ export class MediaCompiler {
 
     private async _compileVideo(srt?: string): Promise<string | undefined> {
         const segments = this._buildVideoSegments();
-
         if (segments.length === 0) {
             logger.info("No video segments found, falling back to audio-only");
             return;
         }
-
         const outputName = path.join(
             this._workingDir,
             `${FILENAME_PREFIX}${this._startedAt}.${config.recording.video.ext}`
@@ -365,7 +336,6 @@ export class MediaCompiler {
         } catch {
             // File does not exist, continue
         }
-
         const segmentFiles: string[] = [];
         for (let i = 0; i < segments.length; i++) {
             const segmentPath = await this._compileSegment(segments[i], i);
@@ -373,12 +343,10 @@ export class MediaCompiler {
                 segmentFiles.push(segmentPath);
             }
         }
-
         if (segmentFiles.length === 0) {
             logger.warn("No video segments were successfully compiled");
             return;
         }
-
         return MediaCompiler.concatenateSegments({
             workingDir: this._workingDir,
             segmentFiles,
@@ -396,21 +364,17 @@ export class MediaCompiler {
         const segments: VideoSegment[] = [];
         const activeFiles = new Map<string, VideoFileInfo>();
         const fileFirstActive = new Map<string, number>();
-
         const videoTimestamps = this._timeStamps.filter(
             (ts) =>
                 ts.tag === TIME_TAG.FILE_STATE_CHANGE &&
                 ts.info &&
                 (ts.info.type === STREAM_TYPE.CAMERA || ts.info.type === STREAM_TYPE.SCREEN)
         );
-
         if (videoTimestamps.length === 0) {
             return [];
         }
-
         let currentSegmentStart = this._startedAt;
         let lastChangeTime = this._startedAt;
-
         const flushSegment = (endTime: number) => {
             if (activeFiles.size > 0 && endTime > currentSegmentStart) {
                 segments.push({
@@ -421,7 +385,6 @@ export class MediaCompiler {
             }
             currentSegmentStart = endTime;
         };
-
         for (const ts of videoTimestamps) {
             const { filename, type, sessionId, active } = ts.info!;
             const timestamp = ts.timestamp;
@@ -430,11 +393,9 @@ export class MediaCompiler {
             if (timestamp >= this._stoppedAt) {
                 continue;
             }
-
             if (timestamp - lastChangeTime > SEGMENT_COALESCE_THRESHOLD && activeFiles.size > 0) {
                 flushSegment(timestamp);
             }
-
             if (active) {
                 if (!fileFirstActive.has(filename)) {
                     fileFirstActive.set(filename, timestamp);
@@ -448,7 +409,6 @@ export class MediaCompiler {
             } else {
                 activeFiles.delete(filename);
             }
-
             lastChangeTime = timestamp;
         }
 
@@ -464,20 +424,16 @@ export class MediaCompiler {
         if (files.length === 0) {
             return undefined;
         }
-
         const outputPath = path.join(
             this._workingDir,
             `segment_${index}.${config.recording.video.ext}`
         );
         const duration = (segment.endTime - segment.startTime) / 1000;
-
         const screenFiles = files.filter((f) => f.type === STREAM_TYPE.SCREEN);
         const cameraFiles = files.filter((f) => f.type === STREAM_TYPE.CAMERA);
-
         // Validate files and filter out corrupted ones
         const validScreenFiles: { file: VideoFileInfo; filePath: string }[] = [];
         const validCameraFiles: { file: VideoFileInfo; filePath: string }[] = [];
-
         for (const file of screenFiles) {
             const filePath = path.join(this._workingDir, "screen", file.filename);
             if (await validateVideoFile(filePath)) {
@@ -486,7 +442,6 @@ export class MediaCompiler {
                 logger.warn(`Skipping corrupted screen file: ${file.filename}`);
             }
         }
-
         for (const file of cameraFiles) {
             const filePath = path.join(this._workingDir, "camera", file.filename);
             if (await validateVideoFile(filePath)) {
@@ -495,16 +450,13 @@ export class MediaCompiler {
                 logger.warn(`Skipping corrupted camera file: ${file.filename}`);
             }
         }
-
         // If all files were corrupted, skip this segment
         if (validScreenFiles.length === 0 && validCameraFiles.length === 0) {
             logger.warn(`Segment ${index}: all video files are corrupted, skipping`);
             return undefined;
         }
-
         const inputs: string[] = [];
         const filterComplex: string[] = [];
-
         for (const { file, filePath } of validScreenFiles) {
             const offset = (segment.startTime - file.fileStartTime) / 1000;
             if (offset > 0) {
@@ -512,7 +464,6 @@ export class MediaCompiler {
             }
             inputs.push("-i", filePath);
         }
-
         for (const { file, filePath } of validCameraFiles) {
             const offset = (segment.startTime - file.fileStartTime) / 1000;
             if (offset > 0) {
@@ -520,9 +471,7 @@ export class MediaCompiler {
             }
             inputs.push("-i", filePath);
         }
-
         let outputLabel: string;
-
         // TODO write a cleaner comment later
         // TODO 2 maybe extract layout creation to its own function
         /**
@@ -540,13 +489,11 @@ export class MediaCompiler {
             const screenHeight = 580;
             const barHeight = 140;
             const camWidth = Math.floor(1280 / validCameraFiles.length);
-
             // Scale screen share
             filterComplex.push(
                 `[0:v]scale=1280:${screenHeight}:force_original_aspect_ratio=decrease,` +
                     `pad=1280:${screenHeight}:(ow-iw)/2:(oh-ih)/2[screen]`
             );
-
             // Scale camera streams
             for (let i = 0; i < validCameraFiles.length; i++) {
                 const streamIdx = validScreenFiles.length + i;
@@ -555,7 +502,6 @@ export class MediaCompiler {
                         `pad=${camWidth}:${barHeight}:(ow-iw)/2:(oh-ih)/2[cam${i}]`
                 );
             }
-
             // Combine cameras into horizontal bar
             if (validCameraFiles.length === 1) {
                 filterComplex.push(`[cam0]pad=1280:${barHeight}:(1280-iw)/2:0[cambar]`);
@@ -563,7 +509,6 @@ export class MediaCompiler {
                 const camLabels = validCameraFiles.map((_, i) => `[cam${i}]`).join("");
                 filterComplex.push(`${camLabels}hstack=inputs=${validCameraFiles.length}[cambar]`);
             }
-
             // Stack screen and camera bar vertically
             filterComplex.push(`[screen][cambar]vstack=inputs=2[vout]`);
             outputLabel = "[vout]";
@@ -580,7 +525,6 @@ export class MediaCompiler {
         } else {
             return undefined;
         }
-
         const args = [
             "-y",
             ...inputs,
@@ -604,17 +548,14 @@ export class MediaCompiler {
         ];
 
         logger.debug(`Compiling segment ${index}: ffmpeg ${args.join(" ")}`);
-
         return new Promise<string>((resolve, reject) => {
             const proc = spawn("ffmpeg", args);
             let logStream: fs.WriteStream | undefined;
-
             if (config.FFMPEG_LOGGING) {
                 logStream = fs.createWriteStream(`${outputPath}.log`);
                 proc.stderr?.pipe(logStream, { end: false });
                 proc.stdout?.pipe(logStream, { end: false });
             }
-
             proc.on("close", (code) => {
                 logStream?.end();
                 if (code === 0) {
@@ -624,7 +565,6 @@ export class MediaCompiler {
                     reject(new Error(`FFmpeg exited with code ${code}`));
                 }
             });
-
             proc.on("error", (err) => {
                 logStream?.end();
                 logger.error(`Failed to spawn FFmpeg for segment ${index}: ${err}`);
@@ -650,7 +590,6 @@ export class MediaCompiler {
         const rows = Math.ceil(cameraCount / cols);
         const cellWidth = Math.floor(1280 / cols);
         const cellHeight = Math.floor(720 / rows);
-
         // scaling
         for (let i = 0; i < cameraCount; i++) {
             filterComplex.push(
@@ -658,14 +597,12 @@ export class MediaCompiler {
                     `pad=${cellWidth}:${cellHeight}:(ow-iw)/2:(oh-ih)/2[v${i}]`
             );
         }
-
         // horizontal
         const rowLabels: string[] = [];
         for (let row = 0; row < rows; row++) {
             const startIdx = row * cols;
             const endIdx = Math.min(startIdx + cols, cameraCount);
             const rowCameras = endIdx - startIdx;
-
             if (rowCameras === 1) {
                 filterComplex.push(`[v${startIdx}]pad=1280:${cellHeight}:(1280-iw)/2:0[row${row}]`);
             } else {
@@ -677,7 +614,6 @@ export class MediaCompiler {
             }
             rowLabels.push(`[row${row}]`);
         }
-
         if (rows === 1) {
             return rowLabels[0];
         }

@@ -1,7 +1,7 @@
 import path from "node:path";
 import { EventEmitter } from "node:events";
 
-import { MediaSink } from "#src/recording/models/media_sink.ts";
+import { MediaSink, type MediaSinkFailure } from "#src/recording/models/media_sink.ts";
 import { Session, type SessionProducer } from "#src/core/models/session.ts";
 import { Logger } from "#src/utils/utils.ts";
 import { TIME_TAG, type Recorder } from "#src/recording/models/recorder.ts";
@@ -29,6 +29,7 @@ type RecordingData = {
         filename: string;
         eof?: boolean;
     }) => void;
+    failureListener?: (failure: MediaSinkFailure) => void;
 };
 
 type RecordingDataByStreamType = {
@@ -177,6 +178,14 @@ export class SessionRecorder extends EventEmitter {
                     });
                 };
                 data.mediaSink.on(MediaSink.Events.FILE_STATE_CHANGE, data.fileStateChangeListener);
+                data.failureListener = (failure: MediaSinkFailure) => {
+                    void this._handleSinkFailure(data, failure).catch((error) => {
+                        logger.error(
+                            `failed to handle recording failure for ${this._session.name} ${type} - error: ${error}`
+                        );
+                    });
+                };
+                data.mediaSink.once(MediaSink.Events.FAILURE, data.failureListener);
                 data.mediaSink.allowed = data.allowed;
                 await data.mediaSink.ready;
                 if (data.active) {
@@ -198,15 +207,42 @@ export class SessionRecorder extends EventEmitter {
         await this._clearData(data.type);
     }
 
+    private async _handleSinkFailure(data: RecordingData, failure: MediaSinkFailure) {
+        logger.error(
+            `recording failed for ${this._session.name} ${data.type} through ${failure.filename}: ${failure.error.message}`
+        );
+        try {
+            await this._clearData(data.type);
+        } catch (error) {
+            logger.error(
+                `failed to clear failed recording stream for ${this._session.name} ${data.type} - error: ${error}`
+            );
+        }
+        await this._recorder.fail(failure.error);
+    }
+
     private async _clearData(type: STREAM_TYPE) {
         const data = this.recordingDataByStreamType[type];
+        const mediaSink = data.mediaSink;
+        const failureListener = data.failureListener;
         data.active = false;
-        if (data.mediaSink && data.fileStateChangeListener) {
-            data.mediaSink.off(MediaSink.Events.FILE_STATE_CHANGE, data.fileStateChangeListener);
+        if (mediaSink && data.fileStateChangeListener) {
+            mediaSink.off(MediaSink.Events.FILE_STATE_CHANGE, data.fileStateChangeListener);
         }
         data.fileStateChangeListener = undefined;
-        await data.mediaSink?.close();
-        data.mediaSink = undefined;
+        try {
+            await mediaSink?.close();
+        } finally {
+            if (mediaSink && failureListener) {
+                mediaSink.off(MediaSink.Events.FAILURE, failureListener);
+            }
+            if (data.mediaSink === mediaSink) {
+                data.mediaSink = undefined;
+            }
+            if (data.failureListener === failureListener) {
+                data.failureListener = undefined;
+            }
+        }
     }
 
     async stop() {
