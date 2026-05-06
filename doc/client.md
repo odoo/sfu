@@ -1,7 +1,5 @@
 # Client API (bundle)
 
-// TODO startRecording API re-check before merge
-
 See [client.js](./src/client.js), and check the `build` script in [package.json](./package.json) for more details on how to build the bundle.
 
 The bundle can be imported in the client(js) code that implements the call feature like this:
@@ -71,14 +69,17 @@ const sfu = new SfuClient();
     typeof producerStats["camera"] === "RTCStatsReport"; // true
     // see https://w3c.github.io/webrtc-pc/#rtcstatsreport-object
     ```
-- startRecording({ video: boolean, transcription: boolean }) / stopRecording()
-   // TODO add audio option when API is setled
+- startRecording({ audio: boolean, video: boolean, transcription: boolean }) / stopRecording()
     ```js
-        // return if you were allowed to do the action or not
-        allowed = await sfuClient.stopRecording();
-        allowed = await sfuClient.startRecording({ video: false, transcription: false });
-        // when recording has started or stopped, a "update"/"channel_info_change" event
-        // is emitted by the sfuClient (see below).
+        const stopAcknowledged = await sfuClient.stopRecording();
+        const startAcknowledged = await sfuClient.startRecording({
+            audio: true,
+            video: false,
+            transcription: false,
+        });
+
+        // The boolean only acknowlege that the server accepted the request.
+        // The "update"/"channel_info_change" event carries the actual state.
     ```
 
 - @fires "update"
@@ -86,7 +87,8 @@ const sfu = new SfuClient();
     sfu.addEventListener("update", ({ detail: { name, payload } }) => {
         switch (name) {
             case "channel_info_change":
-                const { recording, transcription, video } = payload.recordingState;
+                const { recording, audio, transcription, video } = payload.state;
+                const { stopCode } = payload;
             case "track":
                 {
                     const { sessionId, type, track, active } = payload;

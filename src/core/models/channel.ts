@@ -101,6 +101,7 @@ export class Channel extends EventEmitter {
     private readonly _worker?: RtcWorker;
     /** Timeout for auto-closing empty channels */
     private _closeTimeout?: NodeJS.Timeout;
+    private _closePromise?: Promise<void>;
 
     /**
      * @param remoteAddress - IP address of the client creating the channel
@@ -141,7 +142,7 @@ export class Channel extends EventEmitter {
         logger.verbose(`recording feature: ${Boolean(channel.recorder)}`);
         const onWorkerDeath = () => {
             logger.warn(`worker died, closing channel ${channel.uuid}`);
-            channel.close();
+            void channel.close();
         };
         channelOptions.worker?.once("died", onWorkerDeath);
         channel.once(Channel.Events.CLOSE, () => {
@@ -176,10 +177,8 @@ export class Channel extends EventEmitter {
     /**
      * Closes all active channels
      */
-    static closeAll(): void {
-        for (const channel of Channel.records.values()) {
-            channel.close();
-        }
+    static async closeAll(): Promise<void> {
+        await Promise.all([...Channel.records.values()].map((channel) => channel.close()));
     }
 
     /**
@@ -299,7 +298,7 @@ export class Channel extends EventEmitter {
                 return;
             }
             this._closeTimeout = setTimeout(() => {
-                this.close();
+                void this.close();
             }, config.timeouts.channel);
         } else {
             clearTimeout(this._closeTimeout);
@@ -310,10 +309,19 @@ export class Channel extends EventEmitter {
     /**
      * @fires Channel#close
      */
-    close(): void {
-        // TODO maybe shouldn't have in some cases?
-        // if the server shuts down we may not want to save
-        this.recorder?.stop({ stopCode: STOP_CODE.CHANNEL_CLOSED });
+    close(): Promise<void> {
+        if (this._closePromise) {
+            return this._closePromise;
+        }
+        this._closePromise = this._close();
+        return this._closePromise;
+    }
+
+    /**
+     * @fires Channel#close
+     */
+    private async _close(): Promise<void> {
+        const recorderStop = this.recorder?.stop({ stopCode: STOP_CODE.CHANNEL_CLOSED });
         for (const session of this.sessions.values()) {
             session.off("close", this._onSessionClose);
             session.close({ code: SESSION_CLOSE_CODE.CHANNEL_CLOSED });
@@ -326,6 +334,7 @@ export class Channel extends EventEmitter {
          * @type {string} channelId - UUID of the closed channel
          */
         this.emit(Channel.Events.CLOSE, this.uuid);
+        await recorderStop;
     }
 
     /**
@@ -366,7 +375,7 @@ export class Channel extends EventEmitter {
             this.setCloseTimeout(true);
             this.recorder?.stop({ stopCode: STOP_CODE.CHANNEL_CLOSED });
         } else if (this.sessions.size === 0) {
-            this.close();
+            void this.close();
         }
     }
 }

@@ -118,13 +118,13 @@ export type BusMessage =
       }
     | { name: typeof SERVER_REQUEST.PING; payload?: never };
 
-export type recordingActionResult = boolean;
+export type RecordingActionAcknowledgement = boolean;
 export type RequestMap = {
     [CLIENT_REQUEST.CONNECT_CTS_TRANSPORT]: void;
     [CLIENT_REQUEST.CONNECT_STC_TRANSPORT]: void;
     [CLIENT_REQUEST.INIT_PRODUCER]: { id: string };
-    [CLIENT_REQUEST.START_RECORDING]: recordingActionResult;
-    [CLIENT_REQUEST.STOP_RECORDING]: recordingActionResult;
+    [CLIENT_REQUEST.START_RECORDING]: RecordingActionAcknowledgement;
+    [CLIENT_REQUEST.STOP_RECORDING]: RecordingActionAcknowledgement;
     [SERVER_REQUEST.INIT_CONSUMER]: void;
     [SERVER_REQUEST.INIT_TRANSPORTS]: RtpCapabilities;
     [SERVER_REQUEST.PING]: void;

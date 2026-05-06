@@ -19,8 +19,8 @@ describe("Security", () => {
         await network.start(HTTP_INTERFACE, PORT);
         jest.useFakeTimers();
     });
-    afterEach(() => {
-        network.close();
+    afterEach(async () => {
+        await network.close();
         jest.useRealTimers();
     });
     test("Authentication fails with wrong JWT", async () => {

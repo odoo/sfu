@@ -15,28 +15,30 @@ async function run(): Promise<void> {
     await scheduler.start();
 }
 
-function cleanup(): void {
-    Channel.closeAll();
+async function cleanup(): Promise<void> {
+    await Channel.closeAll();
     http.close();
-    resources.close();
+    await resources.close();
     scheduler.close();
     logger.info("cleanup complete");
 }
 
 const processHandlers = {
-    exit: cleanup,
+    exit: () => {
+        void cleanup();
+    },
     uncaughtException: (error: Error) => {
         logger.error(`uncaught exception ${error.name}: ${error.message} ${error.stack ?? ""}`);
     },
     SIGINT: cleanup,
     // 8, restarts the server
     SIGFPE: async () => {
-        cleanup();
+        await cleanup();
         await run();
     },
     // 14, soft reset: only kicks all sessions, but keeps services alive
     SIGALRM: () => {
-        Channel.closeAll();
+        void Channel.closeAll();
     },
     // 29, prints server stats
     SIGIO: async () => {

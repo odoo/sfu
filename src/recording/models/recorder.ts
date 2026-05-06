@@ -119,6 +119,7 @@ export class Recorder extends EventEmitter {
         [STREAM_TYPE.CAMERA]: [],
         [STREAM_TYPE.SCREEN]: []
     };
+    private _stopPromise?: Promise<void>;
     private readonly _metaData: Metadata = {
         channelName: "",
         channelUUID: "",
@@ -226,10 +227,22 @@ export class Recorder extends EventEmitter {
      * @param param0
      * @param param0.save - whether to save the recording, defaults to true
      */
-    async stop({ save = true, stopCode = STOP_CODE.USER_REQUEST }: StopOptions = {}) {
+    async stop(options: StopOptions = {}): Promise<void> {
+        if (this._stopPromise) {
+            return this._stopPromise;
+        }
         if (!this.isRecording) {
             return;
         }
+        this._stopPromise = this._stop(options);
+        try {
+            await this._stopPromise;
+        } finally {
+            this._stopPromise = undefined;
+        }
+    }
+
+    private async _stop({ save = true, stopCode = STOP_CODE.USER_REQUEST }: StopOptions) {
         const startedAt = this._metaData.startedAt;
         const shouldSave =
             save && (startedAt ? Date.now() - startedAt >= config.recording.minDuration : true);

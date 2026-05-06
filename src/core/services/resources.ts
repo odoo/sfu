@@ -107,15 +107,15 @@ export async function start(): Promise<void> {
     );
 }
 
-export function close() {
+export async function close(): Promise<void> {
     for (const worker of workers) {
         worker.appData.webRtcServer?.close();
         worker.close();
     }
-    clearFileSystem();
     workers.clear();
     availablePorts.length = 0;
     Folder.resetReservations();
+    await clearFileSystem();
 }
 
 async function makeWorker(): Promise<void> {

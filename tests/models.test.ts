@@ -9,9 +9,9 @@ describe("Models", () => {
     beforeEach(async () => {
         await resources.start();
     });
-    afterEach(() => {
-        Channel.closeAll();
-        resources.close();
+    afterEach(async () => {
+        await Channel.closeAll();
+        await resources.close();
     });
     test("Create channel and session", async () => {
         const channel = await Channel.create("testRemote", "testIssuer");

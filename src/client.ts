@@ -27,7 +27,7 @@ import type {
     RequestMessage,
     StartupData,
     WebSocketCredentials,
-    recordingActionResult,
+    RecordingActionAcknowledgement,
     RecordingState,
     RecordingStateUpdate
 } from "#src/shared/types";
@@ -283,7 +283,7 @@ export class SfuClient extends EventTarget {
     }
     async startRecording(
         options: { audio?: boolean; video?: boolean; transcription?: boolean } = {}
-    ): Promise<recordingActionResult> {
+    ): Promise<RecordingActionAcknowledgement> {
         if (this.state !== SfuClientState.CONNECTED) {
             return false;
         }
@@ -297,7 +297,7 @@ export class SfuClient extends EventTarget {
         );
     }
 
-    async stopRecording(): Promise<recordingActionResult> {
+    async stopRecording(): Promise<RecordingActionAcknowledgement> {
         if (this.state !== SfuClientState.CONNECTED) {
             return false;
         }
