@@ -111,16 +111,11 @@ export function base64Encode(data: StringLike): string {
     if (typeof data === "string") {
         data = Buffer.from(data);
     }
-    return data.toString("base64");
+    return data.toString("base64url");
 }
 
 function base64Decode(str: string): Buffer {
-    let output = str;
-    const paddingLength = 4 - (output.length % 4);
-    if (paddingLength < 4) {
-        output += "=".repeat(paddingLength);
-    }
-    return Buffer.from(output, "base64");
+    return Buffer.from(str, "base64url");
 }
 
 /**
