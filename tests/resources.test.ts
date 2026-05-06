@@ -14,8 +14,8 @@ describe("resources service", () => {
     beforeEach(async () => {
         await resources.start();
     });
-    afterEach(() => {
-        resources.close();
+    afterEach(async () => {
+        await resources.close();
     });
     test("worker load should be evenly distributed", async () => {
         const usedWorkers = new Set();
@@ -145,7 +145,7 @@ describe("resources service", () => {
         const port4 = new resources.DynamicPort();
         expect(port4.number).toBe(10002);
 
-        resources.close();
+        await resources.close();
         restore();
     });
 });

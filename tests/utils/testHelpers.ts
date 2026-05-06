@@ -28,9 +28,9 @@ export async function recordingSetup(env: Record<string, string | undefined>) {
     const network = new LocalNetwork();
     await network.start("0.0.0.0", 61254);
     return {
-        restore: () => {
+        restore: async () => {
             restoreEnv();
-            network.close();
+            await network.close();
             fs.rmSync(tmpDir, { recursive: true, force: true });
         },
         getChannel: (uuid: string) => Channel.records.get(uuid),

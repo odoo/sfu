@@ -22,8 +22,8 @@ describe("HTTP", () => {
         network = new LocalNetwork();
         await network.start(HTTP_INTERFACE, PORT);
     });
-    afterEach(() => {
-        network.close();
+    afterEach(async () => {
+        await network.close();
         jest.useRealTimers();
     });
     test("/stats", async () => {

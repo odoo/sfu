@@ -223,7 +223,7 @@ export class LocalNetwork {
     /**
      * Closes the network and cleans up all resources
      */
-    close(): void {
+    async close(): Promise<void> {
         // Disconnect all SFU clients
         for (const sfuClient of this._sfuClients) {
             sfuClient?.disconnect();
@@ -231,12 +231,12 @@ export class LocalNetwork {
         this._sfuClients.length = 0;
 
         // Close all channels
-        Channel.closeAll();
+        await Channel.closeAll();
 
         // Stop all services
         auth.close();
         http.close();
-        resources.close();
+        await resources.close();
 
         // Clear network info
         this.hostname = undefined;

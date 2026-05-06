@@ -75,7 +75,7 @@ describe("Recording & Transcription", () => {
         });
         const config = await import("#src/config");
         expect(config.recording.enabled).toBe(false);
-        restore();
+        await restore();
     });
     test("Returns false when calling start/stop recording/transcription when not connected", async () => {
         const { SfuClient } = await import("#src/client");
@@ -83,6 +83,39 @@ describe("Recording & Transcription", () => {
 
         expect(await client.startRecording()).toBe(false);
         expect(await client.stopRecording()).toBe(false);
+    });
+    test("acknowledges start requests and reports disk failures through channel updates", async () => {
+        const { restore, network } = await recordingSetup({ RECORDING: "true" });
+        const { mockFs } = await import("#tests/utils/mockFileSystem.ts");
+
+        try {
+            const channelUUID = await network.getChannelUUID();
+            const user = await network.connect(channelUUID, 1);
+            await user.isConnected;
+
+            mockFs.setAvailableDiskSpace(1);
+            const recordingFailureEventPromise = once(user.sfuClient, "update");
+            const startResult = await user.sfuClient.startRecording({ audio: true });
+            const [recordingFailureEvent] = await recordingFailureEventPromise;
+
+            expect(startResult).toBe(true);
+            expect(recordingFailureEvent.detail).toEqual({
+                name: CLIENT_UPDATE.CHANNEL_INFO_CHANGE,
+                payload: {
+                    state: {
+                        recording: false,
+                        audio: false,
+                        transcription: false,
+                        video: false
+                    },
+                    stopCode: STOP_CODE.DISK_SPACE_EXHAUSTED
+                }
+            });
+            expect(user.sfuClient.recordingState.recording).toBe(false);
+        } finally {
+            mockFs.setAvailableDiskSpace(512 * 1024 * 1024 * 1024);
+            await restore();
+        }
     });
     test("rejects invalid recording start payloads", async () => {
         const { Session } = await import("#src/core/models/session.ts");
@@ -183,29 +216,105 @@ describe("Recording & Transcription", () => {
             }
         });
         expect(stopResult).toBe(true);
-        restore();
+        await restore();
+    });
+    test("waits for recorder finalization before channel cleanup resolves", async () => {
+        const { restore, network } = await recordingSetup({ RECORDING: "true" });
+        const config = await import("#src/config");
+        const { Channel } = await import("#src/core/models/channel");
+        const { mockFs, mockFsModule } = await import("#tests/utils/mockFileSystem.ts");
+        const originalRename = mockFsModule.rename.getMockImplementation();
+        if (!originalRename) {
+            throw new Error("rename mock has no implementation");
+        }
+        const renameGate = Promise.withResolvers<void>();
+        let now = 1_000_000;
+        const dateNowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+        mockFsModule.rename.mockImplementation(async (oldPath: string, newPath: string) => {
+            await renameGate.promise;
+            return originalRename(oldPath, newPath);
+        });
+
+        try {
+            const channelUUID = await network.getChannelUUID();
+            const user = await network.connect(channelUUID, 1);
+            await user.isConnected;
+
+            expect(await user.sfuClient.startRecording({ audio: true })).toBe(true);
+            const channel = Channel.records.get(channelUUID);
+            expect(channel?.recorder?.path).toBeDefined();
+
+            const resourcePath = channel!.recorder!.path!;
+            const recordingName = path.basename(resourcePath).replace(/-\d+$/, "");
+            const recordingPath = path.join(config.dir.recordings, recordingName);
+            now += config.recording.minDuration + 1;
+            const closePromise = Channel.closeAll();
+
+            await Promise.resolve();
+            expect(mockFs.exists(recordingPath)).toBe(false);
+
+            renameGate.resolve();
+            await closePromise;
+
+            expect(mockFs.exists(recordingPath)).toBe(true);
+            expect(
+                mockFs.exists(path.join(recordingPath, config.recording.metadataFileName))
+            ).toBe(true);
+            expect(mockFs.exists(resourcePath)).toBe(false);
+        } finally {
+            renameGate.resolve();
+            dateNowSpy.mockRestore();
+            mockFsModule.rename.mockImplementation(originalRename);
+            await restore();
+        }
     });
     test("can transcribe", async () => {
         const { restore, network } = await recordingSetup({ RECORDING: "true" });
-        const channelUUID = await network.getChannelUUID();
-        const user1 = await network.connect(channelUUID, 1);
-        await user1.isConnected;
-        const user2 = await network.connect(channelUUID, 3);
-        await user2.isConnected;
-        const startResult = await user2.sfuClient.startRecording({
-            audio: true,
-            transcription: true
-        });
-        expect(startResult).toBe(true);
-        expect(user2.sfuClient.recordingState.recording).toBe(true);
-        expect(user2.sfuClient.recordingState.audio).toBe(true);
-        expect(user2.sfuClient.recordingState.transcription).toBe(true);
 
-        const stopResult = await user2.sfuClient.stopRecording();
-        expect(stopResult).toBe(true);
-        expect(user2.sfuClient.recordingState.recording).toBe(false);
-        expect(user2.sfuClient.recordingState.transcription).toBe(false);
-        restore();
+        try {
+            const channelUUID = await network.getChannelUUID();
+            const user1 = await network.connect(channelUUID, 1);
+            await user1.isConnected;
+            const user2 = await network.connect(channelUUID, 3);
+            await user2.isConnected;
+            const recordingStartEventPromise = once(user2.sfuClient, "update");
+            const startResult = await user2.sfuClient.startRecording({
+                audio: true,
+                transcription: true
+            });
+            const [recordingStartEvent] = await recordingStartEventPromise;
+            expect(startResult).toBe(true);
+            expect(recordingStartEvent.detail).toEqual({
+                name: CLIENT_UPDATE.CHANNEL_INFO_CHANGE,
+                payload: {
+                    state: {
+                        recording: true,
+                        audio: true,
+                        transcription: true,
+                        video: false
+                    }
+                }
+            });
+
+            const recordingStopEventPromise = once(user2.sfuClient, "update");
+            const stopResult = await user2.sfuClient.stopRecording();
+            const [recordingStopEvent] = await recordingStopEventPromise;
+            expect(stopResult).toBe(true);
+            expect(recordingStopEvent.detail).toEqual({
+                name: CLIENT_UPDATE.CHANNEL_INFO_CHANGE,
+                payload: {
+                    state: {
+                        recording: false,
+                        audio: false,
+                        transcription: false,
+                        video: false
+                    },
+                    stopCode: STOP_CODE.USER_REQUEST
+                }
+            });
+        } finally {
+            await restore();
+        }
     });
     test("Spawns FFMPEG for both audio and video streams", async () => {
         mockSpawn.mockImplementation((_cmd, args) => {
@@ -271,7 +380,7 @@ describe("Recording & Transcription", () => {
             expect(audioArgs).toBeDefined();
             expect(videoArgs).toBeDefined();
         } finally {
-            restore();
+            await restore();
         }
     });
 
@@ -337,7 +446,7 @@ describe("Recording & Transcription", () => {
             const secondCallArgs = calls[1][1];
             expect(secondCallArgs.join(" ")).toContain("-c:v");
         } finally {
-            restore();
+            await restore();
         }
     });
     test("Records streams from users who join mid-recording", async () => {
@@ -384,7 +493,7 @@ describe("Recording & Transcription", () => {
             const audioCall = calls.find((c) => (c[1] as string[]).includes("-c:a"));
             expect(audioCall).toBeDefined();
         } finally {
-            restore();
+            await restore();
         }
     });
 
@@ -452,7 +561,7 @@ describe("Recording & Transcription", () => {
             args = mockSpawn.mock.calls[1][1];
             expect(args.join(" ")).toContain("-c:v");
         } finally {
-            restore();
+            await restore();
         }
     });
 
@@ -509,7 +618,7 @@ describe("Recording & Transcription", () => {
                 )
             );
         } finally {
-            restore();
+            await restore();
         }
     });
 });
