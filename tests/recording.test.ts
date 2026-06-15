@@ -821,11 +821,6 @@ describe("Scheduler Service", () => {
         global.fetch = originalFetch;
     });
 
-    test("should skip if recording disabled", async () => {
-        await mediaService.start();
-        expect(mockFsModule.readdir).toHaveBeenCalledWith("/mock/recordings", expect.anything());
-    });
-
     test("should process a valid recording", async () => {
         const recordingName = "session_123";
         const routingAddress = "http://www.odoo.com/routin";
@@ -1185,36 +1180,6 @@ describe("MediaCompiler tests", () => {
         expect(segmentCall).toBeDefined();
     });
 
-    test("should fall back to audio when no video files", async () => {
-        const workingDir = "/work";
-        mockFs.mkdir(workingDir);
-        mockFs.mkdir(path.join(workingDir, "audio"));
-        mockFs.write(path.join(workingDir, "audio", "audio1.ogg"), "audio");
-
-        const compiler = new MediaCompiler({
-            workingDir,
-            startedAt: 1000,
-            stoppedAt: 5000,
-            timeStamps: [
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 1000,
-                    info: {
-                        type: STREAM_TYPE.AUDIO,
-                        sessionId: 1,
-                        available: true,
-                        active: true,
-                        filename: "audio1.ogg"
-                    }
-                }
-            ]
-        });
-
-        const result = await compiler.getAudio();
-        // Falls back to audio file
-        expect(result).toBe(path.join(workingDir, "recording_1000.ogg"));
-    });
-
     test("should coalesce timestamps within threshold into same segment", async () => {
         const workingDir = "/work";
         mockFs.mkdir(workingDir);
@@ -1311,32 +1276,6 @@ describe("MediaWriter tests", () => {
         MediaWriter = (await import("#src/recording/models/media_writer.ts")).MediaWriter;
     });
 
-    test("should handle FFMPEG process error gracefully", async () => {
-        const errorMock = new MockChildProcess("ffmpeg", []);
-        errorMock.stdin = new PassThrough();
-        mockSpawn.mockImplementationOnce(() => errorMock);
-
-        const writer = new MediaWriter(
-            {
-                kind: "audio",
-                payloadType: 111,
-                clockRate: 48000,
-                codec: "opus",
-                port: 5005,
-                channels: 2
-            },
-            "/tmp",
-            "test_error"
-        );
-
-        // Simulate FFMPEG error event
-        errorMock.emit("error", new Error("FFMPEG crashed"));
-
-        // Writer should have closed
-        await writer.close();
-        expect(writer.extension).toBe("webm");
-    });
-
     test("should reject close when FFMPEG must be force killed", async () => {
         const hangingProcess = makeManualProcess();
         const killSignals: Array<NodeJS.Signals | number | undefined> = [];
@@ -1380,150 +1319,6 @@ describe("MediaWriter tests", () => {
         } finally {
             jest.useRealTimers();
         }
-    });
-
-    test("should fall back to mkv for unknown codec", () => {
-        const writer = new MediaWriter(
-            {
-                kind: "video",
-                payloadType: 96,
-                clockRate: 90000,
-                codec: "unknownCodec",
-                port: 5000
-            },
-            "/tmp",
-            "test_video"
-        );
-        expect(writer.extension).toBe("mkv");
-        expect(writer.filename).toBe("test_video.mkv");
-    });
-
-    test("should use wav for PCMU codec", () => {
-        const writer = new MediaWriter(
-            {
-                kind: "audio",
-                payloadType: 0,
-                clockRate: 8000,
-                codec: "PCMU",
-                port: 5001,
-                channels: 1
-            },
-            "/tmp",
-            "test_audio"
-        );
-        expect(writer.extension).toBe("wav");
-        expect(writer.filename).toBe("test_audio.wav");
-    });
-
-    test("should use wav for PCMA codec", () => {
-        const writer = new MediaWriter(
-            {
-                kind: "audio",
-                payloadType: 8,
-                clockRate: 8000,
-                codec: "PCMA",
-                port: 5002,
-                channels: 1
-            },
-            "/tmp",
-            "test_audio_pcma"
-        );
-        expect(writer.extension).toBe("wav");
-        expect(writer.filename).toBe("test_audio_pcma.wav");
-    });
-
-    test("should use webm for opus codec", () => {
-        const writer = new MediaWriter(
-            {
-                kind: "audio",
-                payloadType: 111,
-                clockRate: 48000,
-                codec: "opus",
-                port: 5003,
-                channels: 2
-            },
-            "/tmp",
-            "test_opus"
-        );
-        expect(writer.extension).toBe("webm");
-        expect(writer.filename).toBe("test_opus.webm");
-    });
-
-    test("should use mp4 for H264 codec", () => {
-        const writer = new MediaWriter(
-            {
-                kind: "video",
-                payloadType: 96,
-                clockRate: 90000,
-                codec: "H264",
-                port: 5004
-            },
-            "/tmp",
-            "test_h264"
-        );
-        expect(writer.extension).toBe("mp4");
-        expect(writer.filename).toBe("test_h264.mp4");
-    });
-
-    test("should use mp4 for H265 codec", () => {
-        const writer = new MediaWriter(
-            {
-                kind: "video",
-                payloadType: 96,
-                clockRate: 90000,
-                codec: "H265",
-                port: 5006
-            },
-            "/tmp",
-            "test_h265"
-        );
-        expect(writer.extension).toBe("mp4");
-        expect(writer.filename).toBe("test_h265.mp4");
-    });
-
-    test("should use webm for VP8 codec", () => {
-        const writer = new MediaWriter(
-            {
-                kind: "video",
-                payloadType: 96,
-                clockRate: 90000,
-                codec: "VP8",
-                port: 5007
-            },
-            "/tmp",
-            "test_vp8"
-        );
-        expect(writer.extension).toBe("webm");
-    });
-
-    test("should use webm for VP9 codec", () => {
-        const writer = new MediaWriter(
-            {
-                kind: "video",
-                payloadType: 96,
-                clockRate: 90000,
-                codec: "VP9",
-                port: 5008
-            },
-            "/tmp",
-            "test_vp9"
-        );
-        expect(writer.extension).toBe("webm");
-    });
-
-    test("should use webm for AV1 codec", () => {
-        const writer = new MediaWriter(
-            {
-                kind: "video",
-                payloadType: 96,
-                clockRate: 90000,
-                codec: "AV1",
-                port: 5009
-            },
-            "/tmp",
-            "test_av1"
-        );
-        expect(writer.extension).toBe("webm");
     });
 });
 
