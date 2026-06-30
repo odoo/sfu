@@ -823,7 +823,7 @@ describe("Scheduler Service", () => {
 
     test("should process a valid recording", async () => {
         const recordingName = "session_123";
-        const routingAddress = "http://www.odoo.com/routin";
+        const routingAddress = "http://www.oodo.test/routin";
         const recordingDir = `/mock/recordings/${recordingName}`;
         const metadata = {
             channelName: "Test Channel",
@@ -863,7 +863,7 @@ describe("Scheduler Service", () => {
         );
 
         expect(mockFetch).toHaveBeenCalledWith(
-            `${routingAddress}/audio?start=${metadata.startedAt}&end=${metadata.stoppedAt}&main_media=True`,
+            `${routingAddress}/audio?start_ms=${metadata.startedAt}&end_ms=${metadata.stoppedAt}&main_media=True`,
             expect.objectContaining({
                 method: "POST",
                 headers: expect.objectContaining({ Authorization: "Bearer mock_jwt" })
@@ -1494,7 +1494,7 @@ describe("Scheduler Service network tests", () => {
 
     test("should handle network errors gracefully during upload", async () => {
         const recordingName = "session_network_error";
-        const routingAddress = "http://www.odoo.com/routing";
+        const routingAddress = "http://www.oodo.test/routing";
         const recordingDir = `/mock/recordings/${recordingName}`;
         const metadata = {
             channelName: "Test Channel",
@@ -1532,7 +1532,7 @@ describe("Scheduler Service network tests", () => {
 
     test("should handle routing failure gracefully", async () => {
         const recordingName = "session_route_fail";
-        const routingAddress = "http://www.odoo.com/routing";
+        const routingAddress = "http://www.oodo.test/routing";
         const recordingDir = `/mock/recordings/${recordingName}`;
         const metadata = {
             channelName: "Test Channel",
@@ -1573,7 +1573,7 @@ describe("Scheduler Service network tests", () => {
 
     test("should handle empty destination in routing response", async () => {
         const recordingName = "session_no_dest";
-        const routingAddress = "http://www.odoo.com/routing";
+        const routingAddress = "http://www.oodo.test/routing";
         const recordingDir = `/mock/recordings/${recordingName}`;
         const metadata = {
             channelName: "Test Channel",
@@ -1632,7 +1632,7 @@ describe("Scheduler Service network tests", () => {
 
     test("should upload video with a MIME type matching the configured container", async () => {
         const recordingName = "session_video_mime";
-        const routingAddress = "http://www.odoo.com/routing";
+        const routingAddress = "http://www.oodo.test/routing";
         const uploadDestination = "http://upload.local/video";
         const recordingDir = `/mock/recordings/${recordingName}`;
         const metadata = {
