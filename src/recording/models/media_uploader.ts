@@ -29,11 +29,12 @@ export class MediaUploader {
         mainMedia: boolean;
     }) {
         const fileStats = await fs.stat(filePath);
-        const queryParams = ["start=" + metadata.startedAt, "end=" + metadata.stoppedAt];
+        const queryParams = ["start_ms=" + metadata.startedAt, "end_ms=" + metadata.stoppedAt];
         if (metadata.transcription) {
             queryParams.push("transcribe=True");
         }
         if (mainMedia) {
+            // TODO: osef?
             queryParams.push("main_media=True");
         }
         const paramString = queryParams.length ? "?" + queryParams.join("&") : "";
