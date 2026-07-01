@@ -1625,7 +1625,11 @@ describe("Scheduler Service network tests", () => {
         await mediaService.__testing__.oneProcessingBatch();
 
         // Should call routing but not attempt upload (destination is empty)
-        expect(mockFetch).toHaveBeenCalledWith(`${routingAddress}/routing`, expect.anything());
+        const queryParams = `?start_ms=${metadata.startedAt}&end_ms=${metadata.stoppedAt}`;
+        expect(mockFetch).toHaveBeenCalledWith(
+            `${routingAddress}/routing${queryParams}`,
+            expect.anything()
+        );
         // Recording should still be cleaned up
         expect(mockFsModuleInstance.rm).toHaveBeenCalledWith(recordingDir, { recursive: true });
     });

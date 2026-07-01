@@ -68,11 +68,15 @@ export class MediaUploader {
 
     async uploadVideo({ filePath, metadata }: { filePath: string; metadata: SealedMetaData }) {
         logger.debug(`Uploading files to ${metadata.routingAddress}`);
-        const response = await this._fetchWithTimeout(`${metadata.routingAddress}/routing`, {
+        const params = new URLSearchParams({
+            start_ms: String(metadata.startedAt),
+            end_ms: String(metadata.stoppedAt),
+        });
+        const response = await this._fetchWithTimeout(`${metadata.routingAddress}/routing?${params}`, {
             method: "GET",
             headers: {
                 Authorization: `Bearer ${this._makeJwt(metadata.channelKey)}`
-            }
+            },
         });
         if (!response.ok) {
             throw new Error(
