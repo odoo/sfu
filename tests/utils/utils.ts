@@ -26,3 +26,13 @@ export function withMockEnv(config: Record<string, string | undefined>): () => v
         jest.resetModules();
     };
 }
+
+export async function waitFor(predicate: () => unknown, timeoutMs = 2000): Promise<void> {
+    const start = Date.now();
+    while (!predicate()) {
+        if (Date.now() - start > timeoutMs) {
+            throw new Error("timeout waiting for condition");
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+}

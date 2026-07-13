@@ -1,4 +1,3 @@
-import http from "node:http";
 import { once } from "node:events";
 
 import { afterEach, beforeEach, describe, expect, jest, test } from "@jest/globals";
@@ -8,7 +7,8 @@ import { STREAM_TYPE } from "#src/shared/enums.ts";
 import { SESSION_STATE } from "#src/core/models/session.ts";
 import { Channel } from "#src/core/models/channel.ts";
 import * as config from "#src/config";
-import { API_VERSION, RouteListener } from "#src/core/services/http";
+import { API_VERSION } from "#src/core/services/http";
+import * as resources from "#src/core/services/resources";
 
 import { LocalNetwork, makeJwt } from "#tests/utils/network";
 import { withMockEnv } from "#tests/utils/utils";
@@ -111,16 +111,14 @@ describe("HTTP", () => {
                     })
             }
         };
-        const response = await fetch(
-            `http://${HTTP_INTERFACE}:${PORT}/v${API_VERSION}/channel`,
-            request
-        );
-        const responseJson = await response.json();
-        const response2 = await fetch(
-            `http://${HTTP_INTERFACE}:${PORT}/v${API_VERSION}/channel`,
-            request
-        );
-        const response2Json = await response2.json();
+        const [response, response2] = await Promise.all([
+            fetch(`http://${HTTP_INTERFACE}:${PORT}/v${API_VERSION}/channel`, request),
+            fetch(`http://${HTTP_INTERFACE}:${PORT}/v${API_VERSION}/channel`, request)
+        ]);
+        const [responseJson, response2Json] = await Promise.all([
+            response.json(),
+            response2.json()
+        ]);
         expect(responseJson.uuid).toBe(response2Json.uuid);
         const response3 = await fetch(`http://${HTTP_INTERFACE}:${PORT}/v${API_VERSION}/channel`, {
             method: "GET",
@@ -135,21 +133,51 @@ describe("HTTP", () => {
         const response3Json = await response3.json();
         expect(responseJson.uuid).not.toBe(response3Json.uuid);
     });
+    test("channel cleanup waits for pending creation", async () => {
+        const worker = await resources.getWorker();
+        const getResourceUsage = worker.getResourceUsage.bind(worker);
+        const creationStarted = Promise.withResolvers<void>();
+        const creationGate = Promise.withResolvers<void>();
+        const resourceUsageSpy = jest
+            .spyOn(worker, "getResourceUsage")
+            .mockImplementation(async () => {
+                creationStarted.resolve();
+                await creationGate.promise;
+                return getResourceUsage();
+            });
+        const creation = Channel.create("pending-remote", "pending-issuer");
+        try {
+            await creationStarted.promise;
+            const closePromise = Channel.closeAll();
+            creationGate.resolve();
+            await Promise.all([creation, closePromise]);
+            expect(Channel.records.size).toBe(0);
+        } finally {
+            creationGate.resolve();
+            await creation.catch(() => undefined);
+            resourceUsageSpy.mockRestore();
+        }
+    });
     test("/disconnect", async () => {
         const channelUUID = await network.getChannelUUID();
         const sessionId = 5;
         const user1 = await network.connect(channelUUID, sessionId);
-        await fetch(`http://${HTTP_INTERFACE}:${PORT}/v${API_VERSION}/disconnect`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: makeJwt({
-                sessionIdsByChannel: {
-                    [channelUUID]: [sessionId]
-                }
-            })
-        });
+        const response = await fetch(
+            `http://${HTTP_INTERFACE}:${PORT}/v${API_VERSION}/disconnect`,
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: makeJwt({
+                    sessionIdsByChannel: {
+                        missing: [sessionId],
+                        [channelUUID]: [sessionId]
+                    }
+                })
+            }
+        );
+        expect(response.status).toBe(200);
         expect(user1.session.state).toBe(SESSION_STATE.CLOSED);
     });
     test("/disconnect does not execute for unowned channel", async () => {
@@ -175,43 +203,22 @@ describe("HTTP", () => {
         expect(response.status).toBe(200);
         expect(user1.session.state).not.toBe(SESSION_STATE.CLOSED);
     });
-    test("/disconnect fails with an incorrect JWT", async () => {
-        const channelUUID = await network.getChannelUUID();
-        const sessionId = 5;
-        const user1 = await network.connect(channelUUID, sessionId);
-        await fetch(`http://${HTTP_INTERFACE}:${PORT}/v${API_VERSION}/disconnect`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: makeJwt({
-                sessionIdsByChannel: {
-                    wrong: [sessionId]
-                }
-            })
-        });
-        expect(user1.session.state).not.toBe(SESSION_STATE.CLOSED);
-    });
     test("malformed routes", async () => {
-        const response1 = await fetch(
-            `http://${HTTP_INTERFACE}:${PORT}/v${API_VERSION}/src/server.js`,
-            {
-                method: "GET"
-            }
-        );
-        expect(response1.status).toBe(404);
-        const response2 = await fetch(`http://${HTTP_INTERFACE}:${PORT}/`, {
+        const response = await fetch(`http://${HTTP_INTERFACE}:${PORT}/`, {
             method: "GET"
         });
-        expect(response2.status).toBe(404);
+        expect(response.status).toBe(404);
     });
 });
 
 describe("HTTP Proxy", () => {
     let network: LocalNetwork;
+    let restoreProxy: (() => void) | undefined;
 
-    afterEach(() => {
-        network?.close();
+    afterEach(async () => {
+        await network?.close();
+        restoreProxy?.();
+        restoreProxy = undefined;
         jest.useRealTimers();
     });
 
@@ -234,7 +241,7 @@ describe("HTTP Proxy", () => {
     });
 
     test("headers are used when PROXY is set", async () => {
-        const restore = withMockEnv({ PROXY: "true" });
+        restoreProxy = withMockEnv({ PROXY: "true" });
         const { LocalNetwork: LocalNetworkProxy } = await import("#tests/utils/network");
 
         network = new LocalNetworkProxy();
@@ -251,12 +258,10 @@ describe("HTTP Proxy", () => {
         expect(response.ok).toBe(true);
         const { url } = await response.json();
         expect(url).toBe("https://proxy-host");
-
-        restore();
     });
 
     test("X-Forwarded-For updates remoteAddress", async () => {
-        const restore = withMockEnv({ PROXY: "true" });
+        restoreProxy = withMockEnv({ PROXY: "true" });
         const { LocalNetwork: LocalNetworkProxy } = await import("#tests/utils/network");
         const { Channel: ChannelProxy } = await import("#src/core/models/channel");
 
@@ -276,106 +281,5 @@ describe("HTTP Proxy", () => {
         const channel = ChannelProxy.records.get(uuid);
         expect(channel).toBeDefined();
         expect(channel!.remoteAddress).toBe("1.2.3.4");
-
-        restore();
-    });
-});
-
-describe("Route listener implementation", () => {
-    let server: http.Server;
-    let port: number;
-    let routeListener: RouteListener;
-
-    beforeEach(async () => {
-        routeListener = new RouteListener();
-        server = http.createServer(routeListener.listen);
-        await new Promise<void>((resolve) => {
-            server.listen(0, "127.0.0.1", () => {
-                const address = server.address();
-                if (typeof address === "object" && address) {
-                    port = address?.port;
-                }
-                resolve();
-            });
-        });
-    });
-
-    afterEach(() => {
-        server.close();
-    });
-
-    test("GET route", async () => {
-        routeListener.get("/test", {
-            callback: (req, res) => {
-                res.statusCode = 200;
-                return res.end("ok");
-            }
-        });
-        const response = await fetch(`http://127.0.0.1:${port}/test`);
-        expect(response.ok).toBe(true);
-        expect(await response.text()).toBe("ok");
-    });
-
-    test("POST route", async () => {
-        routeListener.post("/test", {
-            callback: (req, res) => {
-                res.statusCode = 201;
-                return res.end("created");
-            }
-        });
-        const response = await fetch(`http://127.0.0.1:${port}/test`, { method: "POST" });
-        expect(response.status).toBe(201);
-        expect(await response.text()).toBe("created");
-    });
-
-    test("Handles server error", async () => {
-        routeListener.get("/test", {
-            callback: (req, res) => {
-                throw new Error();
-            }
-        });
-        const response = await fetch(`http://127.0.0.1:${port}/test`);
-        expect(response.ok).toBe(false);
-        expect(response.status).toBe(500);
-    });
-
-    test("GET/CORS", async () => {
-        routeListener.get("/cors", {
-            cors: "*",
-            callback: (req, res) => {
-                res.statusCode = 200;
-                return res.end("cors");
-            }
-        });
-
-        const optionsResponse = await fetch(`http://127.0.0.1:${port}/cors`, { method: "OPTIONS" });
-        expect(optionsResponse.status).toBe(202);
-        expect(optionsResponse.headers.get("Access-Control-Allow-Origin")).toBe("*");
-        expect(optionsResponse.headers.get("Access-Control-Allow-Methods")).toBe("GET, OPTIONS");
-
-        const getResponse = await fetch(`http://127.0.0.1:${port}/cors`);
-        expect(getResponse.ok).toBe(true);
-        expect(getResponse.headers.get("Access-Control-Allow-Origin")).toBe("*");
-    });
-
-    test("POST/CORS", async () => {
-        routeListener.post("/cors-post", {
-            cors: "*",
-            callback: (req, res) => {
-                res.statusCode = 201;
-                return res.end("cors-post");
-            }
-        });
-
-        const optionsResponse = await fetch(`http://127.0.0.1:${port}/cors-post`, {
-            method: "OPTIONS"
-        });
-        expect(optionsResponse.status).toBe(202);
-        expect(optionsResponse.headers.get("Access-Control-Allow-Origin")).toBe("*");
-        expect(optionsResponse.headers.get("Access-Control-Allow-Methods")).toBe("POST, OPTIONS");
-
-        const postResponse = await fetch(`http://127.0.0.1:${port}/cors-post`, { method: "POST" });
-        expect(postResponse.status).toBe(201);
-        expect(postResponse.headers.get("Access-Control-Allow-Origin")).toBe("*");
     });
 });

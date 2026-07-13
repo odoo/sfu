@@ -10,11 +10,19 @@ import { DiskSpaceLimitReachedError, PortLimitReachedError } from "#src/utils/er
 const availablePorts: number[] = [];
 let unique = 1;
 
+const OPUS_MAX_BITRATE = 510_000;
+const RAW_AND_COMPILED_STORAGE_MULTIPLIER = 3;
+const MAX_RECORDED_VIDEO_STREAMS = Math.max(
+    config.recording.cameraLimit,
+    config.recording.screenLimit
+);
+const MAX_RECORDING_BITRATE =
+    Math.min(config.MAX_VIDEO_BITRATE, config.MAX_BITRATE_IN) * MAX_RECORDED_VIDEO_STREAMS +
+    Math.min(OPUS_MAX_BITRATE, config.MAX_BITRATE_IN) * config.CHANNEL_SIZE;
 export const RECORDING_RESERVATION_BYTES = Math.ceil(
-    (config.recording.maxDuration / (60 * 60 * 1000)) * // 1 hour
-        (700 * 1024 * 1024) * // av1 average byte par hour
-        4 * // raw recording multiplier
-        1.2 // reservation margin
+    (config.recording.maxDuration / 1000) *
+        (MAX_RECORDING_BITRATE / 8) *
+        RAW_AND_COMPILED_STORAGE_MULTIPLIER
 );
 
 type RtcAppData = mediasoup.types.AppData & {
@@ -179,21 +187,27 @@ export class Folder {
      * @throws {DiskSpaceLimitReachedError} when reservation exceeds available disk.
      */
     static async create(name: string, subDirectories: string[]) {
-        await Folder._checkMemoryAllocation();
+        const reservedBytes = await Folder._reserveMemory();
         const p: string = path.join(config.dir.resources, `${name}-${unique++}`);
-        await fs.mkdir(p);
-        const proms = [];
-        for (const subDirectory of subDirectories) {
-            proms.push(fs.mkdir(path.join(p, subDirectory)));
+        try {
+            await fs.mkdir(p, { mode: 0o700 });
+            await Promise.all(
+                subDirectories.map((subDirectory) =>
+                    fs.mkdir(path.join(p, subDirectory), { mode: 0o700 })
+                )
+            );
+            return new Folder(p, name, reservedBytes);
+        } catch (error) {
+            Folder._reservedRecordingBytes -= reservedBytes;
+            await fs.rm(p, { recursive: true, force: true }).catch(() => undefined);
+            throw error;
         }
-        await Promise.all(proms);
-        return new Folder(p, name);
     }
 
     /**
      * @throws {DiskSpaceLimitReachedError} when reservation exceeds available disk.
      */
-    private static async _checkMemoryAllocation() {
+    private static async _reserveMemory() {
         const size = RECORDING_RESERVATION_BYTES;
         const stats = await fs.statfs(config.dir.resources);
         const blockSize = toBigInt(stats.bsize);
@@ -205,12 +219,8 @@ export class Folder {
                 `Not enough disk space to reserve ${size} bytes for recording`
             );
         }
-    }
-
-    private _reserveMemory() {
-        const size = RECORDING_RESERVATION_BYTES;
         Folder._reservedRecordingBytes += size;
-        this._reservedBytes = size;
+        return size;
     }
 
     private _releaseMemory() {
@@ -224,10 +234,10 @@ export class Folder {
         this._reservedBytes = 0;
     }
 
-    constructor(path: string, name: string) {
+    private constructor(path: string, name: string, reservedBytes: number) {
         this.path = path;
         this.name = name;
-        this._reserveMemory();
+        this._reservedBytes = reservedBytes;
     }
 
     async add(name: string, content: string) {

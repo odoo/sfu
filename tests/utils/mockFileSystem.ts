@@ -176,6 +176,12 @@ export class MockFileSystem {
         const normalizedOld = path.resolve(oldPath);
         const normalizedNew = path.resolve(newPath);
 
+        if (this.files.has(normalizedOld)) {
+            this.files.set(normalizedNew, this.files.get(normalizedOld)!);
+            this.files.delete(normalizedOld);
+            return;
+        }
+
         if (this.dirs.has(normalizedOld)) {
             this.dirs.delete(normalizedOld);
             this.dirs.add(normalizedNew);

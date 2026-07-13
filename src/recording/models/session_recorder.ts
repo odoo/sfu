@@ -1,12 +1,10 @@
 import path from "node:path";
-import { EventEmitter } from "node:events";
 
 import { MediaSink, type MediaSinkFailure } from "#src/recording/models/media_sink.ts";
 import { Session, type SessionProducer } from "#src/core/models/session.ts";
 import { Logger } from "#src/utils/utils.ts";
 import { TIME_TAG, type Recorder } from "#src/recording/models/recorder.ts";
 import { STREAM_TYPE } from "#src/shared/enums.ts";
-import { PortLimitReachedError } from "#src/utils/errors.ts";
 
 export type RecordingStates = {
     audio: boolean;
@@ -14,14 +12,14 @@ export type RecordingStates = {
     screen: boolean;
 };
 
-export enum SESSION_RECORDER_EVENT {
-    UPDATE = "update"
-}
-
 type RecordingData = {
     active: boolean;
     allowed: boolean;
     type: STREAM_TYPE;
+    /** identifies the producer bound to `mediaSink` so repeats and replacements are distinguished */
+    producer?: SessionProducer;
+    /** queues this stream's sink updates so asynchronous creation and cleanup cannot overlap */
+    updatePromise?: Promise<void>;
     mediaSink?: MediaSink;
     fileStateChangeListener?: (payload: {
         active: boolean;
@@ -44,7 +42,7 @@ const logger = new Logger("SESSION_RECORDER");
  * Tracks recording state per stream type and starts MediaSink instances
  * when producers become available for the current session.
  */
-export class SessionRecorder extends EventEmitter {
+export class SessionRecorder {
     private _session: Session;
     private _recorder: Recorder;
     private readonly recordingDataByStreamType: RecordingDataByStreamType = {
@@ -95,7 +93,6 @@ export class SessionRecorder extends EventEmitter {
     }
 
     constructor(recorder: Recorder, session: Session, { audio, camera, screen }: RecordingStates) {
-        super();
         this._session = session;
         this._recorder = recorder;
         this.audio = audio;
@@ -115,7 +112,7 @@ export class SessionRecorder extends EventEmitter {
         if (!producer) {
             return; // will be handled later when the session starts producing
         }
-        this._scheduleUpdateProcess(data, producer, type);
+        this._scheduleUpdateProcess(data, producer);
     }
 
     private _onSessionProducer({
@@ -126,82 +123,82 @@ export class SessionRecorder extends EventEmitter {
         producer: SessionProducer;
     }) {
         const data = this.recordingDataByStreamType[type];
-        this._scheduleUpdateProcess(data, producer, type);
+        this._scheduleUpdateProcess(data, producer);
     }
 
-    private _scheduleUpdateProcess(
-        data: RecordingData,
-        producer: SessionProducer,
-        type: STREAM_TYPE
-    ) {
-        void this._updateProcess(data, producer, type).catch((error) => {
-            logger.error(
-                `unexpected recording update failure for ${this._session.name} ${type} - error: ${error}`
-            );
-        });
+    private _scheduleUpdateProcess(data: RecordingData, producer: SessionProducer) {
+        data.updatePromise = (data.updatePromise ?? Promise.resolve())
+            .then(() => this._updateProcess(data, producer))
+            .catch((error) => {
+                logger.error(
+                    `unexpected recording update failure for ${this._session.name} ${data.type} - error: ${error}`
+                );
+                void this._recorder.fail(error).catch((failure) => {
+                    logger.error(
+                        `failed to stop recording after ${this._session.name} ${data.type} update failure - error: ${failure}`
+                    );
+                });
+            });
     }
 
-    private async _updateProcess(
-        data: RecordingData,
-        producer: SessionProducer,
-        type: STREAM_TYPE
-    ) {
+    private async _updateProcess(data: RecordingData, producer: SessionProducer) {
         if (data.active) {
             if (data.mediaSink) {
-                // already recording
-                return;
+                if (data.producer === producer) {
+                    return;
+                }
+                await this._clearData(data.type, false);
+                if (!data.active) {
+                    return;
+                }
             }
-            try {
-                data.mediaSink = new MediaSink({
-                    producer,
-                    name: `${this._session.id}-${type}`,
-                    directory: path.join(this._recorder.path!, type)
-                });
-                data.fileStateChangeListener = ({
-                    active,
-                    available,
-                    filename,
-                    eof
-                }: {
-                    active: boolean;
-                    available: boolean;
-                    filename: string;
-                    eof?: boolean;
-                }) => {
-                    this._recorder.mark(TIME_TAG.FILE_STATE_CHANGE, {
+            data.producer = producer;
+            data.mediaSink = new MediaSink({
+                producer,
+                name: `${encodeURIComponent(String(this._session.id))}-${data.type}`,
+                directory: path.join(this._recorder.path!, data.type)
+            });
+            data.fileStateChangeListener = ({
+                active,
+                available,
+                filename,
+                eof
+            }: {
+                active: boolean;
+                available: boolean;
+                filename: string;
+                eof?: boolean;
+            }) => {
+                this._recorder.mark(
+                    TIME_TAG.FILE_STATE_CHANGE,
+                    {
                         active,
                         available,
                         filename,
-                        type,
+                        type: data.type,
                         sessionId: this._session.id,
                         eof
-                    });
-                };
-                data.mediaSink.on(MediaSink.Events.FILE_STATE_CHANGE, data.fileStateChangeListener);
-                data.failureListener = (failure: MediaSinkFailure) => {
-                    void this._handleSinkFailure(data, failure).catch((error) => {
-                        logger.error(
-                            `failed to handle recording failure for ${this._session.name} ${type} - error: ${error}`
-                        );
-                    });
-                };
-                data.mediaSink.once(MediaSink.Events.FAILURE, data.failureListener);
-                data.mediaSink.allowed = data.allowed;
-                await data.mediaSink.ready;
-                if (data.active) {
-                    return;
-                }
-            } catch (error) {
-                if (error instanceof PortLimitReachedError) {
-                    logger.warn(
-                        `no port available for recording ${this._session.name} ${data.type}`
-                    );
-                    // TODO: accepting partial recoding, or the whole recording should be discarded?
-                } else {
+                    },
+                    this
+                );
+            };
+            data.mediaSink.on(MediaSink.Events.FILE_STATE_CHANGE, data.fileStateChangeListener);
+            data.failureListener = (failure: MediaSinkFailure) => {
+                void this._handleSinkFailure(data, failure).catch((error) => {
                     logger.error(
-                        `failed at starting the recording for ${this._session.name} ${data.type} - error: ${error}`
+                        `failed to handle recording failure for ${this._session.name} ${data.type} - error: ${error}`
                     );
-                }
+                });
+            };
+            data.mediaSink.once(MediaSink.Events.FAILURE, data.failureListener);
+            data.mediaSink.allowed = data.allowed;
+            const ready = await data.mediaSink.ready;
+            if (!ready) {
+                await this._clearData(data.type, false);
+                return;
+            }
+            if (data.active) {
+                return;
             }
         }
         await this._clearData(data.type);
@@ -221,36 +218,54 @@ export class SessionRecorder extends EventEmitter {
         await this._recorder.fail(failure.error);
     }
 
-    private async _clearData(type: STREAM_TYPE) {
+    private async _clearData(type: STREAM_TYPE, deactivate = true) {
         const data = this.recordingDataByStreamType[type];
+        const producer = data.producer;
         const mediaSink = data.mediaSink;
+        const fileStateChangeListener = data.fileStateChangeListener;
         const failureListener = data.failureListener;
-        data.active = false;
-        if (mediaSink && data.fileStateChangeListener) {
-            mediaSink.off(MediaSink.Events.FILE_STATE_CHANGE, data.fileStateChangeListener);
+        if (deactivate) {
+            data.active = false;
         }
-        data.fileStateChangeListener = undefined;
         try {
             await mediaSink?.close();
         } finally {
+            if (mediaSink && fileStateChangeListener) {
+                mediaSink.off(MediaSink.Events.FILE_STATE_CHANGE, fileStateChangeListener);
+            }
             if (mediaSink && failureListener) {
                 mediaSink.off(MediaSink.Events.FAILURE, failureListener);
             }
             if (data.mediaSink === mediaSink) {
                 data.mediaSink = undefined;
             }
+            if (data.producer === producer) {
+                data.producer = undefined;
+            }
             if (data.failureListener === failureListener) {
                 data.failureListener = undefined;
+            }
+            if (data.fileStateChangeListener === fileStateChangeListener) {
+                data.fileStateChangeListener = undefined;
             }
         }
     }
 
-    async stop() {
+    async stop(): Promise<void> {
         this._session.off(Session.Events.PRODUCER, this._onSessionProducer);
         const proms = [];
         for (const type of Object.values(STREAM_TYPE)) {
-            proms.push(this._clearData(type));
+            const data = this.recordingDataByStreamType[type];
+            const stopPromise = (data.updatePromise ?? Promise.resolve()).then(() =>
+                this._clearData(type)
+            );
+            data.updatePromise = stopPromise;
+            proms.push(stopPromise);
         }
-        return Promise.all(proms);
+        const results = await Promise.allSettled(proms);
+        const failure = results.find((result) => result.status === "rejected");
+        if (failure) {
+            throw failure.reason;
+        }
     }
 }

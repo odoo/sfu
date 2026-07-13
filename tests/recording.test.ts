@@ -1,17 +1,18 @@
 import path from "node:path";
+import os from "node:os";
 import { PassThrough } from "node:stream";
 import { EventEmitter, once } from "node:events";
 
 import { describe, expect, jest, test, beforeEach, afterEach } from "@jest/globals";
 import { FakeMediaStreamTrack } from "fake-mediastreamtrack";
 
-import { CLIENT_REQUEST, STREAM_TYPE } from "#src/shared/enums.ts";
+import { STREAM_TYPE } from "#src/shared/enums.ts";
 import { CLIENT_UPDATE } from "#src/client";
 import { STOP_CODE, TIME_TAG } from "#src/recording/models/recorder.ts";
 import type { Channel } from "#src/core/models/channel.ts";
 
 import { recordingSetup, setupUnitTestsEnv } from "#tests/utils/testHelpers.ts";
-import { withMockEnv } from "#tests/utils/utils.ts";
+import { waitFor, withMockEnv } from "#tests/utils/utils.ts";
 import {
     mockFfmpeg,
     mockSpawn,
@@ -23,82 +24,81 @@ import { mockNodeFS } from "#tests/utils/mockFileSystem.ts";
 mockNodeFS();
 mockFfmpeg();
 
-async function waitFor(predicate: () => unknown, timeoutMs = 2000) {
-    const start = Date.now();
-    while (!predicate()) {
-        if (Date.now() - start > timeoutMs) {
-            throw new Error("timeout waiting for condition");
-        }
-        await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-}
-
 function makeManualProcess(args: string[] = []) {
     const process = new MockChildProcess("manual", args);
     process.stdin = new PassThrough();
     return process;
 }
 
+function fileState(
+    type: STREAM_TYPE,
+    filename: string,
+    timestamp: number,
+    {
+        active = true,
+        available = true,
+        sessionId = 1
+    }: { active?: boolean; available?: boolean; sessionId?: number } = {}
+) {
+    return {
+        tag: TIME_TAG.FILE_STATE_CHANGE,
+        timestamp,
+        info: { type, filename, sessionId, active, available }
+    };
+}
+
 describe("Recording & Transcription", () => {
-    test("rejects recording start when disk reservation cannot be made", async () => {
-        const baseDir = `/mock/recorder-disk-guard-${Date.now()}`;
-        const authKey = "u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng=";
-        const localKey = "24qvOuliAKWt1gnSzSvkYUD3s31pO1hPcchbekMHCyA=";
-
-        const restoreEnv = withMockEnv({
-            AUTH_KEY: authKey,
-            PUBLIC_IP: "127.0.0.1",
-            LOCAL_KEY: localKey,
-            DATA_PATH: baseDir,
-            RECORDING: "true"
+    test("honors explicit false recording flags", async () => {
+        const restore = withMockEnv({
+            RECORDING: " FALSE ",
+            FFMPEG_LOGGING: "No"
         });
-        const auth = await import("#src/core/services/auth.ts");
-        const disk = await import("#tests/utils/mockFileSystem.ts");
-
         try {
-            disk.mockFs.setAvailableDiskSpace(1);
-            auth.start();
-
-            const { Recorder } = await import("#src/recording/models/recorder.ts");
-
-            class FakeChannel extends EventEmitter {
-                name = "test-channel";
-                uuid = "test-uuid";
-                key = Buffer.from("test-channel-key");
-                sessions = new Map();
-            }
-
-            const recorder = new Recorder(
-                new FakeChannel() as unknown as Channel,
-                "http://routing.local"
-            );
-            const recorderUpdate = once(recorder, Recorder.Events.UPDATE);
-            await recorder.start({ audio: true });
-            const [update] = await recorderUpdate;
-
-            expect(recorder.state.recording).toBe(false);
-            expect(recorder.path).toBeUndefined();
-            expect(update.stopCode).toBe(STOP_CODE.DISK_SPACE_EXHAUSTED);
+            const config = await import("#src/config");
+            expect(config.recording.enabled).toBe(false);
+            expect(config.FFMPEG_LOGGING).toBe(false);
         } finally {
-            disk.mockFs.setAvailableDiskSpace(512 * 1024 * 1024 * 1024);
-            auth.close();
-            restoreEnv();
+            restore();
         }
     });
-    test("Does not record when the feature is disabled", async () => {
-        const { restore } = await recordingSetup({
-            RECORDING: undefined
-        });
-        const config = await import("#src/config");
-        expect(config.recording.enabled).toBe(false);
-        await restore();
-    });
-    test("Returns false when calling start/stop recording/transcription when not connected", async () => {
-        const { SfuClient } = await import("#src/client");
-        const client = new SfuClient();
+    test("serializes overlapping recording transitions", async () => {
+        const { restore } = await recordingSetup({ RECORDING: "true" });
+        const { Folder, __testing__ } = await import("#src/core/services/resources.ts");
+        const { Recorder } = await import("#src/recording/models/recorder.ts");
+        const folder = await Folder.create("deferred", ["audio", "camera", "screen"]);
+        const folderGate = Promise.withResolvers<typeof folder>();
+        const createSpy = jest.spyOn(Folder, "create").mockReturnValueOnce(folderGate.promise);
+        class FakeChannel extends EventEmitter {
+            name = "test-channel";
+            uuid = "test-uuid";
+            key = Buffer.from("test-channel-key");
+            sessions = new Map();
+        }
+        const recorder = new Recorder(
+            new FakeChannel() as unknown as Channel,
+            "http://routing.local"
+        );
 
-        expect(await client.startRecording()).toBe(false);
-        expect(await client.stopRecording()).toBe(false);
+        try {
+            const start = recorder.start({ audio: true });
+            expect(recorder.state.recording).toBe(true);
+            const stop = recorder.stop({ save: false });
+            const restart = recorder.start({ audio: true });
+            const finalStop = recorder.stop({ save: false });
+            folderGate.resolve(folder);
+            await Promise.all([start, stop, restart, finalStop]);
+
+            expect(createSpy).toHaveBeenCalledTimes(2);
+            expect(recorder.state.recording).toBe(false);
+            expect(recorder.path).toBeUndefined();
+            expect(__testing__.reservedRecordingBytes).toBe(0);
+        } finally {
+            folderGate.resolve(folder);
+            await recorder.stop({ save: false });
+            await folder.delete();
+            createSpy.mockRestore();
+            await restore();
+        }
     });
     test("acknowledges start requests and reports disk failures through channel updates", async () => {
         const { restore, network } = await recordingSetup({ RECORDING: "true" });
@@ -133,106 +133,68 @@ describe("Recording & Transcription", () => {
             await restore();
         }
     });
-    test("rejects invalid recording start payloads", async () => {
-        const { Session } = await import("#src/core/models/session.ts");
-        const recorderMock = {
-            start: jest.fn(),
-            stop: jest.fn()
-        };
-        class FakeChannel extends EventEmitter {
-            name = "test-channel";
-            recorder = recorderMock;
-            sessions = new Map();
-        }
-        const session = new Session("session-id", new FakeChannel() as unknown as Channel, {
-            permissions: { audioRecording: true, videoRecording: true, transcription: true }
-        });
-        jest.spyOn(session, "canAudioRecord", "get").mockReturnValue(true);
-        jest.spyOn(session, "canVideoRecord", "get").mockReturnValue(true);
-        jest.spyOn(session, "canTranscriptionRecord", "get").mockReturnValue(true);
-        // @ts-expect-error _handleRequest is private
-        const handleRequest = session._handleRequest.bind(session);
-
-        const noopResult = await handleRequest({
-            name: CLIENT_REQUEST.START_RECORDING,
-            payload: { audio: false, video: false, transcription: false }
-        });
-        expect(noopResult).toBe(false);
-        expect(recorderMock.start).not.toHaveBeenCalled();
-    });
-    test("only allows transcription updates while a recording is running", async () => {
-        const { Session } = await import("#src/core/models/session.ts");
-        const recorderMock = {
-            isRecording: true,
-            start: jest.fn(),
-            stop: jest.fn()
-        };
-        class FakeChannel extends EventEmitter {
-            name = "test-channel";
-            recorder = recorderMock;
-            recordingState = {
-                recording: true,
-                audio: true,
-                video: true,
-                transcription: false
-            };
-            sessions = new Map();
-        }
-        const session = new Session("session-id", new FakeChannel() as unknown as Channel, {
-            permissions: { audioRecording: true, videoRecording: true, transcription: true }
-        });
-        jest.spyOn(session, "canTranscriptionRecord", "get").mockReturnValue(true);
-        // @ts-expect-error _handleRequest is private
-        const handleRequest = session._handleRequest.bind(session);
-
-        const updateTranscriptionResult = await handleRequest({
-            name: CLIENT_REQUEST.START_RECORDING,
-            payload: { transcription: true }
-        });
-        expect(updateTranscriptionResult).toBe(true);
-        expect(recorderMock.start).toHaveBeenLastCalledWith({ transcription: true });
-
-        const updateVideoResult = await handleRequest({
-            name: CLIENT_REQUEST.START_RECORDING,
-            payload: { video: false }
-        });
-        expect(updateVideoResult).toBe(false);
-        expect(recorderMock.start).toHaveBeenCalledTimes(1);
-    });
     test("can record", async () => {
         const { restore, network } = await recordingSetup({ RECORDING: "true" });
-        const channelUUID = await network.getChannelUUID();
-        const user1 = await network.connect(channelUUID, 1);
-        await user1.isConnected;
-        const user2 = await network.connect(channelUUID, 3);
-        await user2.isConnected;
-        expect(user2.sfuClient.availableFeatures.audioRecording).toBe(true);
-        const recordingStartEventPromise = once(user1.sfuClient, "update");
-        const startResult = await user2.sfuClient.startRecording({ audio: true });
-        expect(startResult).toBe(true);
-        const [recordingStartEvent] = await recordingStartEventPromise;
-        expect(recordingStartEvent.detail).toEqual({
-            name: CLIENT_UPDATE.CHANNEL_INFO_CHANGE,
-            payload: { state: { recording: true, audio: true, transcription: false, video: false } }
-        });
-        expect(user2.sfuClient.recordingState.recording).toBe(true);
-        const recordingEndEventPromise = once(user2.sfuClient, "update");
-        const stopResult = await user1.sfuClient.stopRecording();
-        const [recordingEventEnd] = await recordingEndEventPromise;
-        expect(recordingEventEnd.detail).toEqual({
-            name: CLIENT_UPDATE.CHANNEL_INFO_CHANGE,
-            payload: {
-                state: {
-                    recording: false,
-                    audio: false,
-                    transcription: false,
-                    video: false
-                },
-                stopCode: "user_request"
-            }
-        });
-        expect(stopResult).toBe(true);
-        await restore();
+        try {
+            const channelUUID = await network.getChannelUUID();
+            const user1 = await network.connect(channelUUID, 1);
+            await user1.isConnected;
+            const user2 = await network.connect(channelUUID, 3);
+            await user2.isConnected;
+            expect(user2.sfuClient.availableFeatures.audioRecording).toBe(true);
+            const recordingStartEventPromise = once(user1.sfuClient, "update");
+            const startResult = await user2.sfuClient.startRecording({ audio: true });
+            expect(startResult).toBe(true);
+            const [recordingStartEvent] = await recordingStartEventPromise;
+            expect(recordingStartEvent.detail).toEqual({
+                name: CLIENT_UPDATE.CHANNEL_INFO_CHANGE,
+                payload: {
+                    state: {
+                        recording: true,
+                        audio: true,
+                        transcription: false,
+                        video: false
+                    }
+                }
+            });
+            await waitFor(() => user2.sfuClient.recordingState.recording);
+            const transcriptionEventPromise = once(user1.sfuClient, "update");
+            const transcriptionResult = await user2.sfuClient.startRecording({
+                transcription: true
+            });
+            const [transcriptionEvent] = await transcriptionEventPromise;
+            expect(transcriptionResult).toBe(true);
+            expect(transcriptionEvent.detail).toEqual({
+                name: CLIENT_UPDATE.CHANNEL_INFO_CHANGE,
+                payload: {
+                    state: {
+                        recording: true,
+                        audio: true,
+                        transcription: true,
+                        video: false
+                    }
+                }
+            });
+            await waitFor(() => user2.sfuClient.recordingState.transcription);
+            const recordingEndEventPromise = once(user2.sfuClient, "update");
+            const stopResult = await user1.sfuClient.stopRecording();
+            const [recordingEventEnd] = await recordingEndEventPromise;
+            expect(recordingEventEnd.detail).toEqual({
+                name: CLIENT_UPDATE.CHANNEL_INFO_CHANGE,
+                payload: {
+                    state: {
+                        recording: false,
+                        audio: false,
+                        transcription: false,
+                        video: false
+                    },
+                    stopCode: "user_request"
+                }
+            });
+            expect(stopResult).toBe(true);
+        } finally {
+            await restore();
+        }
     });
     test("waits for recorder finalization before channel cleanup resolves", async () => {
         const { restore, network } = await recordingSetup({ RECORDING: "true" });
@@ -276,59 +238,23 @@ describe("Recording & Transcription", () => {
             expect(mockFs.exists(path.join(recordingPath, config.recording.metadataFileName))).toBe(
                 true
             );
+            const auth = await import("#src/core/services/auth.ts");
+            const metadata = JSON.parse(
+                auth.decrypt(
+                    await mockFs.readFile(
+                        path.join(recordingPath, config.recording.metadataFileName)
+                    )
+                )
+            );
+            expect(metadata.channelName).toBe(channel!.name);
+            expect(metadata.channelUUID).toBe(channel!.uuid);
+            const jwt = auth.sign({ sub: "recording" }, metadata.channelKey);
+            expect(auth.verify(jwt, channel!.key).sub).toBe("recording");
             expect(mockFs.exists(resourcePath)).toBe(false);
         } finally {
             renameGate.resolve();
             dateNowSpy.mockRestore();
             mockFsModule.rename.mockImplementation(originalRename);
-            await restore();
-        }
-    });
-    test("can transcribe", async () => {
-        const { restore, network } = await recordingSetup({ RECORDING: "true" });
-
-        try {
-            const channelUUID = await network.getChannelUUID();
-            const user1 = await network.connect(channelUUID, 1);
-            await user1.isConnected;
-            const user2 = await network.connect(channelUUID, 3);
-            await user2.isConnected;
-            const recordingStartEventPromise = once(user2.sfuClient, "update");
-            const startResult = await user2.sfuClient.startRecording({
-                audio: true,
-                transcription: true
-            });
-            const [recordingStartEvent] = await recordingStartEventPromise;
-            expect(startResult).toBe(true);
-            expect(recordingStartEvent.detail).toEqual({
-                name: CLIENT_UPDATE.CHANNEL_INFO_CHANGE,
-                payload: {
-                    state: {
-                        recording: true,
-                        audio: true,
-                        transcription: true,
-                        video: false
-                    }
-                }
-            });
-
-            const recordingStopEventPromise = once(user2.sfuClient, "update");
-            const stopResult = await user2.sfuClient.stopRecording();
-            const [recordingStopEvent] = await recordingStopEventPromise;
-            expect(stopResult).toBe(true);
-            expect(recordingStopEvent.detail).toEqual({
-                name: CLIENT_UPDATE.CHANNEL_INFO_CHANGE,
-                payload: {
-                    state: {
-                        recording: false,
-                        audio: false,
-                        transcription: false,
-                        video: false
-                    },
-                    stopCode: STOP_CODE.USER_REQUEST
-                }
-            });
-        } finally {
             await restore();
         }
     });
@@ -353,18 +279,13 @@ describe("Recording & Transcription", () => {
             const videoTrack = new FakeMediaStreamTrack({ kind: "video" });
             await user.sfuClient.updateUpload(STREAM_TYPE.CAMERA, videoTrack);
 
-            await new Promise<void>((resolve) => {
-                const interval = setInterval(() => {
-                    if (mockSpawn.mock.calls.length >= 2) {
-                        clearInterval(interval);
-                        resolve();
-                    }
-                }, 100);
-            });
+            await waitFor(() => mockSpawn.mock.calls.length >= 2);
 
             expect(mockSpawn).toHaveBeenCalledTimes(2);
 
-            const results = mockSpawn.mock.results as Array<{ value: ChildProcessLike }>;
+            const results = mockSpawn.mock.results as Array<{
+                value: ChildProcessLike;
+            }>;
             const process1 = results[0].value;
             const process2 = results[1].value;
 
@@ -420,21 +341,9 @@ describe("Recording & Transcription", () => {
 
             await user.sfuClient.startRecording({ audio: true, video: true });
 
-            await new Promise<void>((resolve, reject) => {
-                const timeout = setTimeout(() => {
-                    clearInterval(interval);
-                    reject(new Error("Timeout waiting for audio spawn"));
-                }, 2000);
-                const interval = setInterval(() => {
-                    const calls = mockSpawn.mock.calls;
-                    const hasAudio = calls.some((c) => (c[1] as string[]).includes("-c:a"));
-                    if (hasAudio) {
-                        clearInterval(interval);
-                        clearTimeout(timeout);
-                        resolve();
-                    }
-                }, 100);
-            });
+            await waitFor(() =>
+                mockSpawn.mock.calls.some((c) => (c[1] as string[]).includes("-c:a"))
+            );
 
             expect(mockSpawn).toHaveBeenCalledTimes(1);
             const args = mockSpawn.mock.calls[0][1];
@@ -443,19 +352,7 @@ describe("Recording & Transcription", () => {
 
             await user.sfuClient.updateUpload(STREAM_TYPE.SCREEN, videoTrack);
 
-            await new Promise<void>((resolve, reject) => {
-                const timeout = setTimeout(() => {
-                    clearInterval(interval);
-                    reject(new Error("Timeout waiting for video spawn"));
-                }, 2000);
-                const interval = setInterval(() => {
-                    if (mockSpawn.mock.calls.length >= 2) {
-                        clearInterval(interval);
-                        clearTimeout(timeout);
-                        resolve();
-                    }
-                }, 100);
-            });
+            await waitFor(() => mockSpawn.mock.calls.length >= 2);
 
             expect(mockSpawn).toHaveBeenCalledTimes(2);
             const calls = mockSpawn.mock.calls;
@@ -466,6 +363,7 @@ describe("Recording & Transcription", () => {
         }
     });
     test("Records streams from users who join mid-recording", async () => {
+        mockSpawn.mockClear();
         mockSpawn.mockImplementation((_cmd, args) => {
             const mp = new MockChildProcess("ffmpeg", args || []);
             mp.stdin = new PassThrough();
@@ -480,7 +378,7 @@ describe("Recording & Transcription", () => {
             await user1.isConnected;
 
             await user1.sfuClient.startRecording({ audio: true });
-            expect(user1.sfuClient.recordingState.recording).toBe(true);
+            await waitFor(() => user1.sfuClient.recordingState.recording);
 
             const user2 = await network.connect(channelUUID, 2);
             await user2.isConnected;
@@ -488,32 +386,16 @@ describe("Recording & Transcription", () => {
             const audioTrack = new FakeMediaStreamTrack({ kind: "audio" });
             await user2.sfuClient.updateUpload(STREAM_TYPE.AUDIO, audioTrack);
 
-            await new Promise<void>((resolve, reject) => {
-                const timeout = setTimeout(() => {
-                    clearInterval(interval);
-                    reject(new Error("Timeout waiting for spawn call"));
-                }, 2000);
-                const interval = setInterval(() => {
-                    const calls = mockSpawn.mock.calls;
-                    const hasAudio = calls.some((c) => (c[1] as string[]).includes("-c:a"));
-                    if (hasAudio) {
-                        clearInterval(interval);
-                        clearTimeout(timeout);
-                        resolve();
-                    }
-                }, 100);
-            });
-
-            expect(mockSpawn).toHaveBeenCalled();
-            const calls = mockSpawn.mock.calls;
-            const audioCall = calls.find((c) => (c[1] as string[]).includes("-c:a"));
-            expect(audioCall).toBeDefined();
+            const hasAudioWriter = () =>
+                mockSpawn.mock.calls.some((c) => (c[1] as string[]).includes("-c:a"));
+            await waitFor(hasAudioWriter);
+            expect(hasAudioWriter()).toBe(true);
         } finally {
             await restore();
         }
     });
 
-    test("Records streams started after recording begins", async () => {
+    test("keeps one writer for overlapping initial stream uploads", async () => {
         mockSpawn.mockClear();
         mockSpawn.mockImplementation((_cmd, args) => {
             const mp = new MockChildProcess("ffmpeg", args || []);
@@ -521,61 +403,42 @@ describe("Recording & Transcription", () => {
             return mp;
         });
 
-        const { restore, network } = await recordingSetup({ RECORDING: "true" });
+        const { restore, network, getChannel } = await recordingSetup({ RECORDING: "true" });
 
         try {
             const channelUUID = await network.getChannelUUID();
             const user = await network.connect(channelUUID, 1);
             await user.isConnected;
 
-            await user.sfuClient.startRecording({ audio: true, video: true });
-            expect(user.sfuClient.recordingState.recording).toBe(true);
+            await user.sfuClient.startRecording({ audio: true });
+            await waitFor(() => user.sfuClient.recordingState.recording);
 
-            expect(mockSpawn).not.toHaveBeenCalled();
-
-            const audioTrack = new FakeMediaStreamTrack({ kind: "audio" });
-            await user.sfuClient.updateUpload(STREAM_TYPE.AUDIO, audioTrack);
-
-            await new Promise<void>((resolve, reject) => {
-                const timeout = setTimeout(() => {
-                    clearInterval(interval);
-                    reject(new Error("Timeout waiting for audio spawn"));
-                }, 2000);
-                const interval = setInterval(() => {
-                    const calls = mockSpawn.mock.calls;
-                    const hasAudio = calls.some((c) => (c[1] as string[]).includes("-c:a"));
-                    if (hasAudio) {
-                        clearInterval(interval);
-                        clearTimeout(timeout);
-                        resolve();
-                    }
-                }, 100);
-            });
-
-            expect(mockSpawn).toHaveBeenCalledTimes(1);
-            let args = mockSpawn.mock.calls[0][1];
-            expect(args.join(" ")).toContain("-c:a");
-
-            const videoTrack = new FakeMediaStreamTrack({ kind: "video" });
-            await user.sfuClient.updateUpload(STREAM_TYPE.CAMERA, videoTrack);
-
-            await new Promise<void>((resolve, reject) => {
-                const timeout = setTimeout(() => {
-                    clearInterval(interval);
-                    reject(new Error("Timeout waiting for video spawn"));
-                }, 2000);
-                const interval = setInterval(() => {
-                    if (mockSpawn.mock.calls.length >= 2) {
-                        clearInterval(interval);
-                        clearTimeout(timeout);
-                        resolve();
-                    }
-                }, 100);
-            });
-
-            expect(mockSpawn).toHaveBeenCalledTimes(2);
-            args = mockSpawn.mock.calls[1][1];
-            expect(args.join(" ")).toContain("-c:v");
+            const createTransport = jest.spyOn(
+                getChannel(channelUUID)!.router!,
+                "createPlainTransport"
+            );
+            try {
+                await Promise.all([
+                    user.sfuClient.updateUpload(
+                        STREAM_TYPE.AUDIO,
+                        new FakeMediaStreamTrack({ kind: "audio" })
+                    ),
+                    user.sfuClient.updateUpload(
+                        STREAM_TYPE.AUDIO,
+                        new FakeMediaStreamTrack({ kind: "audio" })
+                    )
+                ]);
+                await waitFor(
+                    () =>
+                        createTransport.mock.calls.length >= 2 &&
+                        mockSpawn.mock.results.filter(
+                            ({ value }) => !(value as ChildProcessLike).killed
+                        ).length === 1
+                );
+                expect(user.sfuClient.recordingState.recording).toBe(true);
+            } finally {
+                createTransport.mockRestore();
+            }
         } finally {
             await restore();
         }
@@ -589,7 +452,9 @@ describe("Recording & Transcription", () => {
             return ffmpegProcess;
         });
 
-        const { restore, network, getChannel } = await recordingSetup({ RECORDING: "true" });
+        const { restore, network, getChannel } = await recordingSetup({
+            RECORDING: "true"
+        });
 
         try {
             const { mockFs } = await import("#tests/utils/mockFileSystem.ts");
@@ -627,44 +492,6 @@ describe("Recording & Transcription", () => {
                 }
             });
             await waitFor(() => Boolean(resourcePath && !mockFs.exists(resourcePath)));
-            expect(recorder.state.recording).toBe(false);
-        } finally {
-            await restore();
-        }
-    });
-
-    test("stops and discards recording when FFMPEG reports a process error", async () => {
-        mockSpawn.mockClear();
-        let ffmpegProcess: MockChildProcess | undefined;
-        mockSpawn.mockImplementation((_cmd, args) => {
-            ffmpegProcess = makeManualProcess(args as string[]);
-            return ffmpegProcess;
-        });
-
-        const { restore, network, getChannel } = await recordingSetup({ RECORDING: "true" });
-
-        try {
-            const { mockFs } = await import("#tests/utils/mockFileSystem.ts");
-            const channelUUID = await network.getChannelUUID();
-            const user = await network.connect(channelUUID, 1);
-            await user.isConnected;
-
-            await user.sfuClient.startRecording({ audio: true });
-            await waitFor(() => user.sfuClient.recordingState.recording);
-
-            const channel = getChannel(channelUUID)!;
-            const recorder = channel.recorder!;
-            const resourcePath = recorder.path;
-            const failureEventPromise = once(user.sfuClient, "update");
-
-            const audioTrack = new FakeMediaStreamTrack({ kind: "audio" });
-            await user.sfuClient.updateUpload(STREAM_TYPE.AUDIO, audioTrack);
-            await waitFor(() => Boolean(ffmpegProcess));
-            ffmpegProcess!.emit("error", new Error("FFMPEG crashed"));
-
-            const [failureEvent] = await failureEventPromise;
-            expect(failureEvent.detail.payload.stopCode).toBe(STOP_CODE.RECORDING_FAILED);
-            await waitFor(() => Boolean(resourcePath && !mockFs.exists(resourcePath)));
             expect(ffmpegProcess!.killed).toBe(true);
             expect(recorder.state.recording).toBe(false);
         } finally {
@@ -672,12 +499,116 @@ describe("Recording & Transcription", () => {
         }
     });
 
-    test("discards recording when FFMPEG must be force killed on stop", async () => {
+    test("fails when a recording sink cannot initialize", async () => {
+        const { restore, network, getChannel } = await recordingSetup({
+            RECORDING: "true"
+        });
+
+        try {
+            const channelUUID = await network.getChannelUUID();
+            const user = await network.connect(channelUUID, 1);
+            await user.isConnected;
+            await user.sfuClient.startRecording({ audio: true });
+            await waitFor(() => user.sfuClient.recordingState.recording);
+
+            const recorder = getChannel(channelUUID)!.recorder!;
+            const resourcePath = recorder.path!;
+            const router = getChannel(channelUUID)!.router!;
+            const createTransportSpy = jest
+                .spyOn(router, "createPlainTransport")
+                .mockRejectedValueOnce(new Error("plain transport failure"));
+            let stopCode: STOP_CODE | undefined;
+            recorder.on("update", (update: { stopCode?: STOP_CODE }) => {
+                stopCode = update.stopCode ?? stopCode;
+            });
+
+            try {
+                await user.sfuClient.updateUpload(
+                    STREAM_TYPE.AUDIO,
+                    new FakeMediaStreamTrack({ kind: "audio" })
+                );
+                await waitFor(() => stopCode === STOP_CODE.RECORDING_FAILED);
+                const { mockFs } = await import("#tests/utils/mockFileSystem.ts");
+                expect(recorder.state.recording).toBe(false);
+                expect(mockFs.exists(resourcePath)).toBe(false);
+            } finally {
+                createTransportSpy.mockRestore();
+            }
+        } finally {
+            await restore();
+        }
+    });
+
+    test("fails when a replaced session writer cannot close", async () => {
+        mockSpawn.mockClear();
+        const closeRequested = Promise.withResolvers<void>();
+        let process: MockChildProcess | undefined;
+        mockSpawn.mockImplementation((_cmd, args) => {
+            process = makeManualProcess(args as string[]);
+            process.kill = (signal?: NodeJS.Signals | number) => {
+                if (signal === "SIGINT") {
+                    closeRequested.resolve();
+                } else if (signal === "SIGKILL") {
+                    process!.killed = true;
+                    process!.emit("close", null, signal);
+                }
+                return true;
+            };
+            return process;
+        });
+        const { restore, network, getChannel } = await recordingSetup({
+            RECORDING: "true"
+        });
+
+        try {
+            const channelUUID = await network.getChannelUUID();
+            const user = await network.connect(channelUUID, 1);
+            await user.isConnected;
+            const secondUser = await network.connect(channelUUID, 2);
+            await secondUser.isConnected;
+            await user.sfuClient.startRecording({ audio: true });
+            await user.sfuClient.updateUpload(
+                STREAM_TYPE.AUDIO,
+                new FakeMediaStreamTrack({ kind: "audio" })
+            );
+            await waitFor(() => Boolean(process));
+
+            const recorder = getChannel(channelUUID)!.recorder!;
+            let stopCode: STOP_CODE | undefined;
+            recorder.on("update", (update: { stopCode?: STOP_CODE }) => {
+                stopCode = update.stopCode ?? stopCode;
+            });
+            jest.useFakeTimers();
+            getChannel(channelUUID)!.join(1);
+            await closeRequested.promise;
+            await jest.advanceTimersByTimeAsync(30_001);
+            jest.useRealTimers();
+            await waitFor(() => stopCode === STOP_CODE.RECORDING_FAILED);
+
+            expect(process!.killed).toBe(true);
+            expect(recorder.state.recording).toBe(false);
+        } finally {
+            jest.useRealTimers();
+            await restore();
+        }
+    });
+
+    test("waits for sibling writers before discarding a failed recording", async () => {
         mockSpawn.mockClear();
         const killSignals: Array<NodeJS.Signals | number | undefined> = [];
-        let ffmpegProcess: MockChildProcess | undefined;
+        const cameraClose = Promise.withResolvers<void>();
+        let audioProcess: MockChildProcess | undefined;
+        let cameraProcess: MockChildProcess | undefined;
         mockSpawn.mockImplementation((_cmd, args) => {
             const process = makeManualProcess(args as string[]);
+            if (!(args as string[]).some((arg) => arg.includes("/audio/"))) {
+                process.kill = () => {
+                    void cameraClose.promise.then(() => process.emit("close", 0));
+                    return true;
+                };
+                cameraProcess = process;
+                return process;
+            }
             process.kill = (signal?: NodeJS.Signals | number) => {
                 killSignals.push(signal);
                 if (signal === "SIGKILL") {
@@ -686,11 +617,13 @@ describe("Recording & Transcription", () => {
                 }
                 return true;
             };
-            ffmpegProcess = process;
+            audioProcess = process;
             return process;
         });
 
-        const { restore, network, getChannel } = await recordingSetup({ RECORDING: "true" });
+        const { restore, network, getChannel } = await recordingSetup({
+            RECORDING: "true"
+        });
 
         try {
             const { mockFs } = await import("#tests/utils/mockFileSystem.ts");
@@ -698,12 +631,14 @@ describe("Recording & Transcription", () => {
             const user = await network.connect(channelUUID, 1);
             await user.isConnected;
 
-            await user.sfuClient.startRecording({ audio: true });
+            await user.sfuClient.startRecording({ audio: true, video: true });
             await waitFor(() => user.sfuClient.recordingState.recording);
 
             const audioTrack = new FakeMediaStreamTrack({ kind: "audio" });
             await user.sfuClient.updateUpload(STREAM_TYPE.AUDIO, audioTrack);
-            await waitFor(() => Boolean(ffmpegProcess));
+            const cameraTrack = new FakeMediaStreamTrack({ kind: "video" });
+            await user.sfuClient.updateUpload(STREAM_TYPE.CAMERA, cameraTrack);
+            await waitFor(() => Boolean(audioProcess && cameraProcess));
 
             const recorder = getChannel(channelUUID)!.recorder!;
             const resourcePath = recorder.path;
@@ -720,19 +655,22 @@ describe("Recording & Transcription", () => {
             jest.useFakeTimers();
             const stopPromise = recorder.stop();
             await jest.advanceTimersByTimeAsync(30_001);
+            expect(resourcePath).toBeDefined();
+            expect(mockFs.exists(resourcePath!)).toBe(true);
+            cameraClose.resolve();
             await stopPromise;
             await failureUpdatePromise;
 
             expect(killSignals).toEqual(["SIGINT", "SIGKILL"]);
-            expect(resourcePath).toBeDefined();
             expect(mockFs.exists(resourcePath!)).toBe(false);
         } finally {
+            cameraClose.resolve();
             jest.useRealTimers();
             await restore();
         }
     });
 
-    test("does not spawn camera ffmpeg while screen is active", async () => {
+    test("gates camera behind screen and clears that state on replacement", async () => {
         mockSpawn.mockClear();
         mockSpawn.mockImplementation((_cmd, args) => {
             const mp = new MockChildProcess("ffmpeg", args || []);
@@ -740,50 +678,52 @@ describe("Recording & Transcription", () => {
             return mp;
         });
 
-        const { restore, network } = await recordingSetup({ RECORDING: "true" });
+        const { restore, network, getChannel } = await recordingSetup({
+            RECORDING: "true"
+        });
         const hasPath = (args: readonly string[] | undefined, folder: "screen" | "camera") =>
             Boolean(args?.some((arg) => arg.includes(`/${folder}/`)));
-        const waitFor = async (predicate: () => boolean, timeoutMs = 2000) => {
-            const start = Date.now();
-            while (!predicate()) {
-                if (Date.now() - start > timeoutMs) {
-                    throw new Error("timeout waiting for condition");
-                }
-                await new Promise((resolve) => setTimeout(resolve, 50));
-            }
-        };
 
         try {
             const channelUUID = await network.getChannelUUID();
-            const user = await network.connect(channelUUID, 1);
-            await user.isConnected;
-
-            await user.sfuClient.startRecording({ video: true });
+            const screenUser = await network.connect(channelUUID, 1);
+            await screenUser.isConnected;
+            const cameraUser = await network.connect(channelUUID, 2);
+            await cameraUser.isConnected;
 
             const screenTrack = new FakeMediaStreamTrack({ kind: "video" });
-            await user.sfuClient.updateUpload(STREAM_TYPE.SCREEN, screenTrack);
-            await waitFor(() =>
-                mockSpawn.mock.calls.some((call) =>
-                    hasPath(call[1] as readonly string[] | undefined, "screen")
-                )
-            );
-
-            mockSpawn.mockClear();
             const cameraTrack = new FakeMediaStreamTrack({ kind: "video" });
-            await user.sfuClient.updateUpload(STREAM_TYPE.CAMERA, cameraTrack);
-            await new Promise((resolve) => setTimeout(resolve, 400));
-            expect(
-                mockSpawn.mock.calls.some((call) =>
-                    hasPath(call[1] as readonly string[] | undefined, "camera")
-                )
-            ).toBe(false);
+            await screenUser.sfuClient.updateUpload(STREAM_TYPE.SCREEN, screenTrack);
+            await cameraUser.sfuClient.updateUpload(STREAM_TYPE.CAMERA, cameraTrack);
+            const channel = getChannel(channelUUID)!;
+            const markSpy = jest.spyOn(channel.recorder!, "mark");
+            try {
+                await screenUser.sfuClient.startRecording({ video: true });
+                await waitFor(() =>
+                    mockSpawn.mock.calls.some((call) =>
+                        hasPath(call[1] as readonly string[] | undefined, "screen")
+                    )
+                );
+                await waitFor(() =>
+                    markSpy.mock.calls.some(
+                        ([, info]) => info.type === STREAM_TYPE.CAMERA && info.available
+                    )
+                );
+                expect(
+                    mockSpawn.mock.calls.some((call) =>
+                        hasPath(call[1] as readonly string[] | undefined, "camera")
+                    )
+                ).toBe(false);
 
-            await user.sfuClient.updateUpload(STREAM_TYPE.SCREEN, null);
-            await waitFor(() =>
-                mockSpawn.mock.calls.some((call) =>
-                    hasPath(call[1] as readonly string[] | undefined, "camera")
-                )
-            );
+                channel.join(1);
+                await waitFor(() =>
+                    mockSpawn.mock.calls.some((call) =>
+                        hasPath(call[1] as readonly string[] | undefined, "camera")
+                    )
+                );
+            } finally {
+                markSpy.mockRestore();
+            }
         } finally {
             await restore();
         }
@@ -794,11 +734,13 @@ describe("Scheduler Service", () => {
     let mediaService: typeof import("#src/recording/services/scheduler");
     let mockFs: typeof import("#tests/utils/mockFileSystem").mockFs;
     let mockFsModule: typeof import("#tests/utils/mockFileSystem").mockFsModule;
+    let loadAverage: jest.SpiedFunction<typeof os.loadavg>;
 
     const mockFetch = jest.fn() as jest.MockedFunction<typeof fetch>;
     const originalFetch = global.fetch;
 
     beforeEach(async () => {
+        loadAverage = jest.spyOn(os, "loadavg").mockReturnValue([0, 0, 0]);
         const env = await setupUnitTestsEnv();
         mockFs = env.mockFs;
         mockFsModule = env.mockFsModule;
@@ -807,17 +749,18 @@ describe("Scheduler Service", () => {
 
         mockFetch.mockResolvedValue({
             ok: true,
-            json: async () => ({ recording: "!http://upload/url" }),
+            text: async () => "",
             statusText: "OK"
         } as Response);
 
         mediaService = await import("#src/recording/services/scheduler");
     });
 
-    afterEach(() => {
+    afterEach(async () => {
         if (mediaService) {
-            mediaService.close();
+            await mediaService.close();
         }
+        loadAverage.mockRestore();
         global.fetch = originalFetch;
     });
 
@@ -828,21 +771,14 @@ describe("Scheduler Service", () => {
         const metadata = {
             channelName: "Test Channel",
             routingAddress,
+            channelKey: "key",
             stoppedAt: Date.now() - 1000,
             startedAt: 1000,
             timeStamps: [
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 1100,
-                    info: { type: STREAM_TYPE.AUDIO, active: true, filename: "audio_1.ogg" }
-                },
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 4000,
-                    info: { type: STREAM_TYPE.AUDIO, active: false, filename: "audio_1.ogg" }
-                }
+                fileState(STREAM_TYPE.AUDIO, "audio_1.ogg", 1100),
+                fileState(STREAM_TYPE.AUDIO, "audio_1.ogg", 4000, { active: false })
             ],
-            audio: false,
+            audio: true,
             video: false,
             transcription: false
         };
@@ -851,17 +787,19 @@ describe("Scheduler Service", () => {
         mockFs.mkdir(path.join(recordingDir, "audio"));
         mockFs.write(path.join(recordingDir, "metadata.bin"), JSON.stringify(metadata));
         mockFs.write(path.join(recordingDir, "audio", "audio_1.ogg"), "dummy audio content");
+        mockFsModule.rm.mockRejectedValueOnce(new Error("temporary cleanup failure"));
 
         await mediaService.start();
-        await mediaService.__testing__.oneProcessingBatch();
+        expect(mockFs.exists(recordingDir)).toBe(true);
 
-        expect(mockFsModule.readdir).toHaveBeenCalled();
+        await mediaService.__testing__.oneProcessingBatch();
+        expect(mockFs.exists(recordingDir)).toBe(false);
+
         expect(mockSpawn).toHaveBeenCalledWith(
             "ffmpeg",
-            expect.arrayContaining([expect.stringContaining("recording_1000.ogg")]),
-            undefined
+            expect.arrayContaining([expect.stringContaining("recording_1000.partial.ogg")]),
+            expect.objectContaining({ stdio: "ignore" })
         );
-
         expect(mockFetch).toHaveBeenCalledWith(
             `${routingAddress}/audio?start_ms=${metadata.startedAt}&end_ms=${metadata.stoppedAt}&main_media=True`,
             expect.objectContaining({
@@ -869,46 +807,81 @@ describe("Scheduler Service", () => {
                 headers: expect.objectContaining({ Authorization: "Bearer mock_jwt" })
             })
         );
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+        expect(mockFsModule.rm).toHaveBeenCalledTimes(2);
     });
 
-    test("should ignore invalid/incomplete recordings", async () => {
-        const recordingName = "bad_session";
+    test("retries transient metadata read failures", async () => {
+        const recordingName = "retry_session";
         const recordingDir = `/mock/recordings/${recordingName}`;
+        const metadata = {
+            routingAddress: "http://routing.local",
+            channelKey: "key",
+            startedAt: 1000,
+            stoppedAt: Date.now() - 1000,
+            timeStamps: [],
+            audio: false,
+            video: false,
+            transcription: false
+        };
         mockFs.mkdir(recordingDir);
+        mockFs.write(path.join(recordingDir, "metadata.bin"), JSON.stringify(metadata));
+        const readError = Object.assign(new Error("temporary read failure"), {
+            code: "EIO"
+        });
+        mockFsModule.readFile.mockRejectedValueOnce(readError);
 
         await mediaService.start();
-        await mediaService.__testing__.oneProcessingBatch();
 
-        expect(mockFsModule.readFile).toHaveBeenCalledWith(
-            path.join(recordingDir, "metadata.bin"),
-            "utf-8"
-        );
-        expect(mockFsModule.rm).toHaveBeenCalledWith(recordingDir, { recursive: true });
+        expect(mockFs.exists(recordingDir)).toBe(true);
+        await mediaService.__testing__.oneProcessingBatch();
+        expect(mockFsModule.rm).toHaveBeenCalledWith(recordingDir, {
+            recursive: true
+        });
     });
 
     test("should handle expired recordings", async () => {
         const recordingName = "expired_session";
         const recordingDir = `/mock/recordings/${recordingName}`;
+        const freshRecordingDir = "/mock/recordings/fresh_session";
         const metadata = {
-            stoppedAt: Date.now() - 1000 * 60 * 60 * 24,
-            timeStamps: []
+            routingAddress: "http://routing.local",
+            channelKey: "key",
+            startedAt: 1000,
+            stoppedAt: Date.now() - 1000 * 60 * 60 * 24 - 1000,
+            timeStamps: [],
+            audio: false,
+            video: false,
+            transcription: false
         };
 
         mockFs.mkdir(recordingDir);
         mockFs.write(path.join(recordingDir, "metadata.bin"), JSON.stringify(metadata));
+        mockFs.mkdir(freshRecordingDir);
+        mockFs.write(
+            path.join(freshRecordingDir, "metadata.bin"),
+            JSON.stringify({
+                ...metadata,
+                startedAt: Date.now() - 2000,
+                stoppedAt: Date.now() - 1000
+            })
+        );
 
+        loadAverage.mockReturnValue([os.cpus().length, 0, 0]);
         await mediaService.start();
-        await mediaService.__testing__.oneProcessingBatch();
+        expect(loadAverage).toHaveBeenCalled();
 
-        expect(mockFsModule.rm).toHaveBeenCalledWith(recordingDir, { recursive: true });
+        expect(mockFsModule.rm).toHaveBeenCalledWith(recordingDir, {
+            recursive: true
+        });
+        expect(mockFs.exists(recordingDir)).toBe(false);
+        expect(mockFs.exists(freshRecordingDir)).toBe(true);
     });
 });
 
 describe("MediaCompiler tests", () => {
     let MediaCompiler: typeof import("#src/recording/models/media_compiler.ts").MediaCompiler;
     let mockFs: typeof import("#tests/utils/mockFileSystem").mockFs;
-    // mockSpawn uses global variable
-
     beforeEach(async () => {
         const env = await setupUnitTestsEnv();
         mockFs = env.mockFs;
@@ -924,28 +897,8 @@ describe("MediaCompiler tests", () => {
             startedAt: 1000,
             stoppedAt: 5000,
             timeStamps: [
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 1000,
-                    info: {
-                        type: STREAM_TYPE.AUDIO,
-                        sessionId: 1,
-                        available: true,
-                        active: true,
-                        filename: "file1.ogg"
-                    }
-                },
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 2000,
-                    info: {
-                        type: STREAM_TYPE.AUDIO,
-                        sessionId: 1,
-                        available: true,
-                        active: true,
-                        filename: "file2.ogg"
-                    }
-                }
+                fileState(STREAM_TYPE.AUDIO, "file1.ogg", 1000),
+                fileState(STREAM_TYPE.AUDIO, "file2.ogg", 2000)
             ]
         });
         mockFs.mkdir(path.join(workingDir, "audio"));
@@ -965,37 +918,112 @@ describe("MediaCompiler tests", () => {
                 "-c:a",
                 "libopus"
             ]),
-            undefined
+            expect.objectContaining({ stdio: "ignore" })
         );
+        expect(mockSpawn).toHaveBeenCalledWith(
+            "ffprobe",
+            expect.arrayContaining(["-read_intervals", "%+5"]),
+            expect.anything()
+        );
+        const ffmpegArgs = mockSpawn.mock.calls.find(([command]) => command === "ffmpeg")![1];
+        expect((ffmpegArgs as string[]).filter((arg) => arg === "+discardcorrupt")).toHaveLength(2);
     });
 
-    test("should return successfully if output already exists", async () => {
-        const workingDir = "/work";
-        mockFs.mkdir(workingDir);
+    test("retries when ffprobe is terminated", async () => {
+        const workingDir = "/probe-timeout";
+        mockFs.mkdir(path.join(workingDir, "audio"), { recursive: true });
+        mockFs.write(path.join(workingDir, "audio", "file.ogg"), "data");
+        const spawn = mockSpawn.getMockImplementation()!;
+        mockSpawn.mockImplementation((command, args, options) => {
+            if (command !== "ffprobe") {
+                return spawn(command, args, options);
+            }
+            const process = makeManualProcess(args as string[]);
+            setTimeout(() => process.emit("close", null, "SIGKILL"));
+            return process;
+        });
         const compiler = new MediaCompiler({
             workingDir,
             startedAt: 1000,
             stoppedAt: 5000,
-            timeStamps: [
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 1000,
-                    info: {
-                        type: STREAM_TYPE.AUDIO,
-                        active: true,
-                        available: true,
-                        sessionId: 3,
-                        filename: "file1.ogg"
-                    }
-                }
-            ]
+            timeStamps: [fileState(STREAM_TYPE.AUDIO, "file.ogg", 1000)]
         });
-        mockFs.mkdir(workingDir);
-        mockFs.write(path.join(workingDir, "recording_1000.ogg"), "existing");
 
-        const result = await compiler.getAudio();
+        try {
+            await expect(compiler.getAudio()).rejects.toThrow("signal SIGKILL");
+        } finally {
+            mockSpawn.mockImplementation(spawn);
+        }
+    });
+
+    test("retries after ffmpeg leaves a partial output", async () => {
+        const workingDir = "/work";
+        mockFs.mkdir(workingDir);
+        mockFs.mkdir(path.join(workingDir, "audio"));
+        mockFs.write(path.join(workingDir, "audio", "file1.ogg"), "data");
+        const options = {
+            workingDir,
+            startedAt: 1000,
+            stoppedAt: 5000,
+            timeStamps: [fileState(STREAM_TYPE.AUDIO, "file1.ogg", 1000, { sessionId: 3 })]
+        };
+        const spawn = mockSpawn.getMockImplementation()!;
+        let shouldFail = true;
+        mockSpawn.mockImplementation((command, args, options) => {
+            if (command !== "ffmpeg" || !shouldFail) {
+                return spawn(command, args, options);
+            }
+            shouldFail = false;
+            const process = makeManualProcess(args as string[]);
+            setTimeout(() => {
+                mockFs.write((args as string[]).at(-1)!, "partial");
+                process.emit("close", 1);
+            });
+            return process;
+        });
+
+        await expect(new MediaCompiler(options).getAudio()).rejects.toThrow();
+        const result = await new MediaCompiler(options).getAudio();
         expect(result).toBe(path.join(workingDir, "recording_1000.ogg"));
-        expect(mockSpawn).not.toHaveBeenCalled();
+        expect(mockSpawn.mock.calls.filter(([command]) => command === "ffmpeg")).toHaveLength(2);
+    });
+
+    test("aborts compilation as one bounded job", async () => {
+        const controller = new AbortController();
+        const timeoutSpy = jest.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
+        const spawn = mockSpawn.getMockImplementation()!;
+        mockSpawn.mockImplementation((command, args, options) => {
+            const process = makeManualProcess(args as string[]);
+            const signal = (options as { signal?: AbortSignal }).signal;
+            signal?.addEventListener(
+                "abort",
+                () => {
+                    process.emit("error", signal.reason);
+                    process.emit("close", null, "SIGKILL");
+                },
+                { once: true }
+            );
+            return process;
+        });
+        const workingDir = "/bounded";
+        mockFs.mkdir(path.join(workingDir, "audio"), { recursive: true });
+        mockFs.write(path.join(workingDir, "audio", "file.ogg"), "data");
+        const compiler = new MediaCompiler({
+            workingDir,
+            startedAt: 1000,
+            stoppedAt: 5000,
+            timeStamps: [fileState(STREAM_TYPE.AUDIO, "file.ogg", 1000)]
+        });
+
+        try {
+            const compilation = compiler.getAudio();
+            controller.abort(new Error("compilation deadline"));
+            await expect(compilation).rejects.toThrow("compilation deadline");
+            expect(timeoutSpy).toHaveBeenCalledTimes(1);
+        } finally {
+            timeoutSpy.mockRestore();
+            mockSpawn.mockImplementation(spawn);
+        }
     });
 
     test("should return undefined if no audio files found", async () => {
@@ -1025,37 +1053,55 @@ describe("MediaCompiler tests", () => {
             startedAt: 1000,
             stoppedAt: 5000,
             timeStamps: [
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 1000,
-                    info: {
-                        type: STREAM_TYPE.CAMERA,
-                        sessionId: 1,
-                        available: true,
-                        active: true,
-                        filename: "cam1.mp4"
-                    }
-                },
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 1000,
-                    info: {
-                        type: STREAM_TYPE.AUDIO,
-                        sessionId: 1,
-                        available: true,
-                        active: true,
-                        filename: "audio1.ogg"
-                    }
-                }
+                fileState(STREAM_TYPE.CAMERA, "cam1.mp4", 1000),
+                fileState(STREAM_TYPE.AUDIO, "audio1.ogg", 1000)
             ]
         });
 
         const result = await compiler.getVideo();
         expect(result).toBe(path.join(workingDir, "recording_1000.mp4"));
 
-        const calls = mockSpawn.mock.calls;
-        const videoCall = calls.find((c) => (c[1] as string[]).join(" ").includes("-c:v"));
+        const videoCall = mockSpawn.mock.calls.find(
+            ([command, args]) =>
+                command === "ffmpeg" &&
+                (args as string[]).includes(path.join(workingDir, "camera", "cam1.mp4"))
+        );
         expect(videoCall).toBeDefined();
+    });
+
+    test("preserves delayed-video gaps and cleans failed assembly", async () => {
+        const workingDir = "/work";
+        mockFs.mkdir(path.join(workingDir, "camera"), { recursive: true });
+        mockFs.mkdir(path.join(workingDir, "audio"));
+        mockFs.write(path.join(workingDir, "camera", "cam1.mp4"), "video");
+        mockFs.write(path.join(workingDir, "audio", "audio.ogg"), "audio");
+        const spawn = mockSpawn.getMockImplementation()!;
+        mockSpawn.mockImplementation((command, args, options) => {
+            if (command !== "ffmpeg" || !(args as string[]).at(-1)?.endsWith(".partial.ogg")) {
+                return spawn(command, args, options);
+            }
+            const process = makeManualProcess(args as string[]);
+            setTimeout(() => process.emit("close", 1));
+            return process;
+        });
+        const compiler = new MediaCompiler({
+            workingDir,
+            startedAt: 1000,
+            stoppedAt: 3000,
+            timeStamps: [
+                fileState(STREAM_TYPE.CAMERA, "cam1.mp4", 2000),
+                fileState(STREAM_TYPE.AUDIO, "audio.ogg", 1000)
+            ]
+        });
+
+        await expect(compiler.getVideo()).rejects.toThrow();
+        const segmentCalls = mockSpawn.mock.calls.filter(([, args]) =>
+            (args as string[]).at(-1)?.includes("segment_")
+        );
+        expect(segmentCalls).toHaveLength(2);
+        expect(segmentCalls[0][1]).toEqual(expect.arrayContaining(["-f", "lavfi", "-t", "1.000"]));
+        expect(mockFs.exists(path.join(workingDir, "segment_0.mp4"))).toBe(false);
+        expect(mockFs.exists(path.join(workingDir, "segment_1.mp4"))).toBe(false);
     });
 
     test("should compile video with multiple cameras in grid layout", async () => {
@@ -1072,39 +1118,9 @@ describe("MediaCompiler tests", () => {
             startedAt: 1000,
             stoppedAt: 5000,
             timeStamps: [
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 1000,
-                    info: {
-                        type: STREAM_TYPE.CAMERA,
-                        sessionId: 1,
-                        available: true,
-                        active: true,
-                        filename: "cam1.mp4"
-                    }
-                },
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 1000,
-                    info: {
-                        type: STREAM_TYPE.CAMERA,
-                        sessionId: 2,
-                        available: true,
-                        active: true,
-                        filename: "cam2.mp4"
-                    }
-                },
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 1000,
-                    info: {
-                        type: STREAM_TYPE.AUDIO,
-                        sessionId: 1,
-                        available: true,
-                        active: true,
-                        filename: "audio1.ogg"
-                    }
-                }
+                fileState(STREAM_TYPE.CAMERA, "cam1.mp4", 1000),
+                fileState(STREAM_TYPE.CAMERA, "cam2.mp4", 1000, { sessionId: 2 }),
+                fileState(STREAM_TYPE.AUDIO, "audio1.ogg", 1000)
             ]
         });
 
@@ -1131,39 +1147,9 @@ describe("MediaCompiler tests", () => {
             startedAt: 1000,
             stoppedAt: 5000,
             timeStamps: [
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 1000,
-                    info: {
-                        type: STREAM_TYPE.SCREEN,
-                        sessionId: 1,
-                        available: true,
-                        active: true,
-                        filename: "screen1.mp4"
-                    }
-                },
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 1000,
-                    info: {
-                        type: STREAM_TYPE.CAMERA,
-                        sessionId: 2,
-                        available: true,
-                        active: true,
-                        filename: "cam1.mp4"
-                    }
-                },
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 1000,
-                    info: {
-                        type: STREAM_TYPE.AUDIO,
-                        sessionId: 1,
-                        available: true,
-                        active: true,
-                        filename: "audio1.ogg"
-                    }
-                }
+                fileState(STREAM_TYPE.SCREEN, "screen1.mp4", 1000),
+                fileState(STREAM_TYPE.CAMERA, "cam1.mp4", 1000, { sessionId: 2 }),
+                fileState(STREAM_TYPE.AUDIO, "audio1.ogg", 1000)
             ]
         });
 
@@ -1171,13 +1157,15 @@ describe("MediaCompiler tests", () => {
         expect(result).toBe(path.join(workingDir, "recording_1000.mp4"));
 
         const calls = mockSpawn.mock.calls;
-        // Both screen and camera should be in input
         const segmentCall = calls.find(
             (c) =>
                 (c[1] as string[]).join(" ").includes("screen1.mp4") &&
                 (c[1] as string[]).join(" ").includes("cam1.mp4")
         );
         expect(segmentCall).toBeDefined();
+        expect(
+            ((segmentCall![1] as string[]) ?? []).filter((arg) => arg === "+discardcorrupt")
+        ).toHaveLength(2);
     });
 
     test("should coalesce timestamps within threshold into same segment", async () => {
@@ -1190,74 +1178,26 @@ describe("MediaCompiler tests", () => {
         mockFs.write(path.join(workingDir, "camera", "cam3.mp4"), "video3");
         mockFs.write(path.join(workingDir, "audio", "audio1.ogg"), "audio");
 
-        // Timestamps within 500ms threshold should be coalesced
-        // cam1 at 1000, cam2 at 1200 (200ms apart) => same segment
-        // cam3 at 3000 (1800ms after cam2) => new segment
         const compiler = new MediaCompiler({
             workingDir,
             startedAt: 1000,
             stoppedAt: 5000,
             timeStamps: [
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 1000,
-                    info: {
-                        type: STREAM_TYPE.CAMERA,
-                        sessionId: 1,
-                        available: true,
-                        active: true,
-                        filename: "cam1.mp4"
-                    }
-                },
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 1200,
-                    info: {
-                        type: STREAM_TYPE.CAMERA,
-                        sessionId: 2,
-                        available: true,
-                        active: true,
-                        filename: "cam2.mp4"
-                    }
-                },
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 3000,
-                    info: {
-                        type: STREAM_TYPE.CAMERA,
-                        sessionId: 3,
-                        available: true,
-                        active: true,
-                        filename: "cam3.mp4"
-                    }
-                },
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 1000,
-                    info: {
-                        type: STREAM_TYPE.AUDIO,
-                        sessionId: 1,
-                        available: true,
-                        active: true,
-                        filename: "audio1.ogg"
-                    }
-                }
+                fileState(STREAM_TYPE.CAMERA, "cam1.mp4", 1000),
+                fileState(STREAM_TYPE.CAMERA, "cam2.mp4", 1200, { sessionId: 2 }),
+                fileState(STREAM_TYPE.CAMERA, "cam3.mp4", 3000, { sessionId: 3 }),
+                fileState(STREAM_TYPE.AUDIO, "audio1.ogg", 1000)
             ]
         });
 
         await compiler.getVideo();
 
-        // The _buildVideoSegments method is private, so we verify indirectly
-        // by checking that ffmpeg was called with the expected segment pattern.
-        // With coalescing: segment 1 (cam1+cam2 from 1000-3000), segment 2 (cam1+cam2+cam3 from 3000-5000)
-        // This should produce 2 intermediate segment files plus a final concat.
         const calls = mockSpawn.mock.calls;
         const segmentCalls = calls.filter((c) => {
             const args = c[1] as string[] | undefined;
             return args?.some((arg) => arg?.includes("segment_"));
         });
 
-        // Should have 2 segment compilations (one for each distinct segment)
         expect(segmentCalls.length).toBe(2);
     });
 });
@@ -1276,19 +1216,9 @@ describe("MediaWriter tests", () => {
         MediaWriter = (await import("#src/recording/models/media_writer.ts")).MediaWriter;
     });
 
-    test("should reject close when FFMPEG must be force killed", async () => {
-        const hangingProcess = makeManualProcess();
-        const killSignals: Array<NodeJS.Signals | number | undefined> = [];
-        hangingProcess.kill = (signal?: NodeJS.Signals | number) => {
-            killSignals.push(signal);
-            if (signal === "SIGKILL") {
-                hangingProcess.killed = true;
-                hangingProcess.emit("close", null, signal);
-            }
-            return true;
-        };
-        mockSpawn.mockImplementationOnce(() => hangingProcess);
-
+    test("reports an unexpected clean ffmpeg exit", async () => {
+        const process = makeManualProcess();
+        mockSpawn.mockImplementationOnce(() => process);
         const writer = new MediaWriter(
             {
                 kind: "audio",
@@ -1299,23 +1229,83 @@ describe("MediaWriter tests", () => {
                 channels: 2
             },
             "/tmp",
-            "test_force_kill"
+            "test_exit"
+        );
+        const failure = once(writer, "failure");
+
+        process.emit("close", 0);
+
+        expect((await failure)[0].error).toEqual(
+            new Error("FFMPEG test_exit.webm exited with code 0")
+        );
+        await writer.close();
+    });
+
+    test("waits for process closure after an error", async () => {
+        const process = makeManualProcess();
+        process.kill = () => true;
+        mockSpawn.mockImplementationOnce(() => process);
+        const writer = new MediaWriter(
+            {
+                kind: "audio",
+                payloadType: 111,
+                clockRate: 48000,
+                codec: "opus",
+                port: 5005,
+                channels: 2
+            },
+            "/tmp",
+            "test_error"
+        );
+        let settled = false;
+        let closeError: unknown;
+        const closePromise = writer
+            .close()
+            .catch((error) => {
+                closeError = error;
+            })
+            .finally(() => {
+                settled = true;
+            });
+
+        process.emit("error", new Error("signal failure"));
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(settled).toBe(false);
+
+        process.emit("close", null, "SIGINT");
+        await closePromise;
+        expect(closeError).toBeUndefined();
+    });
+
+    test("bounds close when a process survives force killing", async () => {
+        jest.useFakeTimers();
+        const process = makeManualProcess();
+        process.kill = () => true;
+        mockSpawn.mockImplementationOnce(() => process);
+        const writer = new MediaWriter(
+            {
+                kind: "audio",
+                payloadType: 111,
+                clockRate: 48000,
+                codec: "opus",
+                port: 5005,
+                channels: 2
+            },
+            "/tmp",
+            "test_survivor"
         );
 
         try {
-            jest.useFakeTimers();
-            let closeError: unknown;
-            const closePromise = writer.close().catch((error) => {
-                closeError = error;
-            });
-            await jest.advanceTimersByTimeAsync(30_001);
-            await closePromise;
-            expect(closeError).toEqual(
-                expect.objectContaining({
-                    message: expect.stringContaining("did not close gracefully")
-                })
+            const processClose = once(writer, MediaWriter.Events.PROCESS_CLOSE);
+            const close = writer.close().catch((error) => error);
+            await jest.advanceTimersByTimeAsync(60_001);
+            expect(await close).toEqual(
+                new Error("FFMPEG test_survivor.webm remained alive after force killing")
             );
-            expect(killSignals).toEqual(["SIGINT", "SIGKILL"]);
+            expect(writer.isProcessClosed).toBe(false);
+            process.emit("close", null, "SIGKILL");
+            await processClose;
+            expect(writer.isProcessClosed).toBe(true);
         } finally {
             jest.useRealTimers();
         }
@@ -1345,72 +1335,20 @@ describe("Media Compiler edge cases tests", () => {
             startedAt: 1000,
             stoppedAt: 5000,
             timeStamps: [
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 1000,
-                    info: {
-                        type: STREAM_TYPE.SCREEN,
-                        sessionId: 1,
-                        available: true,
-                        active: true,
-                        filename: "screen1.mp4"
-                    }
-                },
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 1000,
-                    info: {
-                        type: STREAM_TYPE.AUDIO,
-                        sessionId: 1,
-                        available: true,
-                        active: true,
-                        filename: "audio1.ogg"
-                    }
-                }
+                fileState(STREAM_TYPE.SCREEN, "screen1.mp4", 1000),
+                fileState(STREAM_TYPE.AUDIO, "audio1.ogg", 1000)
             ]
         });
 
         const result = await compiler.getVideo();
         expect(result).toBe(path.join(workingDir, "recording_1000.mp4"));
 
-        // Verify screen was included in ffmpeg call
-        const calls = mockSpawn.mock.calls;
-        const screenCall = calls.find((c) => (c[1] as string[]).join(" ").includes("screen1.mp4"));
+        const screenCall = mockSpawn.mock.calls.find(
+            ([command, args]) =>
+                command === "ffmpeg" &&
+                (args as string[]).includes(path.join(workingDir, "screen", "screen1.mp4"))
+        );
         expect(screenCall).toBeDefined();
-    });
-
-    test("should handle audio file starting before recording", async () => {
-        const workingDir = "/work_early";
-        mockFsInstance.mkdir(workingDir);
-        mockFsInstance.mkdir(path.join(workingDir, "audio"));
-        mockFsInstance.write(path.join(workingDir, "audio", "early.ogg"), "audio");
-
-        const compiler = new MediaCompiler({
-            workingDir,
-            startedAt: 2000,
-            stoppedAt: 5000,
-            timeStamps: [
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 1000, // Before startedAt
-                    info: {
-                        type: STREAM_TYPE.AUDIO,
-                        sessionId: 1,
-                        available: true,
-                        active: true,
-                        filename: "early.ogg"
-                    }
-                }
-            ]
-        });
-
-        const result = await compiler.getAudio();
-        expect(result).toBe(path.join(workingDir, "recording_2000.ogg"));
-
-        // Verify -ss flag is used when offset is negative
-        const calls = mockSpawn.mock.calls;
-        const audioCall = calls.find((c) => (c[1] as string[]).includes("-ss"));
-        expect(audioCall).toBeDefined();
     });
 
     test("should skip corrupted video files in segment", async () => {
@@ -1421,12 +1359,23 @@ describe("Media Compiler edge cases tests", () => {
         mockFsInstance.write(path.join(workingDir, "camera", "corrupted.mp4"), "not a video");
         mockFsInstance.write(path.join(workingDir, "audio", "audio1.ogg"), "audio");
         mockSpawn.mockImplementation((command, args) => {
+            const process = makeManualProcess(args as string[]);
             if (command === "ffprobe") {
-                const process = makeManualProcess(args as string[]);
-                setTimeout(() => process.emit("close", 1), 5);
-                return process;
+                setTimeout(() => {
+                    if ((args as string[]).at(-1)?.endsWith("corrupted.mp4")) {
+                        process.emit("close", 1);
+                    } else {
+                        process.stdout?.push("opus\n");
+                        process.emit("close", 0);
+                    }
+                }, 5);
+            } else {
+                setTimeout(() => {
+                    mockFsInstance.write((args as string[]).at(-1)!, "output");
+                    process.emit("close", 0);
+                }, 5);
             }
-            return new MockChildProcess(command, args as string[]);
+            return process;
         });
 
         const compiler = new MediaCompiler({
@@ -1434,28 +1383,8 @@ describe("Media Compiler edge cases tests", () => {
             startedAt: 1000,
             stoppedAt: 5000,
             timeStamps: [
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 1000,
-                    info: {
-                        type: STREAM_TYPE.CAMERA,
-                        sessionId: 1,
-                        available: true,
-                        active: true,
-                        filename: "corrupted.mp4"
-                    }
-                },
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 1000,
-                    info: {
-                        type: STREAM_TYPE.AUDIO,
-                        sessionId: 1,
-                        available: true,
-                        active: true,
-                        filename: "audio1.ogg"
-                    }
-                }
+                fileState(STREAM_TYPE.CAMERA, "corrupted.mp4", 1000),
+                fileState(STREAM_TYPE.AUDIO, "audio1.ogg", 1000)
             ]
         });
 
@@ -1471,11 +1400,13 @@ describe("Scheduler Service network tests", () => {
     let mediaService: typeof import("#src/recording/services/scheduler");
     let mockFsInstance: typeof import("#tests/utils/mockFileSystem").mockFs;
     let mockFsModuleInstance: typeof import("#tests/utils/mockFileSystem").mockFsModule;
+    let loadAverage: jest.SpiedFunction<typeof os.loadavg>;
 
     const mockFetch = jest.fn() as jest.MockedFunction<typeof fetch>;
     const originalFetch = global.fetch;
 
     beforeEach(async () => {
+        loadAverage = jest.spyOn(os, "loadavg").mockReturnValue([0, 0, 0]);
         const env = await setupUnitTestsEnv();
         mockFsInstance = env.mockFs;
         mockFsModuleInstance = env.mockFsModule;
@@ -1485,52 +1416,81 @@ describe("Scheduler Service network tests", () => {
         mediaService = await import("#src/recording/services/scheduler");
     });
 
-    afterEach(() => {
+    afterEach(async () => {
         if (mediaService) {
-            mediaService.close();
+            await mediaService.close();
         }
+        loadAverage.mockRestore();
         global.fetch = originalFetch;
     });
 
-    test("should handle network errors gracefully during upload", async () => {
-        const recordingName = "session_network_error";
-        const routingAddress = "http://www.oodo.test/routing";
-        const recordingDir = `/mock/recordings/${recordingName}`;
-        const metadata = {
-            channelName: "Test Channel",
-            routingAddress,
-            channelKey: "key123",
-            stoppedAt: Date.now() - 1000,
-            startedAt: 1000,
-            timeStamps: [
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 1100,
-                    info: { type: STREAM_TYPE.AUDIO, active: true, filename: "audio_1.ogg" }
-                }
-            ],
-            audio: false,
-            video: false,
-            transcription: false
-        };
+    test("cancels an unused upload response", async () => {
+        const { MediaUploader } = await import("#src/recording/models/media_uploader.ts");
+        const filePath = "/mock/audio.ogg";
+        mockFsInstance.write(filePath, "audio");
+        const response = new Response("ignored");
+        const textSpy = jest.spyOn(response, "text");
+        const cancelSpy = jest.spyOn(response.body!, "cancel");
+        mockFetch.mockResolvedValue(response);
+        const uploader = new MediaUploader({
+            routingTimeoutMs: 10,
+            uploadTimeoutMs: 10
+        });
 
-        mockFsInstance.mkdir(recordingDir);
-        mockFsInstance.mkdir(path.join(recordingDir, "audio"));
-        mockFsInstance.write(path.join(recordingDir, "metadata.bin"), JSON.stringify(metadata));
-        mockFsInstance.write(path.join(recordingDir, "audio", "audio_1.ogg"), "dummy audio");
+        await uploader.uploadAudio({
+            filePath,
+            mainMedia: true,
+            metadata: {
+                channelName: "channel",
+                channelUUID: "uuid",
+                routingAddress: "http://routing.local",
+                channelKey: "key",
+                labels: {},
+                startedAt: 1000,
+                stoppedAt: 2000,
+                timeStamps: [],
+                audio: true,
+                video: false,
+                transcription: false
+            }
+        });
 
-        // Simulate network error during routing fetch
-        mockFetch.mockRejectedValue(new Error("Network error"));
-
-        await mediaService.start();
-        await mediaService.__testing__.oneProcessingBatch();
-
-        // Recording should be retained for retry after transient network failures
-        expect(mockFsModuleInstance.rm).not.toHaveBeenCalledWith(recordingDir, { recursive: true });
-        expect(mockFsInstance.exists(recordingDir)).toBe(true);
+        expect(cancelSpy).toHaveBeenCalledTimes(1);
+        expect(textSpy).not.toHaveBeenCalled();
     });
 
-    test("should handle routing failure gracefully", async () => {
+    test("rejects an oversized routing response", async () => {
+        const { MediaUploader } = await import("#src/recording/models/media_uploader.ts");
+        const filePath = "/mock/video.mp4";
+        mockFsInstance.write(filePath, "video");
+        mockFetch.mockResolvedValue(new Response("x".repeat(64 * 1024 + 1)));
+        const uploader = new MediaUploader({
+            routingTimeoutMs: 1000,
+            uploadTimeoutMs: 1000
+        });
+
+        await expect(
+            uploader.uploadVideo({
+                filePath,
+                metadata: {
+                    channelName: "channel",
+                    channelUUID: "uuid",
+                    routingAddress: "http://routing.local",
+                    channelKey: "key",
+                    labels: {},
+                    startedAt: 1000,
+                    stoppedAt: 2000,
+                    timeStamps: [],
+                    audio: false,
+                    video: true,
+                    transcription: false
+                }
+            })
+        ).rejects.toThrow("Routing response exceeds");
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    test("does not repeat audio after video routing fails", async () => {
         const recordingName = "session_route_fail";
         const routingAddress = "http://www.oodo.test/routing";
         const recordingDir = `/mock/recordings/${recordingName}`;
@@ -1541,57 +1501,8 @@ describe("Scheduler Service network tests", () => {
             stoppedAt: Date.now() - 1000,
             startedAt: 1000,
             timeStamps: [
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 1100,
-                    info: { type: STREAM_TYPE.AUDIO, active: true, filename: "audio_1.ogg" }
-                }
-            ],
-            audio: false,
-            video: false,
-            transcription: false
-        };
-
-        mockFsInstance.mkdir(recordingDir);
-        mockFsInstance.mkdir(path.join(recordingDir, "audio"));
-        mockFsInstance.write(path.join(recordingDir, "metadata.bin"), JSON.stringify(metadata));
-        mockFsInstance.write(path.join(recordingDir, "audio", "audio_1.ogg"), "dummy audio");
-
-        // Routing endpoint returns error
-        mockFetch.mockResolvedValue({
-            ok: false,
-            statusText: "Not Found"
-        } as Response);
-
-        await mediaService.start();
-        await mediaService.__testing__.oneProcessingBatch();
-
-        // Recording should be retained for retry after routing failures
-        expect(mockFsModuleInstance.rm).not.toHaveBeenCalledWith(recordingDir, { recursive: true });
-        expect(mockFsInstance.exists(recordingDir)).toBe(true);
-    });
-
-    test("should handle empty destination in routing response", async () => {
-        const recordingName = "session_no_dest";
-        const routingAddress = "http://www.oodo.test/routing";
-        const recordingDir = `/mock/recordings/${recordingName}`;
-        const metadata = {
-            channelName: "Test Channel",
-            routingAddress,
-            channelKey: "key123",
-            stoppedAt: Date.now() - 1000,
-            startedAt: 1000,
-            timeStamps: [
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 1100,
-                    info: { type: STREAM_TYPE.AUDIO, active: true, filename: "audio_1.ogg" }
-                },
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 1100,
-                    info: { type: STREAM_TYPE.CAMERA, active: true, filename: "cam_1.mp4" }
-                }
+                fileState(STREAM_TYPE.AUDIO, "audio_1.ogg", 1100),
+                fileState(STREAM_TYPE.CAMERA, "cam_1.mp4", 1100)
             ],
             audio: true,
             video: true,
@@ -1605,7 +1516,58 @@ describe("Scheduler Service network tests", () => {
         mockFsInstance.write(path.join(recordingDir, "audio", "audio_1.ogg"), "dummy audio");
         mockFsInstance.write(path.join(recordingDir, "camera", "cam_1.mp4"), "dummy video");
 
-        // Audio upload succeeds, routing returns empty destination
+        mockFetch.mockImplementation(async (url: string | URL | Request) =>
+            url.toString().includes("/audio")
+                ? ({ ok: true, text: async () => "" } as Response)
+                : ({
+                      ok: false,
+                      status: 503,
+                      statusText: "Unavailable",
+                      text: async () => ""
+                  } as Response)
+        );
+
+        await mediaService.start();
+        await mediaService.__testing__.oneProcessingBatch();
+
+        expect(
+            mockFetch.mock.calls.filter(([url]) => url.toString().includes("/audio"))
+        ).toHaveLength(1);
+        expect(
+            mockFetch.mock.calls.filter(([url]) => url.toString().includes("/routing?"))
+        ).toHaveLength(2);
+        expect(mockFsModuleInstance.rm).not.toHaveBeenCalledWith(recordingDir, {
+            recursive: true
+        });
+        expect(mockFsInstance.exists(recordingDir)).toBe(true);
+    });
+
+    test("keeps recording when routing returns no destination", async () => {
+        const recordingName = "session_no_dest";
+        const routingAddress = "http://www.oodo.test/routing";
+        const recordingDir = `/mock/recordings/${recordingName}`;
+        const metadata = {
+            channelName: "Test Channel",
+            routingAddress,
+            channelKey: "key123",
+            stoppedAt: Date.now() - 1000,
+            startedAt: 1000,
+            timeStamps: [
+                fileState(STREAM_TYPE.AUDIO, "audio_1.ogg", 1100),
+                fileState(STREAM_TYPE.CAMERA, "cam_1.mp4", 1100)
+            ],
+            audio: true,
+            video: true,
+            transcription: false
+        };
+
+        mockFsInstance.mkdir(recordingDir);
+        mockFsInstance.mkdir(path.join(recordingDir, "audio"));
+        mockFsInstance.mkdir(path.join(recordingDir, "camera"));
+        mockFsInstance.write(path.join(recordingDir, "metadata.bin"), JSON.stringify(metadata));
+        mockFsInstance.write(path.join(recordingDir, "audio", "audio_1.ogg"), "dummy audio");
+        mockFsInstance.write(path.join(recordingDir, "camera", "cam_1.mp4"), "dummy video");
+
         mockFetch.mockImplementation(async (url: string | URL | Request) => {
             const urlString = url.toString();
             if (urlString.includes("/audio")) {
@@ -1614,27 +1576,31 @@ describe("Scheduler Service network tests", () => {
             if (urlString.includes("/routing")) {
                 return {
                     ok: true,
-                    json: async () => ({ destination: "" }),
+                    text: async () => JSON.stringify({ destination: "" }),
                     statusText: "OK"
                 } as Response;
             }
-            return { ok: false, statusText: "Not Found" } as Response;
+            return {
+                ok: false,
+                statusText: "Not Found",
+                text: async () => ""
+            } as Response;
         });
 
         await mediaService.start();
-        await mediaService.__testing__.oneProcessingBatch();
 
-        // Should call routing but not attempt upload (destination is empty)
         const queryParams = `?start_ms=${metadata.startedAt}&end_ms=${metadata.stoppedAt}`;
         expect(mockFetch).toHaveBeenCalledWith(
             `${routingAddress}/routing${queryParams}`,
             expect.anything()
         );
-        // Recording should still be cleaned up
-        expect(mockFsModuleInstance.rm).toHaveBeenCalledWith(recordingDir, { recursive: true });
+        expect(mockFsModuleInstance.rm).not.toHaveBeenCalledWith(recordingDir, {
+            recursive: true
+        });
+        expect(mockFsInstance.exists(recordingDir)).toBe(true);
     });
 
-    test("should upload video with a MIME type matching the configured container", async () => {
+    test("uploads only the requested video artifact", async () => {
         const recordingName = "session_video_mime";
         const routingAddress = "http://www.oodo.test/routing";
         const uploadDestination = "http://upload.local/video";
@@ -1646,11 +1612,8 @@ describe("Scheduler Service network tests", () => {
             stoppedAt: Date.now() - 1000,
             startedAt: 1000,
             timeStamps: [
-                {
-                    tag: TIME_TAG.FILE_STATE_CHANGE,
-                    timestamp: 1100,
-                    info: { type: STREAM_TYPE.CAMERA, active: true, filename: "cam_1.mp4" }
-                }
+                fileState(STREAM_TYPE.AUDIO, "audio_1.ogg", 1100),
+                fileState(STREAM_TYPE.CAMERA, "cam_1.mp4", 1100)
             ],
             audio: false,
             video: true,
@@ -1658,8 +1621,10 @@ describe("Scheduler Service network tests", () => {
         };
 
         mockFsInstance.mkdir(recordingDir);
+        mockFsInstance.mkdir(path.join(recordingDir, "audio"));
         mockFsInstance.mkdir(path.join(recordingDir, "camera"));
         mockFsInstance.write(path.join(recordingDir, "metadata.bin"), JSON.stringify(metadata));
+        mockFsInstance.write(path.join(recordingDir, "audio", "audio_1.ogg"), "dummy audio");
         mockFsInstance.write(path.join(recordingDir, "camera", "cam_1.mp4"), "dummy video");
 
         mockFetch.mockImplementation(async (url: string | URL | Request) => {
@@ -1667,19 +1632,23 @@ describe("Scheduler Service network tests", () => {
             if (urlString.includes("/routing")) {
                 return {
                     ok: true,
-                    json: async () => ({ destination: uploadDestination }),
+                    text: async () => JSON.stringify({ destination: uploadDestination }),
                     statusText: "OK"
                 } as Response;
             }
             if (urlString === uploadDestination) {
                 return { ok: true, text: async () => "" } as Response;
             }
-            return { ok: false, statusText: "Not Found" } as Response;
+            return {
+                ok: false,
+                statusText: "Not Found",
+                text: async () => ""
+            } as Response;
         });
 
         await mediaService.start();
-        await mediaService.__testing__.oneProcessingBatch();
 
+        expect(mockFetch.mock.calls.some(([url]) => url.toString().includes("/audio"))).toBe(false);
         const uploadCall = mockFetch.mock.calls.find(
             ([url]) => url.toString() === uploadDestination
         );

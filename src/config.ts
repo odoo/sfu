@@ -6,6 +6,10 @@ import type { RouterRtpCodecCapability } from "mediasoup/node/lib/types";
 import type { ProducerOptions } from "mediasoup-client/lib/Producer";
 
 const FALSY_INPUT = new Set(["disable", "false", "none", "no", "0"]);
+const envFlag = (value?: string) => {
+    const normalized = value?.trim().toLowerCase();
+    return Boolean(normalized && !FALSY_INPUT.has(normalized));
+};
 type LogLevel = "none" | "error" | "warn" | "info" | "debug" | "verbose";
 type WorkerLogLevel = "none" | "error" | "warn" | "debug";
 const testingMode = Boolean(process.env.JEST_WORKER_ID);
@@ -158,7 +162,7 @@ export const LOG_COLOR: boolean = process.env.LOG_COLOR
 /**
  * Whether the recording feature is enabled, false by default.
  */
-export const RECORDING: boolean = Boolean(process.env.RECORDING);
+export const RECORDING: boolean = envFlag(process.env.RECORDING);
 
 /**
  * Base path used by local SFU storage directories, defaults to `${tmpDir}`.
@@ -179,7 +183,7 @@ export const DYNAMIC_MAX_PORT: number =
  * If set, generates `.log` files alongside all ffmpeg file outputs.
  * eg: `recording_1768377901321.mp4` will have an associated `recording_1768377901321.mp4.log`
  */
-export const FFMPEG_LOGGING = Boolean(process.env.FFMPEG_LOGGING);
+export const FFMPEG_LOGGING = envFlag(process.env.FFMPEG_LOGGING);
 
 // ---------------------------------
 // ---------- CHECKS ---------------
@@ -328,8 +332,14 @@ export const rtc = Object.freeze({
                 videoGoogleMaxBitrate: MAX_VIDEO_BITRATE * 2
             },
             encodings: [
-                { scaleResolutionDownBy: 4, maxBitrate: Math.floor(MAX_VIDEO_BITRATE / 4) },
-                { scaleResolutionDownBy: 2, maxBitrate: Math.floor(MAX_VIDEO_BITRATE / 2) },
+                {
+                    scaleResolutionDownBy: 4,
+                    maxBitrate: Math.floor(MAX_VIDEO_BITRATE / 4)
+                },
+                {
+                    scaleResolutionDownBy: 2,
+                    maxBitrate: Math.floor(MAX_VIDEO_BITRATE / 2)
+                },
                 { scaleResolutionDownBy: 1, maxBitrate: MAX_VIDEO_BITRATE }
             ]
         }

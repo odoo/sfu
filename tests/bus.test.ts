@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 
-import { expect, describe, jest } from "@jest/globals";
+import { afterEach, expect, describe, jest } from "@jest/globals";
 
 import { Bus } from "#src/shared/bus";
 import type { JSONSerializable, BusMessage, RequestMessage } from "#src/shared/types";
@@ -41,18 +41,17 @@ function pipeSockets(mockWebSocket: MockWebSocket, mockTargetWebSocket: MockTarg
     });
 }
 
-/**
- * @returns {{aliceSocket: MockWebSocket, bobSocket: MockTargetWebSocket}}
- */
 function mockSocketPair() {
     const aliceSocket = new MockWebSocket();
     const bobSocket = new MockTargetWebSocket();
-    // piping events between the sockets
     pipeSockets(aliceSocket, bobSocket);
     return { aliceSocket, bobSocket };
 }
 
 describe("Bus API", () => {
+    afterEach(() => {
+        jest.useRealTimers();
+    });
     test("message()", () => {
         let receivedMessage;
         const { aliceSocket, bobSocket } = mockSocketPair();
@@ -68,12 +67,8 @@ describe("Bus API", () => {
         const { aliceSocket, bobSocket } = mockSocketPair();
         const aliceBus = new Bus(aliceSocket as unknown as WebSocket);
         const bobBus = new Bus(bobSocket as unknown as WebSocket);
-        //@ts-expect-error we do not need to return for the test
-        bobBus.onRequest = (message: JSONSerializable) => {
-            if (message === "ping") {
-                return "pong";
-            }
-        };
+        bobBus.onRequest = async (message) =>
+            (message as unknown) === "ping" ? "pong" : undefined;
         const response = await aliceBus.request("ping" as unknown as RequestMessage);
         expect(response).toBe("pong");
     });
@@ -92,18 +87,11 @@ describe("Bus API", () => {
     test("promises are rejected when the bus is closed", async () => {
         const { aliceSocket } = mockSocketPair();
         const aliceBus = new Bus(aliceSocket as unknown as WebSocket);
-        let rejected = false;
         const promise = aliceBus.request("ping" as unknown as RequestMessage);
-        aliceBus.close();
-        try {
-            await promise;
-        } catch {
-            rejected = true;
-        }
-        expect(rejected).toBe(true);
+        aliceSocket.close();
+        await expect(promise).rejects.toThrow("bus closed");
     });
     test("Bus requests do timeout", async () => {
-        jest.spyOn(global, "setTimeout");
         jest.useFakeTimers();
         const { aliceSocket } = mockSocketPair();
         const aliceBus = new Bus(aliceSocket as unknown as WebSocket);
@@ -111,10 +99,8 @@ describe("Bus API", () => {
         const promise = aliceBus.request("hello" as unknown as RequestMessage, { timeout });
         jest.advanceTimersByTime(timeout);
         await expect(promise).rejects.toThrow();
-        jest.useRealTimers();
     });
     test("Bus does batch messages, respects order and timing", async () => {
-        jest.spyOn(global, "setTimeout");
         jest.useFakeTimers();
         const { aliceSocket, bobSocket } = mockSocketPair();
         const testBatchDelay = 10000;
@@ -145,6 +131,5 @@ describe("Bus API", () => {
         expect(receivedMessages).toStrictEqual([...firstBatch, secondBatch[0]]);
         jest.advanceTimersByTime(testBatchDelay);
         expect(receivedMessages).toStrictEqual(firstBatch.concat(secondBatch));
-        jest.useRealTimers();
     });
 });

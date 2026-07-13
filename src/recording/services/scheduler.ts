@@ -10,7 +10,8 @@ import { Logger } from "#src/utils/utils.ts";
 const logger = new Logger("SCHEDULER");
 const CHECK_INTERVAL = 2 * 60_000;
 const CPU_LOAD_THRESHOLD = 0.8;
-const REQUEST_TIMEOUT = 30_000;
+const ROUTING_TIMEOUT = 30_000;
+const UPLOAD_TIMEOUT = 30 * 60_000;
 
 let interval: NodeJS.Timeout | undefined;
 
@@ -22,24 +23,22 @@ let processingQueue: Promise<void> = Promise.resolve();
 
 export const __testing__ = {
     async oneProcessingBatch() {
-        await processingQueue;
-        return;
+        await checkSystemAndProcess();
     }
 };
 
 async function finalizeRecordingFolder(recordingDir: string, folderName: string) {
-    try {
-        if (config.FFMPEG_LOGGING) {
-            await fs.rename(recordingDir, path.join(config.dir.debug, folderName));
-        } else {
-            await fs.rm(recordingDir, { recursive: true });
-        }
-    } catch (error) {
-        logger.error(`Failed to cleanup recording folder ${folderName}: ${error}`);
+    if (config.FFMPEG_LOGGING) {
+        await fs.rename(recordingDir, path.join(config.dir.debug, folderName));
+    } else {
+        await fs.rm(recordingDir, { recursive: true });
     }
 }
 
-const mediaUploader = new MediaUploader({ requestTimeoutMs: REQUEST_TIMEOUT });
+const mediaUploader = new MediaUploader({
+    routingTimeoutMs: ROUTING_TIMEOUT,
+    uploadTimeoutMs: UPLOAD_TIMEOUT
+});
 const recordingProcessor = new RecordingProcessor({
     uploader: mediaUploader,
     finalizeRecordingFolder
@@ -68,40 +67,35 @@ const recordingProcessor = new RecordingProcessor({
 export async function start(): Promise<void> {
     logger.info("Starting scheduler service");
     await checkSystemAndProcess();
-    // TODO maybe use fs.watch(dir)
-    // may need local knowledge of which files are being processed
-    // read folder at startup, then listen for change, build a queue of folders to process
     interval = setInterval(checkSystemAndProcess, CHECK_INTERVAL);
 }
 
-export function close() {
+export async function close() {
     if (interval) {
         clearInterval(interval);
         interval = undefined;
     }
+    await processingQueue;
 }
 
 async function checkSystemAndProcess() {
     processingQueue = processingQueue.then(async () => {
         logger.debug("checking scheduled recording processing");
         try {
-            if (isCpuLoaded()) {
+            let processMedia = !isCpuLoaded();
+            if (!processMedia) {
                 logger.warn("CPU is too loaded, skipping recording processing");
-                return;
             }
-            // Loop until no recordings remain or CPU becomes too loaded.
-            let didWork = true;
-            while (didWork) {
-                didWork = await processRecordings();
-                if (!didWork) {
-                    return;
+            while (await processRecordings(processMedia)) {
+                if (!processMedia) {
+                    continue;
                 }
                 await new Promise((resolve) =>
                     setTimeout(resolve, config.recording.processingCooldown)
                 );
                 if (isCpuLoaded()) {
                     logger.warn("CPU is too loaded, skipping recording processing");
-                    return;
+                    processMedia = false;
                 }
             }
         } catch (error) {
@@ -124,7 +118,7 @@ function isCpuLoaded(): boolean {
 /**
  * @returns `true` if a recording directory was finalized, `false` otherwise.
  */
-async function processRecordings(): Promise<boolean> {
+async function processRecordings(processMedia: boolean): Promise<boolean> {
     logger.verbose(`Checking recordings in ${config.dir.recordings}`);
     try {
         const recordingDirectories = await fs.readdir(config.dir.recordings, {
@@ -132,7 +126,10 @@ async function processRecordings(): Promise<boolean> {
         });
         for (const recordingEntry of recordingDirectories) {
             if (recordingEntry.isDirectory()) {
-                const finalized = await recordingProcessor.process(recordingEntry.name);
+                const finalized = await recordingProcessor.process(
+                    recordingEntry.name,
+                    processMedia
+                );
                 if (finalized) {
                     return true;
                 }

@@ -1,11 +1,13 @@
 # Recording
-see [recording/*](../src/recording) for more details.
 
-The SFu can record streams from a channel (depending on permissions and sfu setup). 
+see [recording/\*](../src/recording) for more details.
+
+The SFu can record streams from a channel (depending on permissions and sfu setup).
 
 Recording happens in two steps:
-1) each streams is recorded in real time individually (the "raw recording").
-2) later, the raw recordings are processed to produce one "combination" file.
+
+1. each streams is recorded in real time individually (the "raw recording").
+2. later, the raw recordings are processed to produce one "combination" file.
 
 The two phase approach allow for the real time part to be light (only writing packets to file, no transcoding), and then the compiling phase (composition/mixing and transcoding) can be done later with no real time constraint (so the heavy work can be done when the SFU is not under too much load).
 
@@ -13,7 +15,7 @@ The two phase approach allow for the real time part to be light (only writing pa
 
 ```mermaid
 flowchart TB
-   
+
     R["Recorder <br> Channel Level"] ---> RT1["SessionRecorder <br> Session 1"] & RT2["SessionRecorder <br> Session 2"]
     R ---> RTN["SessionRecorder <br> Session N"] & RTN1["SessionRecorder <br> Session N+1"] & RTN0["SessionRecorder <br> Session N+X"]
     RT1 -- audio --> MSA1["MediaSink <br> Audio"]
@@ -42,49 +44,58 @@ flowchart TB
 2.  **SessionRecorder (Session Level)**
     Bound to a specific rtc `Session`.
     Monitors the user's producers (audio, camera, screen). When a user releases a stream (e.g., turns on camera), the `SessionRecorder` detects it and manages a `MediaSink` for each.
-    *   **Inputs:** `audio`, `camera`, `screen` flags determine which streams to record.
+
+    -   **Inputs:** `audio`, `camera`, `screen` flags determine which streams to record.
 
 3.  **MediaSink (Stream Level / RTP)**
     Handles a single stream type (e.g., just the camera) for a session.
-    Bridges the Mediasoup `Producer` (source) to the `MediaWriter` (ffmpeg) process (sink), and manages the lifecycle of the port, transport, consumer, and ffmpeg process. It also handles thhe "allowed"/"active" flags.
-*   
-// TODO allowed/active when more stable
+    bridges the Mediasoup `Producer` (source) to the `MediaWriter` (ffmpeg) process (sink), and manages the lifecycle of the port, transport, consumer and ffmpeg process
+    it also handles thhe "allowed"/"active" flags
 
-1.  **MediaWriter (Process Level)**
+4.  **MediaWriter (Process Level)**
     Represents a single child process writing to a file.
     Receives RTP packets on a specified port and writes them to a file container. Essentially a wrapper to abstract ffmpeg.
 
 ## Output Structure
 
-Recordings are saved in a directory `{channelUUID}/{timestamp}` inside `config.dir.recordings` (`${DATA_PATH}/recordings`).
+recordings are saved as `${timestamp}-${channelUUID}` inside `config.dir.recordings` (`${DATA_PATH}/recordings`)
 
 ```text
-{channelUUID}/{timestamp}/
-├── metadata.json
+{timestamp}-{channelUUID}/
+├── metadata.bin
 ├── audio/
 │   └── {timestamp}-{sessionID}-{streamType}.webm
 │   └── 1765292341216-987-audio.webm
 │   └── 1765292441216-988-audio.webm
-├── video/
+├── camera/
 │   └── {timestamp}-{sessionID}-{streamType}.webm
-│   └── 1765292341216-985-video.mp4 // extension depends on codec
-│   └── 1765292341219-987-video.webm
-│   └── 1765292341219-987-video.log // if LOG_LEVEL=debug
+│   └── 1765292341216-985-camera.mp4
+│   └── 1765292341219-987-camera.webm
+│   └── 1765292341219-987-camera.webm.log
 └── screen/
     └── 1765292341216-987-screen.mp4
 ```
 
-#### Metadata File (`metadata.json`)
-// TODO: reminder, need to check when code is more stable, keys are not final (may contain more than needed while im debugging/developing), need to wait for the call artifact PR to be merged to know exactly what will be needed.
+container extensions depend on the stream codec and `.log` files are written when `FFMPEG_LOGGING` is enabled
 
-Contains the timestamps of the recording, and the address to which the file should be uploaded to.
+#### metadata file (`metadata.bin`)
+
+the metadata is encrypted at rest because it contains participant labels, routing data and the channel key
+
+after decryption it contains the recording timeline and upload contract
 
 ```json
 {
   "channelName": "discuss-channel-1234",
+  "channelUUID": "e71d3571-60c8-4c4a-9c49-7686f9a24690",
   "routingAddress": "http://www.oodo.com/discuss/recording/routing/1234",
+  "channelKey": "base64-channel-key",
+  "audio": true,
   "video": true,
   "transcription": false,
+  "labels": {
+    "session-123": "Ada"
+  },
   "startedAt": 1670000000000,
   "stoppedAt": 1670000060000,
   "timeStamps": [
@@ -92,36 +103,36 @@ Contains the timestamps of the recording, and the address to which the file shou
       "tag": "file_state_change",
       "timestamp": 1670000005000,
       "info": {
-        "filename": "session-123-audio-167...webm",
+        "filename": "1670000005000-session-123-audio.webm",
         "type": "audio",
-        "active": true
+        "sessionId": "session-123",
+        "active": true,
+        "available": true
       }
     },
     ...
   ]
 }
 ```
-The first occurence of `file_state_change` with `active: true` marks the start of a file, and the last one with `active: false` marks the end, 
-each file can have any arbitrary amount of state changes, when not active the content is essentially empty.
 
-note: the timestamp are the source of truth, a file can span over a period of time during which its underlying stream atlernate between active/inactive (will just be no sound / no video) because we do not estroy/rebuild the recording process for each state change (would lead to loss/latency, and an empty segment does not take much space).
+the first `file_state_change` with `active: true` marks the start of a file and the last event with `active: false` marks the end
 
-## Sheduler Service & Post-Processing
+timestamps are the source of truth because one file can span active and inactive periods without restarting FFmpeg
 
-While the **Recorder** handles the real-time capture of streams, the **Scheduler Service** is responsible for the asynchronous post-processing of these raw files.
+## scheduler service and post-processing
 
-### 1. [Scheduler Service](../src/recording/services/scheduler.ts)
+the scheduler scans finalized raw recordings sequentially and defers media processing while CPU load is high
 
-TODO
+### [scheduler service](../src/recording/services/scheduler.ts)
 
-### 2. [Media Compiler](../src/recording/models/media_compiler.ts)
+the scheduler manage retry timing, TTL cleanup and final folder removal
 
-The compiler transforms raw recording files into compiled recordings (1 compiler 1 recording).
+### [media compiler](../src/recording/models/media_compiler.ts)
 
-#### Upload
-TODO: not decided yet, waiting on PR: https://github.com/odoo/odoo/pull/233836
+one compiler combines the raw streams for one recording into its final audio and video artifacts
 
-After compilation, the service is responsible for uploading the generated artifacts based on the routing information obtained from the `routingAddress`
+#### upload
 
-TODO: should create a call artifact for transcription and for the video, the ir attachment of the artifact
-should be cloud stored (and the upload URL passed to the SFU)
+audio is posted to `${routingAddress}/audio`
+
+video is posted to the destination returned by `${routingAddress}/routing`

@@ -235,7 +235,7 @@ export class LocalNetwork {
 
         // Stop all services
         auth.close();
-        http.close();
+        await http.close();
         await resources.close();
 
         // Clear network info

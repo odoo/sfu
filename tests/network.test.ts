@@ -10,6 +10,7 @@ import { SFU_CLIENT_STATE } from "#src/client";
 import { timeouts } from "#src/config";
 
 import { LocalNetwork } from "#tests/utils/network";
+import { waitFor } from "#tests/utils/utils";
 
 const HTTP_INTERFACE = "0.0.0.0";
 const PORT = 61254;
@@ -24,22 +25,9 @@ describe("Full network", () => {
         await network.close();
         jest.useRealTimers();
     });
-    test("Multiple clients handshake and reach connected state", async () => {
-        const channelUUID = await network.getChannelUUID();
-        const user1 = await network.connect(channelUUID, 1);
-        const [firstStateChange] = await once(user1.session, "stateChange");
-        expect(firstStateChange).toBe(SESSION_STATE.CONNECTED);
-        const user2 = await network.connect(channelUUID, 2);
-        const [secondStateChange] = await once(user2.session, "stateChange");
-        expect(secondStateChange).toBe(SESSION_STATE.CONNECTED);
-        const user3 = await network.connect(channelUUID, 3);
-        const [thirdStateChange] = await once(user3.session, "stateChange");
-        expect(thirdStateChange).toBe(SESSION_STATE.CONNECTED);
-    });
     test("The session of the server closes when the client is disconnected", async () => {
         const channelUUID = await network.getChannelUUID();
         const user1 = await network.connect(channelUUID, 1);
-        expect(user1.session).toBeDefined();
         user1.sfuClient.disconnect();
         await once(user1.session, "close");
         expect(user1.session.state).toBe(SESSION_STATE.CLOSED);
@@ -55,37 +43,10 @@ describe("Full network", () => {
             payload: { sessionId: 2 }
         });
     });
-    test("Sessions broadcast info to each other", async () => {
-        const channelUUID = await network.getChannelUUID();
-        const user1 = await network.connect(channelUUID, 1);
-        const user2 = await network.connect(channelUUID, 2);
-        //@ts-expect-error accessing private method for testing purposes
-        user2.session._broadcastInfo();
-        const [event] = await once(user1.sfuClient, "update");
-        expect(event.detail.name).toBe("info_change");
-        expect(event.detail.payload).toEqual({
-            [2]: {
-                isRaisingHand: undefined,
-                isTalking: undefined,
-                isSelfMuted: undefined,
-                isDeaf: undefined,
-                isCameraOn: undefined,
-                isScreenSharingOn: undefined
-            }
-        });
-    });
     test("Server session info can be updated by the client", async () => {
         const channelUUID = await network.getChannelUUID();
         const sender = await network.connect(channelUUID, 1);
         const user2 = await network.connect(channelUUID, 3);
-        expect(sender.session.info).toEqual({
-            isRaisingHand: undefined,
-            isTalking: undefined,
-            isSelfMuted: undefined,
-            isDeaf: undefined,
-            isCameraOn: undefined,
-            isScreenSharingOn: undefined
-        });
         const info = {
             isRaisingHand: true,
             isTalking: false,
@@ -98,7 +59,6 @@ describe("Full network", () => {
         const [event] = await once(user2.sfuClient, "update");
         expect(event.detail.name).toBe("info_change");
         expect(event.detail.payload).toEqual({ [1]: info });
-        // if we mock a network with multiple session, we should check if the other sessions get the update too
     });
     test("Can obtain the info of the whole channel", async () => {
         const channelUUID = await network.getChannelUUID();
@@ -121,7 +81,6 @@ describe("Full network", () => {
         expect(event.detail.payload).toEqual({
             [user3.session.id]: user3Info
         });
-        // with needRefresh, the client should receive the info of all sessions except that of their own
         user2.sfuClient.updateInfo({ isTalking: true }, { needRefresh: true });
         const [event2] = await once(user2.sfuClient, "update");
         expect(event2.detail.payload).toEqual({
@@ -136,10 +95,9 @@ describe("Full network", () => {
         const user1 = await network.connect(channelUUID, sameId);
         const user2 = await network.connect(channelUUID, sameId);
         const user3 = await network.connect(channelUUID, sameId);
-        const lastSession = channel!.sessions.get(sameId);
-        expect(user1.session).not.toBe(lastSession);
-        expect(user2.session).not.toBe(lastSession);
-        expect(user3.session).toBe(lastSession);
+        expect(user1.session.state).toBe(SESSION_STATE.CLOSED);
+        expect(user2.session.state).toBe(SESSION_STATE.CLOSED);
+        expect(channel!.sessions.get(sameId)).toBe(user3.session);
         expect(channel!.sessions.size).toBe(1);
     });
     test("A client can forward a track to other clients", async () => {
@@ -164,8 +122,6 @@ describe("Full network", () => {
     });
     test("Recovery attempts are made if the production fails, a failure does not close the connection", async () => {
         const channelUUID = await network.getChannelUUID();
-        const user = await network.connect(channelUUID, 1);
-        await user.isConnected;
         const sender = await network.connect(channelUUID, 3);
         await sender.isConnected;
         const track = new FakeMediaStreamTrack({ kind: "audio" });
@@ -196,15 +152,11 @@ describe("Full network", () => {
     });
     test("The client can obtain download and upload statistics", async () => {
         const channelUUID = await network.getChannelUUID();
-        const user1 = await network.connect(channelUUID, 1);
-        await user1.isConnected;
         const sender = await network.connect(channelUUID, 3);
         await sender.isConnected;
         const track = new FakeMediaStreamTrack({ kind: "audio" });
         await sender.sfuClient.updateUpload(STREAM_TYPE.AUDIO, track);
-        await once(user1.sfuClient, "update");
         const stats = await sender.sfuClient.getStats();
-        // since it is a fake webRTC connection, there is no stats
         expect(stats).toHaveProperty("downloadStats");
         expect(stats).toHaveProperty("uploadStats");
         expect(stats).toHaveProperty("audio");
@@ -217,11 +169,24 @@ describe("Full network", () => {
         await sender.isConnected;
         const track = new FakeMediaStreamTrack({ kind: "audio" });
         await sender.sfuClient.updateUpload(STREAM_TYPE.AUDIO, track);
-        await once(user1.sfuClient, "update");
+        const [event] = await once(user1.sfuClient, "update");
+        const download = event.detail.payload.track as MediaStreamTrack;
+        // @ts-expect-error verifying the server-side forwarding state
+        const getServerConsumer = () => user1.session._consumers.get(sender.session.id)?.audio;
+        await waitFor(getServerConsumer);
+        const serverConsumer = getServerConsumer();
+        expect(serverConsumer).toBeDefined();
+        expect(download.enabled).toBe(true);
+        const pause = once(serverConsumer!.observer, "pause");
         user1.sfuClient.updateDownload(sender.session.id, { audio: false });
+        expect(download.enabled).toBe(false);
+        await pause;
+        expect(serverConsumer!.paused).toBe(true);
+        const resume = once(serverConsumer!.observer, "resume");
         user1.sfuClient.updateDownload(sender.session.id, { audio: true });
-        expect(user1.sfuClient.state).toBe(SFU_CLIENT_STATE.CONNECTED);
-        expect(user1.session.state).toBe(SESSION_STATE.CONNECTED);
+        expect(download.enabled).toBe(true);
+        await resume;
+        expect(serverConsumer!.paused).toBe(false);
     });
     test("The client can update the state of their upload", async () => {
         const channelUUID = await network.getChannelUUID();

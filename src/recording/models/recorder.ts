@@ -115,11 +115,12 @@ export class Recorder extends EventEmitter {
     private _timeout?: NodeJS.Timeout;
     private readonly _channel: Channel;
     private readonly _sessionRecorders = new Map<SessionId, SessionRecorder>();
+    private readonly _sessionStops = new Set<Promise<void>>();
     private readonly _trackedVideoSessions: TrackedVideoSessions = {
         [STREAM_TYPE.CAMERA]: [],
         [STREAM_TYPE.SCREEN]: []
     };
-    private _stopPromise?: Promise<void>;
+    private _transition?: Promise<void>;
     private _hasFailed = false;
     private readonly _metaData: Metadata = {
         channelName: "",
@@ -166,45 +167,32 @@ export class Recorder extends EventEmitter {
      * @param [options.transcription] - whether to generate a transcription, this flags the
      * current recording for transcription, can be changed at runtime.
      */
-    async start(options: { audio?: boolean; video?: boolean; transcription?: boolean } = {}) {
-        this.transcription = options.transcription ?? this.transcription;
-        this.audio = options.audio ?? this.audio;
-        if (this.isRecording) {
-            this._emitStatus();
-            return;
-        }
-        if (!(options.audio || options.video || options.transcription)) {
-            // TODO handle when we only have video
-            logger.warn(
-                `Cannot start recording for ${this._channel.name}: no audio, video or transcription requested`
-            );
-            return;
-        }
-        this.isRecording = true;
-        this.video = Boolean(options.video);
-        this._hasFailed = false;
-        this._metaData.startedAt = Date.now();
-
-        try {
-            await this._start();
-            this._emitStatus();
-        } catch (error) {
-            if (error instanceof DiskSpaceLimitReachedError) {
-                logger.warn(
-                    `Recording blocked for ${this._channel.name}: insufficient available disk space`
-                );
-                await this.stop({ save: false, stopCode: STOP_CODE.DISK_SPACE_EXHAUSTED });
-            } else {
-                logger.error(`Failed to start recording for ${this._channel.name}: ${error}`);
-                await this.stop({ save: false, stopCode: STOP_CODE.RECORDING_FAILED });
+    start(options: { audio?: boolean; video?: boolean; transcription?: boolean } = {}) {
+        return this._enqueueTransition(async () => {
+            this.transcription = options.transcription ?? this.transcription;
+            this.audio = options.audio ?? this.audio;
+            if (this.isRecording) {
+                this._emitStatus();
+                return;
             }
-        }
+            if (!(options.audio || options.video || options.transcription)) {
+                logger.warn(
+                    `Cannot start recording for ${this._channel.name}: no audio, video or transcription requested`
+                );
+                return;
+            }
+            this.isRecording = true;
+            this.video = Boolean(options.video);
+            this._hasFailed = false;
+            this._metaData.startedAt = Date.now();
+            await this._startRecording();
+        });
     }
 
     /**
      * Record a timestamp entry and updates runtime stream gating for camera/screen streams.
      */
-    mark(tag: TIME_TAG, info: TimeTagInfo) {
+    mark(tag: TIME_TAG, info: TimeTagInfo, sessionRecorder: SessionRecorder) {
         const available = info.eof ? false : info.available;
         const isAvailable = available === true;
         this._metaData.timeStamps.push({
@@ -221,6 +209,9 @@ export class Recorder extends EventEmitter {
         if (info.type !== STREAM_TYPE.CAMERA && info.type !== STREAM_TYPE.SCREEN) {
             return;
         }
+        if (this._sessionRecorders.get(info.sessionId) !== sessionRecorder) {
+            return;
+        }
         this._trackVideoAvailability(info.type, info.sessionId, isAvailable);
         this._enforceVideoLimits();
     }
@@ -229,102 +220,111 @@ export class Recorder extends EventEmitter {
      * @param param0
      * @param param0.save - whether to save the recording, defaults to true
      */
-    async stop(options: StopOptions = {}): Promise<void> {
-        if (this._stopPromise) {
-            return this._stopPromise;
-        }
-        if (!this.isRecording) {
-            return;
-        }
-        this._stopPromise = this._stop(options);
-        try {
-            await this._stopPromise;
-        } finally {
-            this._stopPromise = undefined;
-        }
+    stop(options: StopOptions = {}): Promise<void> {
+        return this._enqueueTransition(async () => {
+            if (this.isRecording) {
+                await this._stop(options);
+            }
+        });
+    }
+
+    private _enqueueTransition(callback: () => Promise<void>) {
+        const transition = this._transition ? this._transition.then(callback) : callback();
+        const tail = transition
+            .catch(() => undefined)
+            .finally(() => {
+                if (this._transition === tail) {
+                    this._transition = undefined;
+                }
+            });
+        this._transition = tail;
+        return transition;
     }
 
     async fail(error?: unknown): Promise<void> {
-        if (!this.isRecording && !this._stopPromise) {
+        if (!this.isRecording && !this._folder) {
             return;
         }
         this._hasFailed = true;
         if (error) {
             logger.error(`Recording failed for channel ${this._channel.name}: ${error}`);
         }
-        await this.stop({ save: false, stopCode: STOP_CODE.RECORDING_FAILED });
+        if (this.isRecording) {
+            await this.stop({ save: false, stopCode: STOP_CODE.RECORDING_FAILED });
+        }
     }
 
     private async _stop({ save = true, stopCode = STOP_CODE.USER_REQUEST }: StopOptions) {
         const startedAt = this._metaData.startedAt;
+        const stoppedAt = Date.now();
         const shouldSave =
-            save && (startedAt ? Date.now() - startedAt >= config.recording.minDuration : true);
+            save && (startedAt ? stoppedAt - startedAt >= config.recording.minDuration : true);
         const finalState = {
             audio: this.audio,
             video: this.video,
-            transcription: this.transcription
+            transcription: this.transcription,
+            stoppedAt
         };
         this.isRecording = false;
         this.audio = false;
         this.video = false;
         this.transcription = false;
         this._emitStatus(stopCode);
-        // At this point we may wait a few minutes / seconds in case they want to
-        // restart the recording, they we just restore the current one.
         logger.verbose(`terminating recorder for channel ${this._channel.name}`);
         clearTimeout(this._timeout);
         this._timeout = undefined;
         this._channel.off(Channel.Events.SESSION_JOIN, this._onSessionJoin);
         this._channel.off(Channel.Events.SESSION_LEAVE, this._onSessionLeave);
-        const sealedMetadata = shouldSave ? this._sealMetaData(finalState) : undefined;
-        this._metaData.timeStamps = [];
-        this._metaData.startedAt = undefined;
-        this._metaData.labels = {};
         this._resetTrackedVideoSessions();
         const currentFolder = this._folder;
+        await this._stopSessionRecorders();
         this._folder = undefined;
-        const results = await this._stopSessionRecorders();
-        const failed = this._hasFailed || results.some((result) => result.status === "rejected");
+        const failed = this._hasFailed;
         if (failed && stopCode !== STOP_CODE.RECORDING_FAILED) {
             this._emitStatus(STOP_CODE.RECORDING_FAILED);
         }
-        if (shouldSave && !failed && currentFolder) {
-            try {
-                await currentFolder.add(config.recording.metadataFileName, sealedMetadata!);
+        try {
+            if (shouldSave && !failed && currentFolder) {
+                await currentFolder.add(
+                    config.recording.metadataFileName,
+                    this._sealMetaData(finalState)
+                );
                 await currentFolder.move(config.recording.directory);
                 this._hasFailed = false;
                 return;
-            } catch (error) {
-                logger.error(
-                    `Failed to finalize recording for channel ${this._channel.name}: ${error}`
-                );
             }
+        } catch (error) {
+            logger.error(
+                `Failed to finalize recording for channel ${this._channel.name}: ${error}`
+            );
+            this._emitStatus(STOP_CODE.RECORDING_FAILED);
+        } finally {
+            this._metaData.timeStamps = [];
+            this._metaData.startedAt = undefined;
+            this._metaData.labels = {};
         }
         await currentFolder?.delete();
         this._hasFailed = false;
     }
 
-    /**
-     * Adds the final entries to the metadata, encrypts it and resets its state.
-     *
-     * @returns encrypted metadata
-     */
     private _sealMetaData({
         audio,
         video,
-        transcription
+        transcription,
+        stoppedAt
     }: {
         audio: boolean;
         video: boolean;
         transcription: boolean;
+        stoppedAt: number;
     }) {
         const metadata = JSON.stringify({
             ...this._metaData,
             audio,
             video,
             transcription,
-            channelKey: this._channel.key,
-            stoppedAt: Date.now()
+            channelKey: this._channel.key?.toString("base64") ?? "",
+            stoppedAt
         });
         /**
          * As the metadata can contain sensitive information,
@@ -340,24 +340,38 @@ export class Recorder extends EventEmitter {
         if (!session) {
             return;
         }
+        this._stopSessionRecorder(id);
+        this._removeTrackedVideoSession(id);
         this._metaData.labels[id] = session.label || "unknown";
         this._sessionRecorders.set(
             session.id,
             new SessionRecorder(this, session, this._getRecordingStates())
         );
-        if (this._hasTrackedVideoSessions()) {
-            this._enforceVideoLimits();
-        }
+        this._enforceVideoLimits();
     }
 
     private _onSessionLeave(id: SessionId) {
-        const sessionRecorder = this._sessionRecorders.get(id);
-        if (sessionRecorder) {
-            sessionRecorder.stop();
-            this._sessionRecorders.delete(id);
-        }
+        this._stopSessionRecorder(id);
         this._removeTrackedVideoSession(id);
         this._enforceVideoLimits();
+    }
+
+    private _stopSessionRecorder(id: SessionId) {
+        const sessionRecorder = this._sessionRecorders.get(id);
+        if (!sessionRecorder) {
+            return;
+        }
+        this._sessionRecorders.delete(id);
+        const stopPromise = sessionRecorder.stop().catch((error) => {
+            logger.error(`Failed to stop recorder for session ${id}: ${error}`);
+            void this.fail(error).catch((failure) => {
+                logger.error(`Failed to stop recording after session ${id} failure: ${failure}`);
+            });
+        });
+        void stopPromise.finally(() => {
+            this._sessionStops.delete(stopPromise);
+        });
+        this._sessionStops.add(stopPromise);
     }
 
     private _emitStatus(stopCode?: STOP_CODE) {
@@ -369,6 +383,32 @@ export class Recorder extends EventEmitter {
             stopCode
         } as UpdateData);
     }
+
+    private async _startRecording() {
+        try {
+            await this._start();
+            this._emitStatus();
+        } catch (error) {
+            let stopOptions: StopOptions;
+            if (error instanceof DiskSpaceLimitReachedError) {
+                logger.warn(
+                    `Recording blocked for ${this._channel.name}: insufficient available disk space`
+                );
+                stopOptions = {
+                    save: false,
+                    stopCode: STOP_CODE.DISK_SPACE_EXHAUSTED
+                };
+            } else {
+                logger.error(`Failed to start recording for ${this._channel.name}: ${error}`);
+                stopOptions = {
+                    save: false,
+                    stopCode: STOP_CODE.RECORDING_FAILED
+                };
+            }
+            await this._stop(stopOptions);
+        }
+    }
+
     private async _start() {
         this._resetTrackedVideoSessions();
         this._folder = await Folder.create(`${Date.now()}-${this._channel.uuid}`, [
@@ -383,22 +423,27 @@ export class Recorder extends EventEmitter {
         logger.verbose(`Initializing recorder for channel: ${this._channel.name}`);
         for (const [sessionId, session] of this._channel.sessions) {
             this._metaData.labels[sessionId] = session.label || "unknown";
+            for (const type of [STREAM_TYPE.CAMERA, STREAM_TYPE.SCREEN] as const) {
+                const producer = session.producers[type];
+                if (producer && !producer.paused) {
+                    this._trackVideoAvailability(type, sessionId, true);
+                }
+            }
             this._sessionRecorders.set(
                 sessionId,
                 new SessionRecorder(this, session, this._getRecordingStates())
             );
         }
+        this._enforceVideoLimits();
         this._channel.on(Channel.Events.SESSION_JOIN, this._onSessionJoin);
         this._channel.on(Channel.Events.SESSION_LEAVE, this._onSessionLeave);
     }
 
     private async _stopSessionRecorders() {
-        const proms = [];
-        for (const sessionRecorder of this._sessionRecorders.values()) {
-            proms.push(sessionRecorder.stop());
+        for (const id of this._sessionRecorders.keys()) {
+            this._stopSessionRecorder(id);
         }
-        this._sessionRecorders.clear();
-        return Promise.allSettled(proms);
+        await Promise.all(this._sessionStops);
     }
 
     private _getRecordingStates(): RecordingStates {
@@ -424,10 +469,9 @@ export class Recorder extends EventEmitter {
     ) {
         const trackedSessions = this._trackedVideoSessions[type];
         const index = trackedSessions.indexOf(sessionId);
-        if (index !== -1) {
+        if (!available && index !== -1) {
             trackedSessions.splice(index, 1);
-        }
-        if (available) {
+        } else if (available && index === -1) {
             trackedSessions.push(sessionId);
         }
     }
@@ -440,13 +484,6 @@ export class Recorder extends EventEmitter {
     private _resetTrackedVideoSessions() {
         this._trackedVideoSessions[STREAM_TYPE.CAMERA].length = 0;
         this._trackedVideoSessions[STREAM_TYPE.SCREEN].length = 0;
-    }
-
-    private _hasTrackedVideoSessions() {
-        return (
-            this._trackedVideoSessions[STREAM_TYPE.CAMERA].length > 0 ||
-            this._trackedVideoSessions[STREAM_TYPE.SCREEN].length > 0
-        );
     }
 
     private _getAllowedSessions(sessions: SessionId[], limit: number) {

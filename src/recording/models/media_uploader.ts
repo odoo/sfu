@@ -11,12 +11,21 @@ type RoutingResponse = {
 };
 
 const logger = new Logger("MEDIA_UPLOADER");
+const MAX_ROUTING_RESPONSE_BYTES = 64 * 1024;
 
 export class MediaUploader {
-    private readonly _requestTimeoutMs: number;
+    private readonly _routingTimeoutMs: number;
+    private readonly _uploadTimeoutMs: number;
 
-    constructor({ requestTimeoutMs }: { requestTimeoutMs: number }) {
-        this._requestTimeoutMs = requestTimeoutMs;
+    constructor({
+        routingTimeoutMs,
+        uploadTimeoutMs
+    }: {
+        routingTimeoutMs: number;
+        uploadTimeoutMs: number;
+    }) {
+        this._routingTimeoutMs = routingTimeoutMs;
+        this._uploadTimeoutMs = uploadTimeoutMs;
     }
 
     async uploadAudio({
@@ -34,12 +43,10 @@ export class MediaUploader {
             queryParams.push("transcribe=True");
         }
         if (mainMedia) {
-            // TODO: osef?
             queryParams.push("main_media=True");
         }
-        const paramString = queryParams.length ? "?" + queryParams.join("&") : "";
         const response = await this._fetchWithTimeout(
-            `${metadata.routingAddress}/audio${paramString}`,
+            `${metadata.routingAddress}/audio?${queryParams.join("&")}`,
             {
                 method: "POST",
                 headers: {
@@ -56,54 +63,59 @@ export class MediaUploader {
                 // that takes client.ts, tests and shared files into account
                 body: createReadStream(filePath),
                 duplex: "half"
-            }
+            },
+            this._uploadTimeoutMs
         );
-        if (!response.ok) {
-            throw new Error(
-                `Failed to upload audio to ${metadata.routingAddress}: ${response.status} ${response.statusText}`
-            );
-        }
-        return await response.text();
+        await this._discardResponse(
+            response,
+            `Failed to upload audio to ${metadata.routingAddress}`
+        );
     }
 
     async uploadVideo({ filePath, metadata }: { filePath: string; metadata: SealedMetaData }) {
         logger.debug(`Uploading files to ${metadata.routingAddress}`);
         const params = new URLSearchParams({
             start_ms: String(metadata.startedAt),
-            end_ms: String(metadata.stoppedAt),
+            end_ms: String(metadata.stoppedAt)
         });
-        const response = await this._fetchWithTimeout(`${metadata.routingAddress}/routing?${params}`, {
-            method: "GET",
-            headers: {
-                Authorization: `Bearer ${this._makeJwt(metadata.channelKey)}`
+        const response = await this._fetchWithTimeout(
+            `${metadata.routingAddress}/routing?${params}`,
+            {
+                method: "GET",
+                headers: {
+                    Authorization: `Bearer ${this._makeJwt(metadata.channelKey)}`
+                }
             },
-        });
-        if (!response.ok) {
-            throw new Error(
-                `Failed to obtain routing from ${metadata.routingAddress}: ${response.status} ${response.statusText}`
-            );
-        }
-        const jsonResponse = (await response.json()) as RoutingResponse;
+            this._routingTimeoutMs
+        );
+        const jsonResponse = JSON.parse(
+            await this._readRoutingResponse(
+                response,
+                `Failed to obtain routing from ${metadata.routingAddress}`
+            )
+        ) as RoutingResponse;
         if (!jsonResponse.destination) {
-            logger.warn(`No upload destination returned by ${metadata.routingAddress}/routing`);
-            return;
+            throw new Error(`No upload destination returned by ${metadata.routingAddress}/routing`);
         }
         const fileStats = await fs.stat(filePath);
-        const uploadResponse = await this._fetchWithTimeout(jsonResponse.destination, {
-            method: "POST",
-            headers: {
-                "Content-Type": `video/${config.recording.video.ext}`,
-                "Content-Length": fileStats.size.toString()
+        const uploadResponse = await this._fetchWithTimeout(
+            jsonResponse.destination,
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": `video/${config.recording.video.ext}`,
+                    "Content-Length": fileStats.size.toString()
+                },
+                // @ts-expect-error: same as above
+                body: createReadStream(filePath),
+                duplex: "half"
             },
-            // @ts-expect-error: same as above
-            body: createReadStream(filePath),
-            duplex: "half"
-        });
-        if (!uploadResponse.ok) {
-            throw new Error(
-                `Failed to upload files to ${metadata.routingAddress}: ${uploadResponse.status} ${uploadResponse.statusText}`
-            );
-        }
+            this._uploadTimeoutMs
+        );
+        await this._discardResponse(
+            uploadResponse,
+            `Failed to upload files to ${metadata.routingAddress}`
+        );
     }
 
     private _makeJwt(key: string) {
@@ -117,16 +129,47 @@ export class MediaUploader {
         );
     }
 
-    private async _fetchWithTimeout(url: string, init: RequestInit = {}) {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), this._requestTimeoutMs);
-        try {
-            return await fetch(url, {
-                ...init,
-                signal: controller.signal
-            });
-        } finally {
-            clearTimeout(timeout);
+    private async _checkResponse(response: Response, errorMessage: string) {
+        if (!response.ok) {
+            await response.body?.cancel().catch(() => undefined);
+            throw new Error(`${errorMessage}: ${response.status} ${response.statusText}`);
         }
+    }
+
+    private async _discardResponse(response: Response, errorMessage: string) {
+        await this._checkResponse(response, errorMessage);
+        await response.body?.cancel().catch(() => undefined);
+    }
+
+    private async _readRoutingResponse(response: Response, errorMessage: string) {
+        await this._checkResponse(response, errorMessage);
+        const reader = response.body?.getReader();
+        if (!reader) {
+            return response.text();
+        }
+        const decoder = new TextDecoder();
+        let body = "";
+        let receivedBytes = 0;
+        try {
+            for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+                const { value } = chunk;
+                receivedBytes += value.byteLength;
+                if (receivedBytes > MAX_ROUTING_RESPONSE_BYTES) {
+                    await reader.cancel().catch(() => undefined);
+                    throw new Error(`Routing response exceeds ${MAX_ROUTING_RESPONSE_BYTES} bytes`);
+                }
+                body += decoder.decode(value, { stream: true });
+            }
+            return body + decoder.decode();
+        } finally {
+            reader.releaseLock();
+        }
+    }
+
+    private _fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number) {
+        return fetch(url, {
+            ...init,
+            signal: AbortSignal.timeout(timeoutMs)
+        });
     }
 }

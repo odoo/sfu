@@ -81,6 +81,8 @@ export class Channel extends EventEmitter {
     static records = new Map<string, Channel>();
     /** Global registry of channels by issuer for reuse */
     static recordsByIssuer = new Map<string, Channel>();
+    /** shares in-flight channel creation by issuer so concurrent requests await the same channel */
+    private static _creationsByIssuer = new Map<string, Promise<Channel>>();
     /** Channel creation timestamp */
     public readonly createDate: string;
     /** Remote address that created this channel */
@@ -122,36 +124,50 @@ export class Channel extends EventEmitter {
             logger.verbose(`reusing channel ${oldChannel.uuid}`);
             return oldChannel;
         }
-        const channelOptions: ChannelCreateOptions & {
-            worker?: RtcWorker;
-            router?: Router;
-        } = { key, recordingAddress: useWebRtc ? recordingAddress : null };
-        if (useWebRtc) {
-            channelOptions.worker = await getWorker();
-            channelOptions.router = await channelOptions.worker.createRouter({
-                mediaCodecs
-            });
+        const oldCreation = Channel._creationsByIssuer.get(safeIssuer);
+        if (oldCreation) {
+            return oldCreation;
         }
-        const channel = new Channel(remoteAddress, channelOptions);
-        Channel.recordsByIssuer.set(safeIssuer, channel);
-        Channel.records.set(channel.uuid, channel);
-        logger.info(
-            `created channel ${channel.uuid} (${key ? "unique" : "global"} key) for ${safeIssuer}`
-        );
-        logger.verbose(`rtc feature: ${Boolean(channel.router)}`);
-        logger.verbose(`recording feature: ${Boolean(channel.recorder)}`);
-        const onWorkerDeath = () => {
-            logger.warn(`worker died, closing channel ${channel.uuid}`);
-            void channel.close();
-        };
-        channelOptions.worker?.once("died", onWorkerDeath);
-        channel.once(Channel.Events.CLOSE, () => {
-            channelOptions.worker?.off("died", onWorkerDeath);
-            Channel.recordsByIssuer.delete(safeIssuer);
-            Channel.records.delete(channel.uuid);
-        });
-        channel.setCloseTimeout(true);
-        return channel;
+        const creation = (async () => {
+            const channelOptions: ChannelCreateOptions & {
+                worker?: RtcWorker;
+                router?: Router;
+            } = { key, recordingAddress: useWebRtc ? recordingAddress : null };
+            if (useWebRtc) {
+                channelOptions.worker = await getWorker();
+                channelOptions.router = await channelOptions.worker.createRouter({
+                    mediaCodecs
+                });
+            }
+            const channel = new Channel(remoteAddress, channelOptions);
+            Channel.recordsByIssuer.set(safeIssuer, channel);
+            Channel.records.set(channel.uuid, channel);
+            logger.info(
+                `created channel ${channel.uuid} (${
+                    key ? "unique" : "global"
+                } key) for ${safeIssuer}`
+            );
+            logger.verbose(`rtc feature: ${Boolean(channel.router)}`);
+            logger.verbose(`recording feature: ${Boolean(channel.recorder)}`);
+            const onWorkerDeath = () => {
+                logger.warn(`worker died, closing channel ${channel.uuid}`);
+                void channel.close();
+            };
+            channelOptions.worker?.once("died", onWorkerDeath);
+            channel.once(Channel.Events.CLOSE, () => {
+                channelOptions.worker?.off("died", onWorkerDeath);
+                Channel.recordsByIssuer.delete(safeIssuer);
+                Channel.records.delete(channel.uuid);
+            });
+            channel.setCloseTimeout(true);
+            return channel;
+        })();
+        Channel._creationsByIssuer.set(safeIssuer, creation);
+        try {
+            return await creation;
+        } finally {
+            Channel._creationsByIssuer.delete(safeIssuer);
+        }
     }
 
     /**
@@ -167,7 +183,7 @@ export class Channel extends EventEmitter {
         if (!channel) {
             throw new AuthenticationError(`channel [${uuid}] does not exist`);
         }
-        if (channel.sessions.size >= config.CHANNEL_SIZE) {
+        if (channel.sessions.size >= config.CHANNEL_SIZE && !channel.sessions.has(sessionId)) {
             throw new OvercrowdedError(`channel [${uuid}] is full`);
         }
         const session = channel.join(sessionId, sessionOptions);
@@ -178,6 +194,7 @@ export class Channel extends EventEmitter {
      * Closes all active channels
      */
     static async closeAll(): Promise<void> {
+        await Promise.allSettled(Channel._creationsByIssuer.values());
         await Promise.all([...Channel.records.values()].map((channel) => channel.close()));
     }
 
@@ -199,6 +216,9 @@ export class Channel extends EventEmitter {
         this.remoteAddress = remoteAddress;
         this._worker = worker;
         this.router = router;
+        this.key = key ? Buffer.from(key, "base64") : undefined;
+        this.uuid = crypto.randomUUID();
+        this.name = `${remoteAddress}*${this.uuid.slice(-5)}`;
         this.recorder =
             this.router && config.recording.enabled && options.recordingAddress
                 ? new Recorder(this, options.recordingAddress)
@@ -206,9 +226,6 @@ export class Channel extends EventEmitter {
         this.recorder?.on(Recorder.Events.UPDATE, (data: UpdateData) =>
             this._broadcastState({ recorderData: data })
         );
-        this.key = key ? Buffer.from(key, "base64") : undefined;
-        this.uuid = crypto.randomUUID();
-        this.name = `${remoteAddress}*${this.uuid.slice(-5)}`;
         this._onSessionClose = this._onSessionClose.bind(this);
     }
 
@@ -321,20 +338,25 @@ export class Channel extends EventEmitter {
      * @fires Channel#close
      */
     private async _close(): Promise<void> {
-        const recorderStop = this.recorder?.stop({ stopCode: STOP_CODE.CHANNEL_CLOSED });
+        const recorderStop = this.recorder?.stop({
+            stopCode: STOP_CODE.CHANNEL_CLOSED
+        });
         for (const session of this.sessions.values()) {
             session.off("close", this._onSessionClose);
             session.close({ code: SESSION_CLOSE_CODE.CHANNEL_CLOSED });
         }
         clearTimeout(this._closeTimeout);
         this.sessions.clear();
-        Channel.records.delete(this.uuid);
         /**
          * @event Channel#close
          * @type {string} channelId - UUID of the closed channel
          */
         this.emit(Channel.Events.CLOSE, this.uuid);
-        await recorderStop;
+        try {
+            await recorderStop;
+        } finally {
+            this.router?.close();
+        }
     }
 
     /**
@@ -349,7 +371,10 @@ export class Channel extends EventEmitter {
             session.bus.send(
                 {
                     name: SERVER_MESSAGE.CHANNEL_INFO_CHANGE,
-                    payload: { state: this.recordingState, stopCode: recorderData?.stopCode }
+                    payload: {
+                        state: this.recordingState,
+                        stopCode: recorderData?.stopCode
+                    }
                 },
                 { batch: true }
             );

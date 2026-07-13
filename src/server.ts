@@ -15,22 +15,29 @@ async function run(): Promise<void> {
     await scheduler.start();
 }
 
-async function cleanup(): Promise<void> {
-    await Channel.closeAll();
-    http.close();
-    await resources.close();
-    scheduler.close();
-    logger.info("cleanup complete");
+let cleanupPromise: Promise<void> | undefined;
+
+function cleanup(): Promise<void> {
+    cleanupPromise ??= (async () => {
+        const schedulerClosing = scheduler.close();
+        await http.close();
+        await Channel.closeAll();
+        await schedulerClosing;
+        await resources.close();
+        auth.close();
+        logger.info("cleanup complete");
+    })().finally(() => {
+        cleanupPromise = undefined;
+    });
+    return cleanupPromise;
 }
 
 const processHandlers = {
-    exit: () => {
-        void cleanup();
-    },
     uncaughtException: (error: Error) => {
         logger.error(`uncaught exception ${error.name}: ${error.message} ${error.stack ?? ""}`);
     },
     SIGINT: cleanup,
+    SIGTERM: cleanup,
     // 8, restarts the server
     SIGFPE: async () => {
         await cleanup();

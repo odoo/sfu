@@ -64,6 +64,10 @@ export class MockChildProcess extends EventEmitter implements ChildProcess {
     ref(): void {}
 
     private _simulateFfmpeg(args: string[]) {
+        // `-i pipe:0` feeds recording SDP through stdin, so FFmpeg must stay alive until stopped
+        if (args.includes("pipe:0")) {
+            return;
+        }
         const outputFile = args[args.length - 1];
         if (!outputFile) {
             return;

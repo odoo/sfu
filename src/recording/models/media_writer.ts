@@ -14,16 +14,10 @@ const logger = new Logger("FFMPEG");
  * If ffmpeg does not close gracefully, force kill it after this timeout.
  */
 const FFMPEG_KILL_TIMEOUT = 30_000;
-
-export type MediaWriterFailureReason =
-    | "initialization_error"
-    | "process_error"
-    | "process_exit"
-    | "force_kill";
+const FFMPEG_LIFETIME = config.recording.maxDuration + FFMPEG_KILL_TIMEOUT * 2;
 
 export type MediaWriterFailure = {
     filename: string;
-    reason: MediaWriterFailureReason;
     error: Error;
 };
 
@@ -32,13 +26,13 @@ export type MediaWriterFailure = {
  */
 export class MediaWriter extends EventEmitter {
     static readonly Events = {
-        FAILURE: "failure"
+        FAILURE: "failure",
+        PROCESS_CLOSE: "processClose"
     } as const;
     readonly extension: string;
     readonly filename: string;
     private readonly _rtp: RtpData;
     private _process?: ChildProcess;
-    private _isClosed = false;
     private _isProcessClosed = false;
     private _isCloseExpected = false;
     private _failure?: MediaWriterFailure;
@@ -55,72 +49,98 @@ export class MediaWriter extends EventEmitter {
         this._init();
     }
 
-    async close() {
-        if (this._closePromise) {
-            return this._closePromise;
+    close(): Promise<void> {
+        return (this._closePromise ??= this._closeProcess());
+    }
+
+    get isProcessClosed() {
+        return !this._process || this._isProcessClosed;
+    }
+
+    private _waitForProcessClose(process: ChildProcess) {
+        if (this._isProcessClosed) {
+            return Promise.resolve(true);
         }
-        if (this._isClosed) {
-            return;
-        }
-        this._isClosed = true;
-        this._logStream?.end();
-        this._closePromise = this._closeProcess();
-        return this._closePromise;
+        return new Promise<boolean>((resolve) => {
+            const onClose = () => {
+                clearTimeout(timeoutId);
+                resolve(true);
+            };
+            const timeoutId = setTimeout(() => {
+                process.off("close", onClose);
+                resolve(false);
+            }, FFMPEG_KILL_TIMEOUT);
+            process.once("close", onClose);
+        });
     }
 
     private async _closeProcess() {
-        if (this._process && !this._isProcessClosed && !this._process.killed) {
-            let timeoutId: NodeJS.Timeout;
-            const closed = new Promise<void>((resolve) => {
-                this._process!.once("close", () => resolve());
-            });
-
-            this._isCloseExpected = true;
-            this._process.kill("SIGINT");
-            const timeoutResult = await Promise.race([
-                closed.then(() => "closed"),
-                new Promise<string>((resolve) => {
-                    timeoutId = setTimeout(() => resolve("timeout"), FFMPEG_KILL_TIMEOUT);
-                })
-            ]);
-            clearTimeout(timeoutId!);
-            if (timeoutResult === "timeout") {
-                const error = new Error(
-                    `FFMPEG ${this.filename} did not close gracefully, force killing.`
-                );
-                logger.warn(error.message);
-                this._emitFailure("force_kill", error);
-                this._process.kill("SIGKILL");
-                throw error;
-            }
+        const process = this._process;
+        if (!process || this._isProcessClosed) {
+            return;
         }
+        if (process.killed) {
+            if (await this._waitForProcessClose(process)) {
+                return;
+            }
+            throw new Error(`FFMPEG ${this.filename} remained alive after a termination signal`);
+        }
+        this._isCloseExpected = true;
+        process.kill("SIGINT");
+        if (await this._waitForProcessClose(process)) {
+            return;
+        }
+        const error = new Error(`FFMPEG ${this.filename} did not close gracefully, force killing.`);
+        logger.warn(error.message);
+        this._emitFailure(error);
+        if (!this._isProcessClosed) {
+            process.kill("SIGKILL");
+        }
+        if (!(await this._waitForProcessClose(process))) {
+            throw new Error(`FFMPEG ${this.filename} remained alive after force killing`);
+        }
+        throw error;
     }
 
     private _init() {
         try {
             const args = this._getCommandArgs();
             logger.debug(`spawning ffmpeg with args: ${args.join(" ")}`);
-            this._process = spawn("ffmpeg", args);
+            this._process = spawn("ffmpeg", args, {
+                stdio: config.FFMPEG_LOGGING
+                    ? ["pipe", "pipe", "pipe"]
+                    : ["pipe", "ignore", "ignore"],
+                timeout: FFMPEG_LIFETIME,
+                killSignal: "SIGKILL"
+            });
             if (config.FFMPEG_LOGGING) {
                 this._logStream = fs.createWriteStream(
                     `${path.join(this._directory, this.filename)}.log`
                 );
+                this._logStream.on("error", (error) => {
+                    logger.error(`FFmpeg log failure: ${error}`);
+                    this._process?.stderr?.unpipe(this._logStream);
+                    this._process?.stdout?.unpipe(this._logStream);
+                    this._process?.stderr?.resume();
+                    this._process?.stdout?.resume();
+                });
                 this._process.stderr?.pipe(this._logStream, { end: false });
                 this._process.stdout?.pipe(this._logStream, { end: false });
             }
             this._process.on("error", (error) => {
                 logger.error(`ffmpeg ${this.filename} error: ${error.message}`);
-                this._emitFailure("process_error", error);
+                this._emitFailure(error);
                 void this.close().catch((closeError) => {
                     logger.error(`Failed to close FFMPEG ${this.filename}: ${closeError}`);
                 });
             });
             this._process.on("close", (code, signal) => {
                 this._isProcessClosed = true;
+                this.emit(MediaWriter.Events.PROCESS_CLOSE);
+                this._logStream?.end();
                 logger.verbose(`ffmpeg ${this.filename} exited with code ${code}`);
-                if (!this._isCloseExpected && code !== 0) {
+                if (!this._isCloseExpected) {
                     this._emitFailure(
-                        "process_exit",
                         new Error(
                             `FFMPEG ${this.filename} exited with code ${code}` +
                                 (signal ? ` and signal ${signal}` : "")
@@ -139,21 +159,18 @@ export class MediaWriter extends EventEmitter {
             }
         } catch (error) {
             logger.error(`Failed to initialize FFMPEG ${this.filename}: ${error}`);
-            this._emitFailure(
-                "initialization_error",
-                error instanceof Error ? error : new Error(String(error))
-            );
+            this._emitFailure(error instanceof Error ? error : new Error(String(error)));
             void this.close().catch((closeError) => {
                 logger.error(`Failed to close FFMPEG ${this.filename}: ${closeError}`);
             });
         }
     }
 
-    private _emitFailure(reason: MediaWriterFailureReason, error: Error) {
+    private _emitFailure(error: Error) {
         if (this._failure) {
             return;
         }
-        this._failure = { filename: this.filename, reason, error };
+        this._failure = { filename: this.filename, error };
         this.emit(MediaWriter.Events.FAILURE, this._failure);
     }
 

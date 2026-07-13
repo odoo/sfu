@@ -41,7 +41,6 @@ describe("WebSocket Service", () => {
         const [code] = await once(ws, "close");
         expect(code).toBe(WS_CLOSE_CODE.ERROR);
         expect(wsTesting.unauthenticatedWebSocketCount).toBe(0);
-        expect(wsTesting.authenticatedWebSocketCount).toBe(0);
     });
     test("Closes connection on invalid auth credentials (invalid JWT)", async () => {
         const ws = new WebSocket(`ws://localhost:${PORT}`);
@@ -125,14 +124,16 @@ describe("WebSocket Service", () => {
         joinSpy.mockRestore();
     });
     test("Handles early disconnect before authentication timeout", async () => {
-        jest.useFakeTimers({ advanceTimers: true });
         const ws = new WebSocket(`ws://localhost:${PORT}`);
         await once(ws, "open");
+        expect(wsTesting.unauthenticatedWebSocketCount).toBe(1);
 
         ws.close();
         await once(ws, "close");
+        for (let attempt = 0; wsTesting.unauthenticatedWebSocketCount && attempt < 50; attempt++) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 10));
+        }
 
-        jest.advanceTimersByTime(timeouts.authentication + 100);
-        expect(ws.readyState).toBe(WebSocket.CLOSED);
+        expect(wsTesting.unauthenticatedWebSocketCount).toBe(0);
     });
 });

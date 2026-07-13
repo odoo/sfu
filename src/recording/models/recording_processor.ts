@@ -4,7 +4,7 @@ import path from "node:path";
 import * as config from "#src/config.ts";
 import { decrypt } from "#src/core/services/auth.ts";
 import { MediaCompiler } from "#src/recording/models/media_compiler.ts";
-import type { SealedMetaData } from "#src/recording/models/recorder.ts";
+import { type SealedMetaData } from "#src/recording/models/recorder.ts";
 import { MediaUploader } from "#src/recording/models/media_uploader.ts";
 import { Logger } from "#src/utils/utils.ts";
 
@@ -33,41 +33,68 @@ export class RecordingProcessor {
     /**
      * @returns `true` if the recording was finalized (saved or discarded), `false` if it should be retried.
      */
-    async process(folderName: string): Promise<boolean> {
+    async process(folderName: string, processMedia = true): Promise<boolean> {
         const recordingDirectory = path.join(config.dir.recordings, folderName);
         try {
             const metadata = await this._readMetadata(recordingDirectory, folderName);
             logger.debug(`Read metadata for recording ${folderName}: ${metadata.channelName}`);
+            if (!processMedia) {
+                return false;
+            }
             const compiler = new MediaCompiler({
                 workingDir: recordingDirectory,
                 startedAt: metadata.startedAt,
                 stoppedAt: metadata.stoppedAt,
                 timeStamps: metadata.timeStamps
             });
-            const audioPath = await compiler.getAudio();
+            const audioPath =
+                (metadata.audio || metadata.transcription) && (await compiler.getAudio());
             const videoPath = metadata.video && (await compiler.getVideo());
             if (audioPath) {
-                await this._uploader.uploadAudio({
-                    filePath: audioPath,
-                    metadata,
-                    mainMedia: !videoPath
-                });
+                await this._uploadOnce(audioPath, () =>
+                    this._uploader.uploadAudio({
+                        filePath: audioPath,
+                        metadata,
+                        mainMedia: !videoPath
+                    })
+                );
             }
             if (videoPath) {
-                await this._uploader.uploadVideo({ filePath: videoPath, metadata });
+                await this._uploadOnce(videoPath, () =>
+                    this._uploader.uploadVideo({ filePath: videoPath, metadata })
+                );
             }
-            logger.info(`recording ${config.recording.metadataFileName} was succesfully processed`);
+        } catch (error) {
+            if (!(error instanceof DiscardRecordingError)) {
+                logger.error(
+                    `Failed to process recording ${folderName}, keeping for retry: ${error}`
+                );
+                return false;
+            }
+            logger.error(`Discarding recording ${folderName}: ${error.message}`);
+        }
+        try {
             await this._finalizeRecordingFolder(recordingDirectory, folderName);
+            logger.info(`recording ${folderName} was successfully finalized`);
             return true;
         } catch (error) {
-            if (error instanceof DiscardRecordingError) {
-                logger.error(`Discarding recording ${folderName}: ${error.message}`);
-                await this._finalizeRecordingFolder(recordingDirectory, folderName);
-                return true;
-            }
-            logger.error(`Failed to process recording ${folderName}, keeping for retry: ${error}`);
+            logger.error(`Failed to finalize recording ${folderName}, keeping for retry: ${error}`);
             return false;
         }
+    }
+
+    private async _uploadOnce(filePath: string, upload: () => Promise<unknown>) {
+        const markerPath = `${filePath}.uploaded`;
+        try {
+            await fs.access(markerPath);
+            return;
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+                throw error;
+            }
+        }
+        await upload();
+        await fs.writeFile(markerPath, "");
     }
 
     private async _readMetadata(
@@ -79,16 +106,16 @@ export class RecordingProcessor {
         try {
             content = await fs.readFile(metadataPath, "utf-8");
         } catch (error) {
-            throw new DiscardRecordingError(`Cannot read metadata: ${error}`);
+            if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+                throw new DiscardRecordingError(`Cannot read metadata: ${error}`);
+            }
+            throw error;
         }
         let metadata: SealedMetaData;
         try {
-            metadata = JSON.parse(decrypt(content));
+            metadata = JSON.parse(decrypt(content)) as SealedMetaData;
         } catch (error) {
             throw new DiscardRecordingError(`Cannot parse metadata: ${error}`);
-        }
-        if (!metadata.startedAt || !metadata.stoppedAt) {
-            throw new DiscardRecordingError("No startedAt or stoppedAt found in metadata");
         }
         const expirationDate = metadata.stoppedAt + config.recording.fileTTL;
         if (expirationDate < Date.now()) {

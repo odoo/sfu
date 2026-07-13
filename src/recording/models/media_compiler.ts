@@ -1,44 +1,125 @@
 import fs from "node:fs";
 import { spawn } from "node:child_process";
-import { access, writeFile, unlink } from "node:fs/promises";
+import { access, rename, writeFile, unlink, rm } from "node:fs/promises";
 import path from "node:path";
 
 import { TIME_TAG, type TimeStampData } from "#src/recording/models/recorder.ts";
 import * as config from "#src/config.ts";
 import { Logger } from "#src/utils/utils.ts";
 import { STREAM_TYPE } from "#src/shared/enums.ts";
-import type { SessionId } from "#src/core/models/session.ts";
 
 const logger = new Logger("MEDIA_COMPILER");
 const FILENAME_PREFIX = "recording_";
+const COMPILATION_TIMEOUT = config.recording.maxDuration * 2;
+const FFPROBE_TIMEOUT = 30_000;
+const INPUT_RECOVERY_OPTIONS = ["-fflags", "+discardcorrupt"];
 
-/**
- * Validates that a video file can be read by FFmpeg.
- * Uses ffprobe to check file headers and stream info.
- * @returns true if the file is valid and readable, false otherwise
- */
-async function validateVideoFile(filePath: string): Promise<boolean> {
-    return new Promise((resolve) => {
-        const proc = spawn("ffprobe", [
-            "-v",
-            "error",
-            "-select_streams",
-            "v:0",
-            "-show_entries",
-            "stream=codec_name",
-            "-of",
-            "csv=p=0",
-            filePath
-        ]);
+async function runFfmpeg(args: string[], outputPath: string, signal: AbortSignal): Promise<string> {
+    const extension = path.extname(outputPath);
+    const partialPath = path.join(
+        path.dirname(outputPath),
+        `${path.basename(outputPath, extension)}.partial${extension}`
+    );
+    const commandArgs = ["-y", ...args, partialPath];
+    logger.debug(`Running FFmpeg: ffmpeg ${commandArgs.join(" ")}`);
+    try {
+        await new Promise<void>((resolve, reject) => {
+            const proc = spawn("ffmpeg", commandArgs, {
+                stdio: config.FFMPEG_LOGGING ? ["ignore", "pipe", "pipe"] : "ignore",
+                signal,
+                killSignal: "SIGKILL"
+            });
+            const logStream = config.FFMPEG_LOGGING
+                ? fs.createWriteStream(`${outputPath}.log`)
+                : undefined;
+            if (logStream) {
+                logStream.on("error", (error) => {
+                    logger.error(`FFmpeg log failure: ${error}`);
+                    proc.stderr?.unpipe(logStream);
+                    proc.stdout?.unpipe(logStream);
+                    proc.stderr?.resume();
+                    proc.stdout?.resume();
+                });
+                proc.stderr?.pipe(logStream, { end: false });
+                proc.stdout?.pipe(logStream, { end: false });
+            }
+            let processError: Error | undefined;
+            proc.once("error", (error) => {
+                processError = error;
+            });
+            proc.once("close", (code, exitSignal) => {
+                logStream?.end();
+                if (processError) {
+                    reject(processError);
+                } else if (code === 0) {
+                    resolve();
+                } else {
+                    reject(
+                        new Error(
+                            `FFmpeg exited with ${
+                                code === null ? `signal ${exitSignal}` : `code ${code}`
+                            }`
+                        )
+                    );
+                }
+            });
+        });
+        await rename(partialPath, outputPath);
+        return outputPath;
+    } catch (error) {
+        await unlink(partialPath).catch(() => undefined);
+        throw error;
+    }
+}
+
+async function validateMediaFile(
+    filePath: string,
+    stream: "a:0" | "v:0",
+    signal: AbortSignal
+): Promise<boolean> {
+    return new Promise((resolve, reject) => {
+        const proc = spawn(
+            "ffprobe",
+            [
+                "-v",
+                "error",
+                "-select_streams",
+                stream,
+                "-show_frames",
+                "-show_entries",
+                "frame=stream_index",
+                "-read_intervals",
+                "%+5",
+                "-of",
+                "csv=p=0",
+                ...INPUT_RECOVERY_OPTIONS,
+                filePath
+            ],
+            {
+                stdio: ["ignore", "pipe", "ignore"],
+                signal,
+                timeout: FFPROBE_TIMEOUT,
+                killSignal: "SIGKILL"
+            }
+        );
         let hasOutput = false;
-        proc.stdout.on("data", () => {
+        let processError: Error | undefined;
+        proc.stdout?.on("data", () => {
             hasOutput = true;
         });
-        proc.on("close", (code) => {
-            resolve(code === 0 && hasOutput);
+        proc.on("close", (code, exitSignal) => {
+            if (signal.aborted) {
+                reject(signal.reason);
+            } else if (processError) {
+                reject(processError);
+            } else if (exitSignal) {
+                reject(new Error(`FFprobe exited with signal ${exitSignal}`));
+            } else {
+                resolve(code === 0 && hasOutput);
+            }
         });
-        proc.on("error", () => {
-            resolve(false);
+        proc.on("error", (error) => {
+            processError = error;
         });
     });
 }
@@ -56,7 +137,6 @@ const SEGMENT_COALESCE_THRESHOLD = 500;
 type VideoFileInfo = {
     filename: string;
     type: STREAM_TYPE.CAMERA | STREAM_TYPE.SCREEN;
-    sessionId: SessionId;
     /** Timestamp when this file first became active (for offset calculation) */
     fileStartTime: number;
 };
@@ -73,105 +153,32 @@ export class MediaCompiler {
     private readonly _startedAt: number;
     private readonly _stoppedAt: number;
     private readonly _timeStamps: TimeStampData[];
-    private _audioPath?: string;
-    private _videoPath?: string;
-    static async concatenateSegments({
-        workingDir,
+    private readonly _signal = AbortSignal.timeout(COMPILATION_TIMEOUT);
+    private _audioPromise?: Promise<string | undefined>;
+    private _videoPromise?: Promise<string | undefined>;
+    private async _concatenateSegments({
+        concatListPath,
         segmentFiles,
         audioPath,
-        srt,
         outputPath
     }: {
-        workingDir: string;
+        concatListPath: string;
         segmentFiles: string[];
         audioPath: string | undefined;
-        srt: string | undefined;
         outputPath: string;
     }): Promise<string> {
-        const concatListPath = path.join(workingDir, "concat_list.txt");
         const concatContent = segmentFiles.map((f) => `file '${f}'`).join("\n");
         await writeFile(concatListPath, concatContent);
-        let srtPath: string | undefined;
-        if (srt) {
-            srtPath = path.join(workingDir, "subtitles.srt");
-            await writeFile(srtPath, srt);
-        }
         const inputs: string[] = ["-f", "concat", "-safe", "0", "-i", concatListPath];
         if (audioPath) {
             inputs.push("-i", audioPath);
         }
-        const filterComplex: string[] = [];
-        let mapArgs: string[];
-        if (srtPath) {
-            inputs.push("-i", srtPath);
-            const subtitleIdx = audioPath ? 2 : 1;
-            filterComplex.push(`[0:v][${subtitleIdx}:s]overlay[vout]`);
-            mapArgs = ["-map", "[vout]"];
-        } else {
-            mapArgs = ["-map", "0:v"];
-        }
+        const mapArgs = ["-map", "0:v"];
         if (audioPath) {
             mapArgs.push("-map", "1:a");
         }
-        const args = [
-            "-y",
-            ...inputs,
-            ...(filterComplex.length > 0 ? ["-filter_complex", filterComplex.join(";")] : []),
-            ...mapArgs,
-            "-c:v",
-            config.recording.video.codec,
-            "-c:a",
-            config.recording.audio.codec,
-            "-preset",
-            config.recording.video.preset,
-            /**
-             * Relocates the MP4 moov atom to the beginning of the file.
-             * Without this, the moov atom is written at the end, which
-             * prevents progressive playback (the entire file must be
-             * downloaded before it can start playing). (it allws the file
-             * to be used in streaming situations and the remote storage
-             * may stream it)
-             */
-            "-movflags",
-            "+faststart",
-            outputPath
-        ];
-        logger.debug(`Concatenating segments: ffmpeg ${args.join(" ")}`);
-        return new Promise<string>((resolve, reject) => {
-            const proc = spawn("ffmpeg", args);
-            let logStream: fs.WriteStream | undefined;
-            if (config.FFMPEG_LOGGING) {
-                logStream = fs.createWriteStream(`${outputPath}.log`);
-                proc.stderr?.pipe(logStream, { end: false });
-                proc.stdout?.pipe(logStream, { end: false });
-            }
-            proc.on("close", async (code) => {
-                logStream?.end();
-                try {
-                    await unlink(concatListPath);
-                    if (srtPath) {
-                        await unlink(srtPath);
-                    }
-                    for (const segmentFile of segmentFiles) {
-                        await unlink(segmentFile);
-                    }
-                } catch {
-                    logger.error("Failed to cleanup temp video compilation files");
-                }
-                if (code === 0) {
-                    logger.info(`Compiled video: ${outputPath}`);
-                    resolve(outputPath);
-                } else {
-                    logger.error(`Final concatenation failed with code ${code}`);
-                    reject(new Error(`FFmpeg exited with code ${code}`));
-                }
-            });
-            proc.on("error", (err) => {
-                logStream?.end();
-                logger.error(`Failed to spawn FFmpeg for concatenation: ${err}`);
-                reject(err);
-            });
-        });
+        const args = [...inputs, ...mapArgs, "-c", "copy", "-movflags", "+faststart"];
+        return runFfmpeg(args, outputPath, this._signal);
     }
 
     constructor({
@@ -199,11 +206,8 @@ export class MediaCompiler {
      * Compiles the raw recording into a single file.
      * @returns The full path to the compiled file, or undefined if no audio files were found.
      */
-    async getAudio(): Promise<string | undefined> {
-        if (!this._audioPath) {
-            this._audioPath = await this._compileAudio();
-        }
-        return this._audioPath;
+    getAudio(): Promise<string | undefined> {
+        return (this._audioPromise ??= this._compileAudio());
     }
 
     private async _compileAudio(): Promise<string | undefined> {
@@ -224,12 +228,18 @@ export class MediaCompiler {
         }
         const relevantFiles: { path: string; offset: number }[] = [];
         for (const [filename, startTime] of audioFiles) {
-            if (startTime < this._stoppedAt) {
-                relevantFiles.push({
-                    path: path.join(this._workingDir, "audio", filename),
-                    offset: startTime - this._startedAt
-                });
+            if (startTime >= this._stoppedAt) {
+                continue;
             }
+            const filePath = path.join(this._workingDir, "audio", filename);
+            if (!(await validateMediaFile(filePath, "a:0", this._signal))) {
+                logger.warn(`Skipping corrupted audio file: ${filePath}`);
+                continue;
+            }
+            relevantFiles.push({
+                path: filePath,
+                offset: startTime - this._startedAt
+            });
         }
         if (relevantFiles.length === 0) {
             logger.warn("No audio files found");
@@ -256,17 +266,15 @@ export class MediaCompiler {
             if (file.offset < 0) {
                 inputs.push("-ss", `${Math.abs(file.offset / 1000).toFixed(3)}`);
             }
-            inputs.push("-i", file.path);
+            inputs.push(...INPUT_RECOVERY_OPTIONS, "-i", file.path);
             filterComplex.push(`[${index}:a]adelay=${delay}|${delay}[a${index}]`);
         });
 
         const mixInputs = relevantFiles.map((_, i) => `[a${i}]`).join("");
-        // dropout_transition=0 avoids volume dips when a stream ends
         filterComplex.push(
-            `${mixInputs}amix=inputs=${relevantFiles.length}:dropout_transition=0,volume=${relevantFiles.length}[out]`
+            `${mixInputs}amix=inputs=${relevantFiles.length}:dropout_transition=0[out]`
         );
         const args = [
-            "-y",
             ...inputs,
             "-filter_complex",
             filterComplex.join(";"),
@@ -277,34 +285,9 @@ export class MediaCompiler {
             "-c:a",
             config.recording.audio.codec,
             "-b:a",
-            config.recording.audio.bitRate,
-            outputName
+            config.recording.audio.bitRate
         ];
-        logger.debug(`Running FFMPEG: ffmpeg ${args.join(" ")}`);
-        return new Promise<string>((resolve, reject) => {
-            const proc = spawn("ffmpeg", args);
-            let logStream: fs.WriteStream | undefined;
-            if (config.FFMPEG_LOGGING) {
-                logStream = fs.createWriteStream(`${outputName}.log`);
-                proc.stderr?.pipe(logStream, { end: false });
-                proc.stdout?.pipe(logStream, { end: false });
-            }
-            proc.on("close", (code) => {
-                logStream?.end();
-                if (code === 0) {
-                    logger.info(`Compiled ${outputName}`);
-                    resolve(outputName);
-                } else {
-                    logger.error(`FFMPEG failed with code ${code}`);
-                    reject(new Error(`FFMPEG exited with code ${code}`));
-                }
-            });
-            proc.on("error", (err) => {
-                logStream?.end();
-                logger.error(`Failed to spawn FFMPEG: ${err}`);
-                reject(err);
-            });
-        });
+        return runFfmpeg(args, outputName, this._signal);
     }
 
     //////////////////////////////////
@@ -312,17 +295,19 @@ export class MediaCompiler {
     //////////////////////////////////
     // TODO document somewhere that the output is 1280x720, currently hard-coded
 
-    async getVideo(srtFile?: string): Promise<string | undefined> {
-        if (!this._videoPath) {
-            this._videoPath = await this._compileVideo(srtFile);
-        }
-        return this._videoPath;
+    getVideo(): Promise<string | undefined> {
+        return (this._videoPromise ??= this._compileVideo());
     }
 
-    private async _compileVideo(srt?: string): Promise<string | undefined> {
+    private async _compileVideo(): Promise<string | undefined> {
         const segments = this._buildVideoSegments();
         if (segments.length === 0) {
             logger.info("No video segments found, falling back to audio-only");
+            return;
+        }
+        const validVideoPaths = await this._getValidVideoPaths(segments);
+        if (validVideoPaths.size === 0) {
+            logger.warn("No valid video files found, falling back to audio-only");
             return;
         }
         const outputName = path.join(
@@ -337,23 +322,25 @@ export class MediaCompiler {
             // File does not exist, continue
         }
         const segmentFiles: string[] = [];
-        for (let i = 0; i < segments.length; i++) {
-            const segmentPath = await this._compileSegment(segments[i], i);
-            if (segmentPath) {
-                segmentFiles.push(segmentPath);
+        const concatListPath = path.join(this._workingDir, "concat_list.txt");
+        try {
+            for (let i = 0; i < segments.length; i++) {
+                segmentFiles.push(await this._compileSegment(segments[i], i, validVideoPaths));
+            }
+            return await this._concatenateSegments({
+                concatListPath,
+                segmentFiles,
+                audioPath: await this.getAudio(),
+                outputPath: outputName
+            });
+        } finally {
+            const cleanup = await Promise.allSettled(
+                [concatListPath, ...segmentFiles].map((file) => rm(file, { force: true }))
+            );
+            if (cleanup.some((result) => result.status === "rejected")) {
+                logger.error("Failed to cleanup temporary video compilation files");
             }
         }
-        if (segmentFiles.length === 0) {
-            logger.warn("No video segments were successfully compiled");
-            return;
-        }
-        return MediaCompiler.concatenateSegments({
-            workingDir: this._workingDir,
-            segmentFiles,
-            audioPath: await this.getAudio(),
-            srt,
-            outputPath: outputName
-        });
     }
 
     /**
@@ -364,96 +351,114 @@ export class MediaCompiler {
         const segments: VideoSegment[] = [];
         const activeFiles = new Map<string, VideoFileInfo>();
         const fileFirstActive = new Map<string, number>();
-        const videoTimestamps = this._timeStamps.filter(
-            (ts) =>
-                ts.tag === TIME_TAG.FILE_STATE_CHANGE &&
-                ts.info &&
-                (ts.info.type === STREAM_TYPE.CAMERA || ts.info.type === STREAM_TYPE.SCREEN)
-        );
+        const videoTimestamps = this._timeStamps
+            .filter(
+                (ts) =>
+                    ts.timestamp < this._stoppedAt &&
+                    ts.tag === TIME_TAG.FILE_STATE_CHANGE &&
+                    ts.info &&
+                    (ts.info.type === STREAM_TYPE.CAMERA || ts.info.type === STREAM_TYPE.SCREEN)
+            )
+            .sort((a, b) => a.timestamp - b.timestamp);
         if (videoTimestamps.length === 0) {
             return [];
         }
         let currentSegmentStart = this._startedAt;
-        let lastChangeTime = this._startedAt;
         const flushSegment = (endTime: number) => {
-            if (activeFiles.size > 0 && endTime > currentSegmentStart) {
-                segments.push({
-                    startTime: currentSegmentStart,
-                    endTime,
-                    files: new Map(activeFiles)
-                });
+            if (endTime <= currentSegmentStart) {
+                return;
             }
+            segments.push({
+                startTime: currentSegmentStart,
+                endTime,
+                files: new Map(activeFiles)
+            });
             currentSegmentStart = endTime;
         };
-        for (const ts of videoTimestamps) {
-            const { filename, type, sessionId, active } = ts.info!;
-            const timestamp = ts.timestamp;
-
-            // Skip if timestamp is after recording stopped
-            if (timestamp >= this._stoppedAt) {
-                continue;
-            }
-            if (timestamp - lastChangeTime > SEGMENT_COALESCE_THRESHOLD && activeFiles.size > 0) {
-                flushSegment(timestamp);
-            }
-            if (active) {
-                if (!fileFirstActive.has(filename)) {
-                    fileFirstActive.set(filename, timestamp);
+        let index = 0;
+        while (index < videoTimestamps.length) {
+            const batchStart = videoTimestamps[index].timestamp;
+            flushSegment(Math.max(this._startedAt, batchStart));
+            const batchEnd = batchStart + SEGMENT_COALESCE_THRESHOLD;
+            while (index < videoTimestamps.length && videoTimestamps[index].timestamp <= batchEnd) {
+                const timestamp = videoTimestamps[index];
+                const { filename, type, active } = timestamp.info!;
+                if (active) {
+                    const fileStartTime = fileFirstActive.get(filename) ?? timestamp.timestamp;
+                    fileFirstActive.set(filename, fileStartTime);
+                    activeFiles.set(filename, {
+                        filename,
+                        type: type as STREAM_TYPE.CAMERA | STREAM_TYPE.SCREEN,
+                        fileStartTime
+                    });
+                } else {
+                    activeFiles.delete(filename);
                 }
-                activeFiles.set(filename, {
-                    filename,
-                    type: type as STREAM_TYPE.CAMERA | STREAM_TYPE.SCREEN,
-                    sessionId,
-                    fileStartTime: fileFirstActive.get(filename)!
-                });
-            } else {
-                activeFiles.delete(filename);
+                index++;
             }
-            lastChangeTime = timestamp;
         }
-
         flushSegment(this._stoppedAt);
-        return segments;
+        return segments.some((segment) => segment.files.size > 0) ? segments : [];
+    }
+
+    private async _getValidVideoPaths(segments: VideoSegment[]) {
+        const paths = new Set(
+            segments.flatMap((segment) =>
+                [...segment.files.values()].map((file) =>
+                    path.join(this._workingDir, file.type, file.filename)
+                )
+            )
+        );
+        const validPaths = new Set<string>();
+        for (const filePath of paths) {
+            if (await validateMediaFile(filePath, "v:0", this._signal)) {
+                validPaths.add(filePath);
+            } else {
+                logger.warn(`Skipping corrupted video file: ${filePath}`);
+            }
+        }
+        return validPaths;
     }
 
     private async _compileSegment(
         segment: VideoSegment,
-        index: number
-    ): Promise<string | undefined> {
+        index: number,
+        validVideoPaths: Set<string>
+    ): Promise<string> {
         const files = Array.from(segment.files.values());
-        if (files.length === 0) {
-            return undefined;
-        }
         const outputPath = path.join(
             this._workingDir,
             `segment_${index}.${config.recording.video.ext}`
         );
         const duration = (segment.endTime - segment.startTime) / 1000;
-        const screenFiles = files.filter((f) => f.type === STREAM_TYPE.SCREEN);
-        const cameraFiles = files.filter((f) => f.type === STREAM_TYPE.CAMERA);
-        // Validate files and filter out corrupted ones
-        const validScreenFiles: { file: VideoFileInfo; filePath: string }[] = [];
-        const validCameraFiles: { file: VideoFileInfo; filePath: string }[] = [];
-        for (const file of screenFiles) {
-            const filePath = path.join(this._workingDir, "screen", file.filename);
-            if (await validateVideoFile(filePath)) {
-                validScreenFiles.push({ file, filePath });
-            } else {
-                logger.warn(`Skipping corrupted screen file: ${file.filename}`);
+        const validFiles = files.flatMap((file) => {
+            const filePath = path.join(this._workingDir, file.type, file.filename);
+            return validVideoPaths.has(filePath) ? [{ file, filePath }] : [];
+        });
+        const validScreenFiles = validFiles.filter(({ file }) => file.type === STREAM_TYPE.SCREEN);
+        const validCameraFiles = validFiles.filter(({ file }) => file.type === STREAM_TYPE.CAMERA);
+        if (validFiles.length === 0) {
+            if (files.length > 0) {
+                logger.warn(`Segment ${index}: all video files are corrupted, using black video`);
             }
-        }
-        for (const file of cameraFiles) {
-            const filePath = path.join(this._workingDir, "camera", file.filename);
-            if (await validateVideoFile(filePath)) {
-                validCameraFiles.push({ file, filePath });
-            } else {
-                logger.warn(`Skipping corrupted camera file: ${file.filename}`);
-            }
-        }
-        // If all files were corrupted, skip this segment
-        if (validScreenFiles.length === 0 && validCameraFiles.length === 0) {
-            logger.warn(`Segment ${index}: all video files are corrupted, skipping`);
-            return undefined;
+            return runFfmpeg(
+                [
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    `color=c=black:s=1280x720:r=${config.recording.video.frameRate}`,
+                    "-t",
+                    duration.toFixed(3),
+                    "-c:v",
+                    config.recording.video.codec,
+                    "-preset",
+                    config.recording.video.preset,
+                    "-movflags",
+                    "+faststart"
+                ],
+                outputPath,
+                this._signal
+            );
         }
         const inputs: string[] = [];
         const filterComplex: string[] = [];
@@ -462,39 +467,24 @@ export class MediaCompiler {
             if (offset > 0) {
                 inputs.push("-ss", offset.toFixed(3));
             }
-            inputs.push("-i", filePath);
+            inputs.push(...INPUT_RECOVERY_OPTIONS, "-i", filePath);
         }
         for (const { file, filePath } of validCameraFiles) {
             const offset = (segment.startTime - file.fileStartTime) / 1000;
             if (offset > 0) {
                 inputs.push("-ss", offset.toFixed(3));
             }
-            inputs.push("-i", filePath);
+            inputs.push(...INPUT_RECOVERY_OPTIONS, "-i", filePath);
         }
         let outputLabel: string;
-        // TODO write a cleaner comment later
-        // TODO 2 maybe extract layout creation to its own function
-        /**
-         * LAYOUT
-         * * - Screen + cameras: screen takes main area, cameras in bottom bar
-         * - Only cameras: dynamic grid layout
-         * - Only screen: fullscreen (currently only supporting 1 screen share at a time)
-         */
         if (validScreenFiles.length > 0 && validCameraFiles.length > 0) {
-            // TODO: values are hard coded but the recording format is fiexed so it
-            // see if it can be refactored with a more centralized dimensions config
-
-            // Screen + cameras: screen takes main area, cameras in bottom bar
-            // Layout: 1280x720 total - screen: 1280x580 (top), cameras: 1280x140 (bottom bar)
             const screenHeight = 580;
             const barHeight = 140;
             const camWidth = Math.floor(1280 / validCameraFiles.length);
-            // Scale screen share
             filterComplex.push(
                 `[0:v]scale=1280:${screenHeight}:force_original_aspect_ratio=decrease,` +
                     `pad=1280:${screenHeight}:(ow-iw)/2:(oh-ih)/2[screen]`
             );
-            // Scale camera streams
             for (let i = 0; i < validCameraFiles.length; i++) {
                 const streamIdx = validScreenFiles.length + i;
                 filterComplex.push(
@@ -502,31 +492,24 @@ export class MediaCompiler {
                         `pad=${camWidth}:${barHeight}:(ow-iw)/2:(oh-ih)/2[cam${i}]`
                 );
             }
-            // Combine cameras into horizontal bar
             if (validCameraFiles.length === 1) {
                 filterComplex.push(`[cam0]pad=1280:${barHeight}:(1280-iw)/2:0[cambar]`);
             } else {
                 const camLabels = validCameraFiles.map((_, i) => `[cam${i}]`).join("");
                 filterComplex.push(`${camLabels}hstack=inputs=${validCameraFiles.length}[cambar]`);
             }
-            // Stack screen and camera bar vertically
             filterComplex.push(`[screen][cambar]vstack=inputs=2[vout]`);
             outputLabel = "[vout]";
         } else if (validScreenFiles.length > 0) {
-            // Only screen(s) - fullscreen (use first if multiple)
             filterComplex.push(
                 `[0:v]scale=1280:720:force_original_aspect_ratio=decrease,` +
                     `pad=1280:720:(ow-iw)/2:(oh-ih)/2[vout]`
             );
             outputLabel = "[vout]";
-        } else if (validCameraFiles.length > 0) {
-            // Only cameras - dynamic grid layout
-            outputLabel = this._buildCameraGrid(validCameraFiles.length, filterComplex);
         } else {
-            return undefined;
+            outputLabel = this._buildCameraGrid(validCameraFiles.length, filterComplex);
         }
         const args = [
-            "-y",
             ...inputs,
             "-filter_complex",
             filterComplex.join(";"),
@@ -543,34 +526,9 @@ export class MediaCompiler {
             // Moves the moov atom to the front so segment files can be
             // read sequentially during concatenation without seeking.
             "-movflags",
-            "+faststart",
-            outputPath
+            "+faststart"
         ];
-
-        logger.debug(`Compiling segment ${index}: ffmpeg ${args.join(" ")}`);
-        return new Promise<string>((resolve, reject) => {
-            const proc = spawn("ffmpeg", args);
-            let logStream: fs.WriteStream | undefined;
-            if (config.FFMPEG_LOGGING) {
-                logStream = fs.createWriteStream(`${outputPath}.log`);
-                proc.stderr?.pipe(logStream, { end: false });
-                proc.stdout?.pipe(logStream, { end: false });
-            }
-            proc.on("close", (code) => {
-                logStream?.end();
-                if (code === 0) {
-                    resolve(outputPath);
-                } else {
-                    logger.error(`Segment ${index} compilation failed with code ${code}`);
-                    reject(new Error(`FFmpeg exited with code ${code}`));
-                }
-            });
-            proc.on("error", (err) => {
-                logStream?.end();
-                logger.error(`Failed to spawn FFmpeg for segment ${index}: ${err}`);
-                reject(err);
-            });
-        });
+        return runFfmpeg(args, outputPath, this._signal);
     }
 
     /**

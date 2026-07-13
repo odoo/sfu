@@ -30,9 +30,6 @@ let server: WebSocketServer | undefined;
 export const __testing__ = {
     get unauthenticatedWebSocketCount(): number {
         return unauthenticatedWebSockets.size;
-    },
-    get authenticatedWebSocketCount(): number {
-        return authenticatedWebSockets.size;
     }
 };
 
@@ -54,13 +51,17 @@ export async function start(
         unauthenticatedWebSockets.set(currentPendingId, webSocket);
 
         const timeout = setTimeout(() => {
-            if (webSocket.readyState > webSocket.OPEN) {
-                return;
+            if (webSocket.readyState <= webSocket.OPEN) {
+                webSocket.close(WS_CLOSE_CODE.TIMEOUT);
+                logger.warn(`${remoteAddress} WS timed out, closing it`);
             }
-            webSocket.close(WS_CLOSE_CODE.TIMEOUT);
-            logger.warn(`${remoteAddress} WS timed out, closing it`);
-            unauthenticatedWebSockets.delete(currentPendingId);
+            clearPendingAuthentication();
         }, config.timeouts.authentication);
+        const clearPendingAuthentication = () => {
+            clearTimeout(timeout);
+            unauthenticatedWebSockets.delete(currentPendingId);
+        };
+        webSocket.once("close", clearPendingAuthentication);
 
         // Handle first message (authentication)
         webSocket.once("message", (message: string) => {
@@ -85,11 +86,11 @@ export async function start(
                     webSocket.close(WS_CLOSE_CODE.ERROR);
                 }
             }
-            unauthenticatedWebSockets.delete(currentPendingId);
+            webSocket.off("close", clearPendingAuthentication);
+            clearPendingAuthentication();
             if (isAuthenticated) {
                 authenticatedWebSockets.add(webSocket);
             }
-            clearTimeout(timeout);
         });
     });
     const addr = server.address() as AddressInfo;

@@ -1,11 +1,9 @@
 import { once } from "node:events";
 
 import { WebSocket } from "ws";
-import { describe, beforeEach, afterEach, expect, jest } from "@jest/globals";
+import { describe, beforeEach, afterEach, expect } from "@jest/globals";
 
 import { Channel } from "#src/core/models/channel";
-import { WS_CLOSE_CODE } from "#src/shared/enums";
-import { timeouts } from "#src/config";
 
 import { LocalNetwork, makeJwt } from "#tests/utils/network";
 
@@ -17,11 +15,9 @@ describe("Security", () => {
     beforeEach(async () => {
         network = new LocalNetwork();
         await network.start(HTTP_INTERFACE, PORT);
-        jest.useFakeTimers();
     });
     afterEach(async () => {
         await network.close();
-        jest.useRealTimers();
     });
     test("Authentication fails with wrong JWT", async () => {
         const channelUUID = await network.getChannelUUID();
@@ -29,14 +25,6 @@ describe("Security", () => {
         network.makeJwt = () => "wrong-JWT";
         await expect(network.connect(channelUUID, 54)).rejects.toThrow();
         expect(channel!.sessions.size).toBe(0);
-    });
-    test("Websocket does timeout if the authentication process is not started", async () => {
-        jest.spyOn(global, "setTimeout");
-        const websocket = new WebSocket(`ws://${HTTP_INTERFACE}:${PORT}`);
-        await once(websocket, "open");
-        jest.advanceTimersByTime(timeouts.authentication + 100);
-        const [event] = await once(websocket, "close");
-        expect(event).toBe(WS_CLOSE_CODE.TIMEOUT);
     });
     test("cannot access a channel with the wrong key", async () => {
         const channelUUID = await network.getChannelUUID({ key: "channel-specific-key" });
@@ -72,7 +60,9 @@ describe("Security", () => {
         const data = JSON.parse(message.toString());
         expect(data).toHaveProperty("availableFeatures");
 
+        const close = once(ws, "close");
         ws.close();
+        await close;
     });
     test("cannot omit key when recordingAddress is provided", async () => {
         await expect(

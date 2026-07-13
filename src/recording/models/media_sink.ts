@@ -19,9 +19,7 @@ export type RtpData = {
     channels?: number;
 };
 
-export type MediaSinkFailure = MediaWriterFailure & {
-    sinkName: string;
-};
+export type MediaSinkFailure = MediaWriterFailure;
 
 /**
  * Bridges a mediasoup producer through a RTP to an FFMPEG recording process.
@@ -37,7 +35,7 @@ export class MediaSink extends EventEmitter {
     } as const;
 
     name: string;
-    readonly ready: Promise<void>;
+    readonly ready: Promise<boolean>;
     private _producer: Producer<SessionAppData>;
     private _transport?: PlainTransport;
     private _consumer?: Consumer;
@@ -47,6 +45,7 @@ export class MediaSink extends EventEmitter {
     private _isClosed = false;
     private _closePromise?: Promise<void>;
     private _failure?: MediaSinkFailure;
+    private _syncPromise = Promise.resolve();
     private _writerFailureListener?: (failure: MediaWriterFailure) => void;
     private _directory: string;
     private _allowed = true;
@@ -81,13 +80,9 @@ export class MediaSink extends EventEmitter {
         this.ready = this._init();
     }
 
-    async close() {
-        if (this._closePromise) {
-            return this._closePromise;
-        }
+    close(): Promise<void> {
         this._isClosed = true;
-        this._closePromise = this._cleanup();
-        return this._closePromise;
+        return (this._closePromise ??= this._close());
     }
 
     private get _router() {
@@ -95,78 +90,106 @@ export class MediaSink extends EventEmitter {
     }
 
     private async _init() {
-        try {
-            this._port = new DynamicPort();
-            this._transport = await this._router.createPlainTransport(
-                config.rtc.plainTransportOptions
-            );
-            if (!this._transport) {
-                throw new Error(`Failed at creating a plain transport for`);
-            }
-            this._transport.connect({
-                ip: config.recording.routingInterface,
-                port: this._port.number
-            });
-            this._consumer = await this._transport.consume({
+        this._port = new DynamicPort();
+        this._transport = await this._router.createPlainTransport(config.rtc.plainTransportOptions);
+        if (this._isClosed) {
+            return false;
+        }
+        await this._transport.connect({
+            ip: config.recording.routingInterface,
+            port: this._port.number
+        });
+        if (this._isClosed) {
+            return false;
+        }
+        this._consumer = await this._transport
+            .consume({
                 producerId: this._producer.id,
                 rtpCapabilities: this._router.rtpCapabilities,
                 paused: true
+            })
+            .catch((error: unknown) => {
+                if (!this._producer.closed) {
+                    throw error;
+                }
+                return undefined;
             });
-            if (this._isClosed) {
-                // may be closed by the time the consumer is created
-                await this._cleanup();
-                return;
-            }
-            const codecData = this._consumer.rtpParameters.codecs[0];
-            this._rtpData = {
-                kind: this._producer.kind,
-                payloadType: codecData.payloadType,
-                clockRate: codecData.clockRate,
-                port: this._port.number,
-                codec: codecData.mimeType.split("/")[1],
-                channels: this._producer.kind === "audio" ? codecData.channels : undefined
-            };
-            if (this._isClosed) {
-                await this._cleanup();
-                return;
-            }
-            const syncProcess = this._syncProcess.bind(this);
-            this._consumer.on("producerresume", syncProcess);
-            this._consumer.on("producerpause", syncProcess);
-            this._syncProcess();
-        } catch (error) {
-            await this.close();
-            throw error;
+        if (!this._consumer) {
+            this._transport.close();
+            this._transport = undefined;
+            this._port.release();
+            this._port = undefined;
+            return false;
         }
+        if (this._isClosed) {
+            return false;
+        }
+        const codecData = this._consumer.rtpParameters.codecs[0];
+        this._rtpData = {
+            kind: this._producer.kind,
+            payloadType: codecData.payloadType,
+            clockRate: codecData.clockRate,
+            port: this._port.number,
+            codec: codecData.mimeType.split("/")[1],
+            channels: this._producer.kind === "audio" ? codecData.channels : undefined
+        };
+        const syncProcess = this._syncProcess.bind(this);
+        this._consumer.on("producerresume", syncProcess);
+        this._consumer.on("producerpause", syncProcess);
+        this._consumer.on("producerclose", () => {
+            void this.close().catch((error) => {
+                this._handleFailure({
+                    filename: this._mediaWriter?.filename ?? this._availabilityMarker,
+                    error: error instanceof Error ? error : new Error(String(error))
+                });
+            });
+        });
+        this._syncProcess();
+        await this._syncPromise;
+        return true;
     }
 
     private _syncProcess() {
+        this._syncPromise = this._syncPromise
+            .then(() => this._sync())
+            .catch((error) => {
+                if (this._isClosed) {
+                    return;
+                }
+                this._handleFailure({
+                    filename: this._mediaWriter?.filename ?? this._availabilityMarker,
+                    error: error instanceof Error ? error : new Error(String(error))
+                });
+            });
+    }
+
+    private async _sync() {
         if (this._isClosed || !this._rtpData) {
             return;
         }
         // equivalent to this._producer.paused, but the producer state seems to update after the event.
         if (this._consumer!.producerPaused) {
-            this._updateConsumer(false);
+            await this._updateConsumer(false);
         } else {
             if (!this._mediaWriter && this._allowed) {
                 const fileName = `${Date.now()}-${this.name}`;
                 logger.verbose(`new recording file${this._directory}/${fileName}`);
                 this._mediaWriter = new MediaWriter(this._rtpData, this._directory, fileName);
                 this._writerFailureListener = (failure: MediaWriterFailure) => {
-                    this._handleWriterFailure(failure);
+                    this._handleFailure(failure);
                 };
                 this._mediaWriter.once(MediaWriter.Events.FAILURE, this._writerFailureListener);
             }
-            this._updateConsumer(true);
+            await this._updateConsumer(true);
         }
     }
 
-    private _handleWriterFailure(failure: MediaWriterFailure) {
+    private _handleFailure(failure: MediaSinkFailure) {
         if (this._failure) {
             return;
         }
-        this._failure = { ...failure, sinkName: this.name };
-        void this._closeAfterFailure(this._failure);
+        this._failure = failure;
+        void this._closeAfterFailure(failure);
     }
 
     private async _closeAfterFailure(failure: MediaSinkFailure) {
@@ -178,52 +201,67 @@ export class MediaSink extends EventEmitter {
         this.emit(MediaSink.Events.FAILURE, failure);
     }
 
-    private _updateConsumer(available: boolean) {
+    private async _updateConsumer(available: boolean) {
         const active = available && this._allowed;
         if (active) {
-            this._consumer?.resume();
+            await this._consumer?.resume();
             if (this._consumer?.kind === "video") {
                 // need to request a keyframe so that the recording has a starting frame
                 // otherwise it could have a back screen at the start
-                this._consumer.requestKeyFrame();
+                await this._consumer.requestKeyFrame();
             }
         } else {
-            this._consumer?.pause();
+            await this._consumer?.pause();
+        }
+        if (this._isClosed) {
+            return;
         }
         this.emit(MediaSink.Events.FILE_STATE_CHANGE, {
             active,
-            /**
-             * this should be used by the recorder to know
-             * when someone starts screen sharing.
-             * then update this.allowed accordingly
-             */
             available,
             filename: this._mediaWriter?.filename ?? this._availabilityMarker
         });
     }
 
+    private async _close() {
+        await this.ready.catch(() => {});
+        await this._syncPromise;
+        await this._cleanup();
+    }
+
     private async _cleanup() {
         const mediaWriter = this._mediaWriter;
         const writerFailureListener = this._writerFailureListener;
-        if (mediaWriter) {
-            this.emit(MediaSink.Events.FILE_STATE_CHANGE, {
-                active: false,
-                filename: mediaWriter.filename,
-                eof: true
-            });
-        }
+        this.emit(MediaSink.Events.FILE_STATE_CHANGE, {
+            active: false,
+            available: false,
+            filename: mediaWriter?.filename ?? this._availabilityMarker,
+            eof: true
+        });
         const prom = mediaWriter?.close();
         this._consumer?.close();
         this._transport?.close();
-        this._port?.release();
+        this._consumer = undefined;
+        this._transport = undefined;
+        this._rtpData = undefined;
         try {
             await prom;
         } finally {
+            if (!mediaWriter || mediaWriter.isProcessClosed) {
+                this._releasePort();
+            } else {
+                mediaWriter.once(MediaWriter.Events.PROCESS_CLOSE, () => this._releasePort());
+            }
             if (mediaWriter && writerFailureListener) {
                 mediaWriter.off(MediaWriter.Events.FAILURE, writerFailureListener);
             }
             this._mediaWriter = undefined;
             this._writerFailureListener = undefined;
         }
+    }
+
+    private _releasePort() {
+        this._port?.release();
+        this._port = undefined;
     }
 }

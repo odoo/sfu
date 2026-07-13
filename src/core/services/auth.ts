@@ -188,7 +188,7 @@ function safeEqual(a: Buffer, b: Buffer): boolean {
  *  - token parsing fails.
  *  - the JOSE algorithm is not supported.
  *  - signature validation fails.
- *  - `exp` is in the past.
+ *  - `exp` has been reached.
  *  - `nbf` is in the future.
  *  - `iat` is too far ahead.
  */
@@ -214,7 +214,7 @@ export function verify<T>(jsonWebToken: string, key: StringLike = jwtKey!): T & 
     }
     // Note: exp, iat, and nbf are in seconds (NumericDate per RFC7519)
     const now = Math.floor(Date.now() / 1000);
-    if (claims.exp && claims.exp < now) {
+    if (claims.exp !== undefined && claims.exp <= now) {
         throw new AuthenticationError("Token expired");
     }
     if (claims.nbf && claims.nbf > now) {

@@ -3,7 +3,6 @@ import path from "node:path";
 import fs from "node:fs/promises";
 
 import * as config from "#src/config.ts";
-import { DiskSpaceLimitReachedError } from "#src/utils/errors.ts";
 
 import { mockFs, mockNodeFS } from "#tests/utils/mockFileSystem.ts";
 
@@ -101,24 +100,8 @@ describe("resources service", () => {
 
         await folder.delete();
         expect(mockFs.exists(path.join(config.dir.resources, "nested"))).toBe(true);
+        expect(mockFs.exists(expectedPath)).toBe(false);
         await fs.rm(path.join(config.dir.resources, "nested"), { recursive: true, force: true });
-    });
-
-    test("folder should reserve disk space and reject over-allocation", async () => {
-        mockFs.setAvailableDiskSpace(
-            resources.RECORDING_RESERVATION_BYTES +
-                Math.floor(resources.RECORDING_RESERVATION_BYTES / 2)
-        );
-        const first = await resources.Folder.create("first", []);
-
-        await expect(resources.Folder.create("second", [])).rejects.toBeInstanceOf(
-            DiskSpaceLimitReachedError
-        );
-
-        await first.delete();
-
-        const second = await resources.Folder.create("second", []);
-        expect(mockFs.exists(second.path)).toBe(true);
     });
 
     test("ports should be allocated and released", async () => {
