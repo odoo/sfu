@@ -808,7 +808,6 @@ describe("Scheduler Service", () => {
         mockFs.mkdir(path.join(recordingDir, "audio"));
         mockFs.write(path.join(recordingDir, "metadata.bin"), JSON.stringify(metadata));
         mockFs.write(path.join(recordingDir, "audio", "audio_1.ogg"), "dummy audio content");
-        mockFsModule.rm.mockRejectedValueOnce(new Error("temporary cleanup failure"));
         mockFetch.mockImplementation(async (url: string | URL | Request) => {
             const urlString = url.toString();
             if (urlString.includes("/routing")) {
@@ -829,9 +828,6 @@ describe("Scheduler Service", () => {
         });
 
         await mediaService.start();
-        expect(mockFs.exists(recordingDir)).toBe(true);
-
-        await mediaService.__testing__.oneProcessingBatch();
         expect(mockFs.exists(recordingDir)).toBe(false);
 
         expect(mockSpawn).toHaveBeenCalledWith(
@@ -840,7 +836,9 @@ describe("Scheduler Service", () => {
             expect.objectContaining({ stdio: "ignore" })
         );
         expect(mockFetch).toHaveBeenCalledTimes(2);
-        expect(mockFsModule.rm).toHaveBeenCalledTimes(2);
+        expect(mockFsModule.rm).toHaveBeenCalledWith(recordingDir, {
+            recursive: true
+        });
     });
 
     test("retries transient metadata read failures", async () => {
@@ -1460,10 +1458,13 @@ describe("Scheduler Service network tests", () => {
         const { MediaUploader } = await import("#src/recording/models/media_uploader.ts");
         const filePath = "/mock/audio.ogg";
         mockFsInstance.write(filePath, "audio");
-        const response = new Response("ignored");
-        const textSpy = jest.spyOn(response, "text");
-        const cancelSpy = jest.spyOn(response.body!, "cancel");
-        mockFetch.mockResolvedValue(response);
+        const routingResponse = new Response(
+            JSON.stringify({ destination: "http://upload.local" })
+        );
+        const uploadResponse = new Response("ignored");
+        const textSpy = jest.spyOn(uploadResponse, "text");
+        const cancelSpy = jest.spyOn(uploadResponse.body!, "cancel");
+        mockFetch.mockResolvedValueOnce(routingResponse).mockResolvedValueOnce(uploadResponse);
         const uploader = new MediaUploader({
             routingTimeoutMs: 10,
             uploadTimeoutMs: 10
@@ -1488,6 +1489,39 @@ describe("Scheduler Service network tests", () => {
 
         expect(cancelSpy).toHaveBeenCalledTimes(1);
         expect(textSpy).not.toHaveBeenCalled();
+    });
+
+    test("uses the Odoo transcription route", async () => {
+        const { MediaUploader } = await import("#src/recording/models/media_uploader.ts");
+        const filePath = "/mock/audio.ogg";
+        mockFsInstance.write(filePath, "audio");
+        mockFetch.mockResolvedValue(new Response());
+        const uploader = new MediaUploader({
+            routingTimeoutMs: 10,
+            uploadTimeoutMs: 10
+        });
+
+        await uploader.transcribe({
+            filePath,
+            metadata: {
+                channelName: "channel",
+                channelUUID: "uuid",
+                routingAddress: "http://routing.local",
+                channelKey: "key",
+                labels: {},
+                startedAt: 1000,
+                stoppedAt: 2000,
+                timeStamps: [],
+                audio: false,
+                video: false,
+                transcription: true
+            }
+        });
+
+        expect(mockFetch).toHaveBeenCalledWith(
+            "http://routing.local/transcribe?start_ms=1000&end_ms=2000",
+            expect.objectContaining({ method: "POST" })
+        );
     });
 
     test("rejects an oversized routing response", async () => {
@@ -1521,7 +1555,7 @@ describe("Scheduler Service network tests", () => {
         expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
-    test("does not repeat audio after video routing fails", async () => {
+    test("keeps recording when a later upload fails", async () => {
         const recordingName = "session_route_fail";
         const routingAddress = "http://www.oodo.test/routing";
         const recordingDir = `/mock/recordings/${recordingName}`;
@@ -1547,22 +1581,30 @@ describe("Scheduler Service network tests", () => {
         mockFsInstance.write(path.join(recordingDir, "audio", "audio_1.ogg"), "dummy audio");
         mockFsInstance.write(path.join(recordingDir, "camera", "cam_1.mp4"), "dummy video");
 
-        mockFetch.mockImplementation(async (url: string | URL | Request) =>
-            url.toString().includes("/audio")
-                ? ({ ok: true, text: async () => "" } as Response)
-                : ({
-                      ok: false,
-                      status: 503,
-                      statusText: "Unavailable",
-                      text: async () => ""
-                  } as Response)
-        );
+        let routingRequests = 0;
+        mockFetch.mockImplementation(async (url: string | URL | Request) => {
+            if (url.toString().includes("/routing?")) {
+                routingRequests++;
+                if (routingRequests % 2 === 1) {
+                    return {
+                        ok: true,
+                        text: async () => JSON.stringify({ destination: "http://upload.local" })
+                    } as Response;
+                }
+                return {
+                    ok: false,
+                    status: 503,
+                    statusText: "Unavailable",
+                    text: async () => ""
+                } as Response;
+            }
+            return { ok: true, text: async () => "" } as Response;
+        });
 
         await mediaService.start();
-        await mediaService.__testing__.oneProcessingBatch();
 
         expect(
-            mockFetch.mock.calls.filter(([url]) => url.toString().includes("/audio"))
+            mockFetch.mock.calls.filter(([url]) => url.toString() === "http://upload.local")
         ).toHaveLength(1);
         expect(
             mockFetch.mock.calls.filter(([url]) => url.toString().includes("/routing?"))
@@ -1688,7 +1730,7 @@ describe("Scheduler Service network tests", () => {
             expect.objectContaining({
                 method: "POST",
                 headers: expect.objectContaining({
-                    "Content-Type": "video/mp4"
+                    "Content-Type": "application/octet-stream"
                 })
             })
         );

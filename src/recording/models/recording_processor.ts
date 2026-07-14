@@ -50,16 +50,16 @@ export class RecordingProcessor {
             if (metadata.audio || metadata.transcription) {
                 const audioPath = await compiler.getAudio();
                 if (metadata.transcription && audioPath) {
-                    this._uploader.transcribe({ filePath: audioPath, metadata });
+                    await this._uploader.transcribe({ filePath: audioPath, metadata });
                 }
                 if (metadata.audio && audioPath) {
-                    this._uploader.uploadMedia({ filePath: audioPath, metadata });
+                    await this._uploader.uploadMedia({ filePath: audioPath, metadata });
                 }
             }
             if (metadata.video) {
                 const videoPath = await compiler.getVideo();
                 if (videoPath) {
-                    this._uploader.uploadMedia({ filePath: videoPath, metadata });
+                    await this._uploader.uploadMedia({ filePath: videoPath, metadata });
                 }
             }
         } catch (error) {
