@@ -28,25 +28,11 @@ export class MediaUploader {
         this._uploadTimeoutMs = uploadTimeoutMs;
     }
 
-    async uploadAudio({
-        filePath,
-        metadata,
-        mainMedia
-    }: {
-        filePath: string;
-        metadata: SealedMetaData;
-        mainMedia: boolean;
-    }) {
+    async transcribe({ filePath, metadata }: { filePath: string; metadata: SealedMetaData }) {
         const fileStats = await fs.stat(filePath);
         const queryParams = ["start_ms=" + metadata.startedAt, "end_ms=" + metadata.stoppedAt];
-        if (metadata.transcription) {
-            queryParams.push("transcribe=True");
-        }
-        if (mainMedia) {
-            queryParams.push("main_media=True");
-        }
         const response = await this._fetchWithTimeout(
-            `${metadata.routingAddress}/audio?${queryParams.join("&")}`,
+            `${metadata.routingAddress}/transcribe?${queryParams.join("&")}`,
             {
                 method: "POST",
                 headers: {
@@ -72,7 +58,7 @@ export class MediaUploader {
         );
     }
 
-    async uploadVideo({ filePath, metadata }: { filePath: string; metadata: SealedMetaData }) {
+    async uploadMedia({ filePath, metadata }: { filePath: string; metadata: SealedMetaData }) {
         logger.debug(`Uploading files to ${metadata.routingAddress}`);
         const params = new URLSearchParams({
             start_ms: String(metadata.startedAt),
@@ -103,7 +89,7 @@ export class MediaUploader {
             {
                 method: "POST",
                 headers: {
-                    "Content-Type": `video/${config.recording.video.ext}`,
+                    "Content-Type": "application/octet-stream",
                     "Content-Length": fileStats.size.toString()
                 },
                 // @ts-expect-error: same as above

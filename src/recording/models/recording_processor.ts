@@ -47,22 +47,20 @@ export class RecordingProcessor {
                 stoppedAt: metadata.stoppedAt,
                 timeStamps: metadata.timeStamps
             });
-            const audioPath =
-                (metadata.audio || metadata.transcription) && (await compiler.getAudio());
-            const videoPath = metadata.video && (await compiler.getVideo());
-            if (audioPath) {
-                await this._uploadOnce(audioPath, () =>
-                    this._uploader.uploadAudio({
-                        filePath: audioPath,
-                        metadata,
-                        mainMedia: !videoPath
-                    })
-                );
+            if (metadata.audio || metadata.transcription) {
+                const audioPath = await compiler.getAudio();
+                if (metadata.transcription && audioPath) {
+                    this._uploader.transcribe({ filePath: audioPath, metadata });
+                }
+                if (metadata.audio && audioPath) {
+                    this._uploader.uploadMedia({ filePath: audioPath, metadata });
+                }
             }
-            if (videoPath) {
-                await this._uploadOnce(videoPath, () =>
-                    this._uploader.uploadVideo({ filePath: videoPath, metadata })
-                );
+            if (metadata.video) {
+                const videoPath = await compiler.getVideo();
+                if (videoPath) {
+                    this._uploader.uploadMedia({ filePath: videoPath, metadata });
+                }
             }
         } catch (error) {
             if (!(error instanceof DiscardRecordingError)) {
@@ -81,20 +79,6 @@ export class RecordingProcessor {
             logger.error(`Failed to finalize recording ${folderName}, keeping for retry: ${error}`);
             return false;
         }
-    }
-
-    private async _uploadOnce(filePath: string, upload: () => Promise<unknown>) {
-        const markerPath = `${filePath}.uploaded`;
-        try {
-            await fs.access(markerPath);
-            return;
-        } catch (error) {
-            if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-                throw error;
-            }
-        }
-        await upload();
-        await fs.writeFile(markerPath, "");
     }
 
     private async _readMetadata(

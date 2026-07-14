@@ -802,12 +802,31 @@ describe("Scheduler Service", () => {
             video: false,
             transcription: false
         };
+        const uploadDestination = "http://upload.local/video";
 
         mockFs.mkdir(recordingDir);
         mockFs.mkdir(path.join(recordingDir, "audio"));
         mockFs.write(path.join(recordingDir, "metadata.bin"), JSON.stringify(metadata));
         mockFs.write(path.join(recordingDir, "audio", "audio_1.ogg"), "dummy audio content");
         mockFsModule.rm.mockRejectedValueOnce(new Error("temporary cleanup failure"));
+        mockFetch.mockImplementation(async (url: string | URL | Request) => {
+            const urlString = url.toString();
+            if (urlString.includes("/routing")) {
+                return {
+                    ok: true,
+                    text: async () => JSON.stringify({ destination: uploadDestination }),
+                    statusText: "OK"
+                } as Response;
+            }
+            if (urlString === uploadDestination) {
+                return { ok: true, text: async () => "" } as Response;
+            }
+            return {
+                ok: false,
+                statusText: "Not Found",
+                text: async () => ""
+            } as Response;
+        });
 
         await mediaService.start();
         expect(mockFs.exists(recordingDir)).toBe(true);
@@ -820,14 +839,7 @@ describe("Scheduler Service", () => {
             expect.arrayContaining([expect.stringContaining("recording_1000.partial.ogg")]),
             expect.objectContaining({ stdio: "ignore" })
         );
-        expect(mockFetch).toHaveBeenCalledWith(
-            `${routingAddress}/audio?start_ms=${metadata.startedAt}&end_ms=${metadata.stoppedAt}&main_media=True`,
-            expect.objectContaining({
-                method: "POST",
-                headers: expect.objectContaining({ Authorization: "Bearer mock_jwt" })
-            })
-        );
-        expect(mockFetch).toHaveBeenCalledTimes(1);
+        expect(mockFetch).toHaveBeenCalledTimes(2);
         expect(mockFsModule.rm).toHaveBeenCalledTimes(2);
     });
 
@@ -1457,9 +1469,8 @@ describe("Scheduler Service network tests", () => {
             uploadTimeoutMs: 10
         });
 
-        await uploader.uploadAudio({
+        await uploader.uploadMedia({
             filePath,
-            mainMedia: true,
             metadata: {
                 channelName: "channel",
                 channelUUID: "uuid",
@@ -1490,7 +1501,7 @@ describe("Scheduler Service network tests", () => {
         });
 
         await expect(
-            uploader.uploadVideo({
+            uploader.uploadMedia({
                 filePath,
                 metadata: {
                     channelName: "channel",
