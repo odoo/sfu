@@ -7,14 +7,11 @@ import { Channel } from "#src/core/models/channel";
 
 import { LocalNetwork, makeJwt } from "#tests/utils/network";
 
-const HTTP_INTERFACE = "0.0.0.0";
-const PORT = 62348;
-
 describe("Security", () => {
     let network: LocalNetwork;
     beforeEach(async () => {
         network = new LocalNetwork();
-        await network.start(HTTP_INTERFACE, PORT);
+        await network.start();
     });
     afterEach(async () => {
         await network.close();
@@ -45,7 +42,7 @@ describe("Security", () => {
     });
     test("Legacy Auth: Succeeds if channel has NO key and channelUUID not provided", async () => {
         const channelUUID = await network.getChannelUUID({ key: "", recordingAddress: "" });
-        const ws = new WebSocket(`ws://localhost:${PORT}`);
+        const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);
         await once(ws, "open");
 
         const jwt = makeJwt({

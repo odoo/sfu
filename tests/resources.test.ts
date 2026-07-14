@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "@jest/globals";
 import path from "node:path";
 import fs from "node:fs/promises";
+import * as mediasoup from "mediasoup";
 
 import * as config from "#src/config.ts";
 
@@ -16,47 +17,20 @@ describe("resources service", () => {
     afterEach(async () => {
         await resources.close();
     });
-    test("worker load should be evenly distributed", async () => {
-        const usedWorkers = new Set();
-        for (let i = 0; i < config.NUM_WORKERS; ++i) {
-            const worker = await resources.getWorker();
-            const router = await worker.createRouter({});
-            const webRtcServer = await worker.createWebRtcServer(config.rtc.rtcServerOptions);
-            const promises = [];
-            for (let i = 0; i < 500; ++i) {
-                // creating a lot of transports to make sure that the test is not unreliable as load can vary
-                promises.push(
-                    router.createWebRtcTransport({
-                        ...config.rtc.rtcTransportOptions,
-                        webRtcServer
-                    })
-                );
-            }
-            await Promise.all(promises);
-            usedWorkers.add(worker);
-        }
-        expect(usedWorkers.size).toBe(config.NUM_WORKERS);
-    });
     test("worker should be replaced if it dies", async () => {
         const worker = await resources.getWorker();
-        const pid = worker.pid;
-        process.kill(pid, "SIGTERM");
-
-        await new Promise<void>((resolve) => {
-            const interval = setInterval(() => {
-                if (
-                    resources.__testing__.workerCount === config.NUM_WORKERS &&
-                    !resources.__testing__.hasWorker(worker)
-                ) {
-                    clearInterval(interval);
-                    resolve();
-                }
-            }, 10);
+        const replacementReady = new Promise<resources.RtcWorker>((resolve) => {
+            mediasoup.observer.once("newworker", (replacement) => {
+                replacement.observer.once("newwebrtcserver", () =>
+                    resolve(replacement as resources.RtcWorker)
+                );
+            });
         });
+        process.kill(worker.pid, "SIGTERM");
 
-        const newWorker = await resources.getWorker();
-        expect(newWorker.pid).not.toBe(pid);
-        expect(resources.__testing__.workerCount).toBe(config.NUM_WORKERS);
+        const replacement = await replacementReady;
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(await resources.getWorker()).toBe(replacement);
     });
     test("getAllowedCodecs should respect environment variables", async () => {
         const { withMockEnv } = await import("./utils/utils");

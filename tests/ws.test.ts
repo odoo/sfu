@@ -10,30 +10,31 @@ import { timeouts } from "#src/config";
 import { __testing__ as wsTesting } from "#src/core/services/ws";
 
 import { LocalNetwork, makeJwt } from "#tests/utils/network";
-
-const HTTP_INTERFACE = "0.0.0.0";
-const PORT = 62345;
+import { waitFor } from "#tests/utils/utils";
 
 describe("WebSocket Service", () => {
     let network: LocalNetwork;
     beforeEach(async () => {
         network = new LocalNetwork();
-        await network.start(HTTP_INTERFACE, PORT);
+        await network.start();
     });
     afterEach(async () => {
-        await network.close();
         jest.useRealTimers();
+        await network.close();
     });
     test("Closes connection if authentication times out", async () => {
-        jest.useFakeTimers({ advanceTimers: true });
-        const ws = new WebSocket(`ws://localhost:${PORT}`);
+        jest.useFakeTimers({
+            doNotFake: ["nextTick", "queueMicrotask", "setImmediate"]
+        });
+        const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);
         await once(ws, "open");
+        const close = once(ws, "close");
         jest.advanceTimersByTime(timeouts.authentication + 100);
-        const [code] = await once(ws, "close");
+        const [code] = await close;
         expect(code).toBe(WS_CLOSE_CODE.TIMEOUT);
     });
     test("Closes connection on invalid JSON message", async () => {
-        const ws = new WebSocket(`ws://localhost:${PORT}`);
+        const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);
         await once(ws, "open");
 
         ws.send("not json");
@@ -43,7 +44,7 @@ describe("WebSocket Service", () => {
         expect(wsTesting.unauthenticatedWebSocketCount).toBe(0);
     });
     test("Closes connection on invalid auth credentials (invalid JWT)", async () => {
-        const ws = new WebSocket(`ws://localhost:${PORT}`);
+        const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);
         await once(ws, "open");
 
         ws.send(
@@ -57,7 +58,7 @@ describe("WebSocket Service", () => {
         expect(code).toBe(WS_CLOSE_CODE.AUTHENTICATION_FAILED);
     });
     test("Closes connection when Channel does not exist", async () => {
-        const ws = new WebSocket(`ws://localhost:${PORT}`);
+        const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);
         await once(ws, "open");
 
         const channelUUID = "non-existent-uuid";
@@ -79,7 +80,7 @@ describe("WebSocket Service", () => {
     });
     test("Closes connection when JWT payload is malformed (missing session_id)", async () => {
         const channelUUID = await network.getChannelUUID();
-        const ws = new WebSocket(`ws://localhost:${PORT}`);
+        const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);
         await once(ws, "open");
 
         const jwt = makeJwt({
@@ -99,7 +100,7 @@ describe("WebSocket Service", () => {
     });
     test("Closes connection with CHANNEL_FULL when channel is overcrowded", async () => {
         const channelUUID = await network.getChannelUUID();
-        const ws = new WebSocket(`ws://localhost:${PORT}`);
+        const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);
         await once(ws, "open");
 
         const joinSpy = jest.spyOn(Channel, "join").mockImplementationOnce(() => {
@@ -124,16 +125,13 @@ describe("WebSocket Service", () => {
         joinSpy.mockRestore();
     });
     test("Handles early disconnect before authentication timeout", async () => {
-        const ws = new WebSocket(`ws://localhost:${PORT}`);
+        const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);
         await once(ws, "open");
         expect(wsTesting.unauthenticatedWebSocketCount).toBe(1);
 
         ws.close();
         await once(ws, "close");
-        for (let attempt = 0; wsTesting.unauthenticatedWebSocketCount && attempt < 50; attempt++) {
-            await new Promise<void>((resolve) => setTimeout(resolve, 10));
-        }
-
+        await waitFor(() => wsTesting.unauthenticatedWebSocketCount === 0);
         expect(wsTesting.unauthenticatedWebSocketCount).toBe(0);
     });
 });

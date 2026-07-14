@@ -1,4 +1,6 @@
 import http, { IncomingMessage, ServerResponse } from "node:http";
+import { once } from "node:events";
+import type { AddressInfo } from "node:net";
 
 import * as ws from "#src/core/services/ws.ts";
 import * as auth from "#src/core/services/auth.ts";
@@ -36,16 +38,17 @@ const logger = new Logger("HTTP");
 
 let httpServer: http.Server | undefined;
 
-export async function start(options: HttpStartOptions = {}): Promise<void> {
+export async function start(options: HttpStartOptions = {}): Promise<number> {
     const { httpInterface = config.HTTP_INTERFACE, port = config.PORT } = options;
     const routeListener = new RouteListener();
     setupRoutes(routeListener);
     httpServer = http.createServer(routeListener.listen);
-    await new Promise<void>((resolve) => {
-        httpServer!.listen(port, httpInterface, resolve);
-    });
-    logger.info(`http listening at ${httpInterface}:${port}`);
+    httpServer.listen(port, httpInterface);
+    await once(httpServer, "listening");
+    const listeningPort = (httpServer.address() as AddressInfo).port;
+    logger.info(`http listening at ${httpInterface}:${listeningPort}`);
     await ws.start({ server: httpServer });
+    return listeningPort;
 }
 
 export async function close(): Promise<void> {

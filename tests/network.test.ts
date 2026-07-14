@@ -6,38 +6,52 @@ import { FakeMediaStreamTrack } from "fake-mediastreamtrack";
 import { SESSION_CLOSE_CODE, SESSION_STATE } from "#src/core/models/session";
 import { STREAM_TYPE } from "#src/shared/enums.ts";
 import { Channel } from "#src/core/models/channel";
-import { SFU_CLIENT_STATE } from "#src/client";
+import { CLIENT_UPDATE, SFU_CLIENT_STATE } from "#src/client";
 import { timeouts } from "#src/config";
+import type { Bus } from "#src/shared/bus";
 
 import { LocalNetwork } from "#tests/utils/network";
 import { waitFor } from "#tests/utils/utils";
 
-const HTTP_INTERFACE = "0.0.0.0";
-const PORT = 61254;
+function nextUpdate(target: EventTarget, name: CLIENT_UPDATE): Promise<CustomEvent> {
+    return new Promise((resolve) => {
+        const listener = (event: Event) => {
+            const update = event as CustomEvent;
+            if (update.detail.name !== name) {
+                return;
+            }
+            target.removeEventListener("update", listener);
+            resolve(update);
+        };
+        target.addEventListener("update", listener);
+    });
+}
 
 describe("Full network", () => {
     let network: LocalNetwork;
     beforeEach(async () => {
         network = new LocalNetwork();
-        await network.start(HTTP_INTERFACE, PORT);
+        await network.start();
     });
     afterEach(async () => {
-        await network.close();
         jest.useRealTimers();
+        await network.close();
     });
     test("The session of the server closes when the client is disconnected", async () => {
         const channelUUID = await network.getChannelUUID();
         const user1 = await network.connect(channelUUID, 1);
+        const close = once(user1.session, "close");
         user1.sfuClient.disconnect();
-        await once(user1.session, "close");
+        await close;
         expect(user1.session.state).toBe(SESSION_STATE.CLOSED);
     });
     test("The server notifies other sessions when one is disconnected", async () => {
         const channelUUID = await network.getChannelUUID();
         const user1 = await network.connect(channelUUID, 1);
         const user2 = await network.connect(channelUUID, 2);
+        const update = once(user1.sfuClient, "update");
         user2.session.close();
-        const [event] = await once(user1.sfuClient, "update");
+        const [event] = await update;
         expect(event.detail).toEqual({
             name: "disconnect",
             payload: { sessionId: 2 }
@@ -55,34 +69,34 @@ describe("Full network", () => {
             isCameraOn: true,
             isScreenSharingOn: false
         };
+        const update = once(user2.sfuClient, "update");
         sender.sfuClient.updateInfo(info);
-        const [event] = await once(user2.sfuClient, "update");
+        const [event] = await update;
         expect(event.detail.name).toBe("info_change");
         expect(event.detail.payload).toEqual({ [1]: info });
     });
     test("Can obtain the info of the whole channel", async () => {
         const channelUUID = await network.getChannelUUID();
         const user1 = await network.connect(channelUUID, 1);
-        const [firstStateChange] = await once(user1.session, "stateChange");
-        expect(firstStateChange).toBe(SESSION_STATE.CONNECTED);
+        expect(user1.session.state).toBe(SESSION_STATE.CONNECTED);
         const user2 = await network.connect(channelUUID, 2);
-        const [secondStateChange] = await once(user2.session, "stateChange");
-        expect(secondStateChange).toBe(SESSION_STATE.CONNECTED);
+        expect(user2.session.state).toBe(SESSION_STATE.CONNECTED);
         const user3 = await network.connect(channelUUID, 3);
-        const [thirdStateChange] = await once(user3.session, "stateChange");
-        expect(thirdStateChange).toBe(SESSION_STATE.CONNECTED);
+        expect(user3.session.state).toBe(SESSION_STATE.CONNECTED);
         const user3Info = {
             isRaisingHand: true,
             isTalking: false,
             isSelfMuted: true
         };
+        const infoUpdate = once(user2.sfuClient, "update");
         user3.sfuClient.updateInfo(user3Info);
-        const [event] = await once(user2.sfuClient, "update");
+        const [event] = await infoUpdate;
         expect(event.detail.payload).toEqual({
             [user3.session.id]: user3Info
         });
+        const refresh = once(user2.sfuClient, "update");
         user2.sfuClient.updateInfo({ isTalking: true }, { needRefresh: true });
-        const [event2] = await once(user2.sfuClient, "update");
+        const [event2] = await refresh;
         expect(event2.detail.payload).toEqual({
             [user1.session.id]: {},
             [user3.session.id]: user3Info
@@ -103,16 +117,13 @@ describe("Full network", () => {
     test("A client can forward a track to other clients", async () => {
         const channelUUID = await network.getChannelUUID();
         const user1 = await network.connect(channelUUID, 1);
-        await user1.isConnected;
         const user2 = await network.connect(channelUUID, 2);
-        await user2.isConnected;
         const sender = await network.connect(channelUUID, 3);
-        await sender.isConnected;
         const track = new FakeMediaStreamTrack({ kind: "audio" });
+        const prom1 = nextUpdate(user1.sfuClient, CLIENT_UPDATE.TRACK);
+        const prom2 = nextUpdate(user2.sfuClient, CLIENT_UPDATE.TRACK);
         await sender.sfuClient.updateUpload(STREAM_TYPE.AUDIO, track);
-        const prom1 = once(user1.sfuClient, "update");
-        const prom2 = once(user2.sfuClient, "update");
-        const [[event1], [event2]] = await Promise.all([prom1, prom2]);
+        const [event1, event2] = await Promise.all([prom1, prom2]);
         expect(event1.detail.name).toEqual("track");
         expect(event2.detail.name).toEqual("track");
         expect(event1.detail.payload.sessionId).toBe(sender.session.id);
@@ -123,7 +134,6 @@ describe("Full network", () => {
     test("Recovery attempts are made if the production fails, a failure does not close the connection", async () => {
         const channelUUID = await network.getChannelUUID();
         const sender = await network.connect(channelUUID, 3);
-        await sender.isConnected;
         const track = new FakeMediaStreamTrack({ kind: "audio" });
         const errorPromise = once(sender.sfuClient, "handledError");
         // closing the transport so the `updateUpload` should fail.
@@ -137,9 +147,7 @@ describe("Full network", () => {
     test("Recovery attempts are made if the consumption fails, a failure does not close the connection", async () => {
         const channelUUID = await network.getChannelUUID();
         const user = await network.connect(channelUUID, 1);
-        await user.isConnected;
         const sender = await network.connect(channelUUID, 3);
-        await sender.isConnected;
         const track = new FakeMediaStreamTrack({ kind: "audio" });
         const errorProm = once(user.session, "handledError");
         // closing the transport so the consumption should fail.
@@ -153,7 +161,6 @@ describe("Full network", () => {
     test("The client can obtain download and upload statistics", async () => {
         const channelUUID = await network.getChannelUUID();
         const sender = await network.connect(channelUUID, 3);
-        await sender.isConnected;
         const track = new FakeMediaStreamTrack({ kind: "audio" });
         await sender.sfuClient.updateUpload(STREAM_TYPE.AUDIO, track);
         const stats = await sender.sfuClient.getStats();
@@ -164,12 +171,11 @@ describe("Full network", () => {
     test("The client can update the state of their downloads", async () => {
         const channelUUID = await network.getChannelUUID();
         const user1 = await network.connect(channelUUID, 1234);
-        await user1.isConnected;
         const sender = await network.connect(channelUUID, 123);
-        await sender.isConnected;
         const track = new FakeMediaStreamTrack({ kind: "audio" });
+        const update = nextUpdate(user1.sfuClient, CLIENT_UPDATE.TRACK);
         await sender.sfuClient.updateUpload(STREAM_TYPE.AUDIO, track);
-        const [event] = await once(user1.sfuClient, "update");
+        const event = await update;
         const download = event.detail.payload.track as MediaStreamTrack;
         // @ts-expect-error verifying the server-side forwarding state
         const getServerConsumer = () => user1.session._consumers.get(sender.session.id)?.audio;
@@ -191,14 +197,14 @@ describe("Full network", () => {
     test("The client can update the state of their upload", async () => {
         const channelUUID = await network.getChannelUUID();
         const user1 = await network.connect(channelUUID, 1234);
-        await user1.isConnected;
         const sender = await network.connect(channelUUID, 123);
-        await sender.isConnected;
         const track = new FakeMediaStreamTrack({ kind: "video" });
+        const trackUpdate = nextUpdate(user1.sfuClient, CLIENT_UPDATE.TRACK);
         await sender.sfuClient.updateUpload(STREAM_TYPE.CAMERA, track);
-        await once(user1.sfuClient, "update");
+        await trackUpdate;
+        const infoUpdate = nextUpdate(user1.sfuClient, CLIENT_UPDATE.INFO_CHANGE);
         await sender.sfuClient.updateUpload(STREAM_TYPE.CAMERA, null);
-        const [event] = await once(user1.sfuClient, "update");
+        const event = await infoUpdate;
         expect(event.detail.name).toBe("info_change");
         expect(event.detail.payload).toEqual({
             [sender.session.id]: {
@@ -207,27 +213,30 @@ describe("Full network", () => {
         });
     });
     test("Sessions are closed after connection timeout", async () => {
-        jest.spyOn(global, "setTimeout");
-        jest.useFakeTimers();
         const channelUUID = await network.getChannelUUID();
-        const user = await network.connect(channelUUID, 23);
-        const closeProm = once(user.session, "close");
-        jest.advanceTimersByTime(timeouts.session + 10);
+        const { session } = Channel.join(channelUUID, 23);
+        const initialization = Promise.withResolvers<void>();
+        // @ts-expect-error isolating the connection timeout from transport initialization
+        jest.spyOn(session, "_initializeTransports").mockReturnValue(initialization.promise);
+        jest.useFakeTimers();
+        const connection = session.connect({} as Bus);
+        const closeProm = once(session, "close");
+        await jest.advanceTimersByTimeAsync(timeouts.session);
         const [closeEvent] = await closeProm;
+        initialization.resolve();
+        await connection;
         expect(closeEvent.code).toBe(SESSION_CLOSE_CODE.C_TIMEOUT);
     });
     test("Sessions are closed after ping timeouts", async () => {
-        jest.spyOn(global, "setTimeout");
+        const channelUUID = await network.getChannelUUID({ useWebRtc: false });
+        const { session } = Channel.join(channelUUID, 273);
+        const bus = {
+            request: () => Promise.reject(new Error("ping timeout"))
+        } as unknown as Bus;
         jest.useFakeTimers();
-        const channelUUID = await network.getChannelUUID();
-        await network.connect(channelUUID, 2);
-        const user = await network.connect(channelUUID, 273);
-        const [stateChangeEvent] = await once(user.session, "stateChange");
-        // we must pass the connected step before advancing time so that the session is not closed by the connection timeout
-        expect(stateChangeEvent).toBe("connected");
-        const closeProm = once(user.session, "close");
-        // waiting for the first ping, then for the timeout of the ping response
-        jest.advanceTimersByTime(timeouts.ping + timeouts.session + 10);
+        await session.connect(bus);
+        const closeProm = once(session, "close");
+        await jest.advanceTimersByTimeAsync(timeouts.ping);
         const [closeEvent] = await closeProm;
         expect(closeEvent.code).toBe(SESSION_CLOSE_CODE.P_TIMEOUT);
     });
@@ -238,9 +247,9 @@ describe("Full network", () => {
         const sender = await network.connect(channelUUID, 3);
         const message = "hello";
 
-        sender.sfuClient.broadcast(message);
         const prom1 = once(user1.sfuClient, "update");
         const prom2 = once(user2.sfuClient, "update");
+        sender.sfuClient.broadcast(message);
         const [[event1], [event2]] = await Promise.all([prom1, prom2]);
         expect(event1.detail.name).toEqual("broadcast");
         expect(event2.detail.name).toEqual("broadcast");
@@ -253,7 +262,6 @@ describe("Full network", () => {
         const channelUUID = await network.getChannelUUID();
         const user = await network.connect(channelUUID, 1);
 
-        await user.isConnected;
         const stateChangeProm = once(user.sfuClient, "stateChange");
         user.session.close({ code: SESSION_CLOSE_CODE.KICKED });
         const [event] = await stateChangeProm;
@@ -263,7 +271,6 @@ describe("Full network", () => {
         const channelUUID = await network.getChannelUUID();
         const user = await network.connect(channelUUID, 1);
 
-        await user.isConnected;
         const stateChangeProm = once(user.sfuClient, "stateChange");
         user.session.close({ code: SESSION_CLOSE_CODE.ERROR });
         const [event] = await stateChangeProm;

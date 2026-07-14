@@ -107,7 +107,6 @@ describe("Recording & Transcription", () => {
         try {
             const channelUUID = await network.getChannelUUID();
             const user = await network.connect(channelUUID, 1);
-            await user.isConnected;
 
             mockFs.setAvailableDiskSpace(1);
             const recordingFailureEventPromise = once(user.sfuClient, "update");
@@ -138,9 +137,7 @@ describe("Recording & Transcription", () => {
         try {
             const channelUUID = await network.getChannelUUID();
             const user1 = await network.connect(channelUUID, 1);
-            await user1.isConnected;
             const user2 = await network.connect(channelUUID, 3);
-            await user2.isConnected;
             expect(user2.sfuClient.availableFeatures.audioRecording).toBe(true);
             const recordingStartEventPromise = once(user1.sfuClient, "update");
             const startResult = await user2.sfuClient.startRecording({ audio: true });
@@ -216,7 +213,6 @@ describe("Recording & Transcription", () => {
         try {
             const channelUUID = await network.getChannelUUID();
             const user = await network.connect(channelUUID, 1);
-            await user.isConnected;
 
             expect(await user.sfuClient.startRecording({ audio: true })).toBe(true);
             const channel = Channel.records.get(channelUUID);
@@ -270,7 +266,6 @@ describe("Recording & Transcription", () => {
         try {
             const channelUUID = await network.getChannelUUID();
             const user = await network.connect(channelUUID, 1);
-            await user.isConnected;
             await user.sfuClient.startRecording({ audio: true, video: true });
 
             const audioTrack = new FakeMediaStreamTrack({ kind: "audio" });
@@ -330,7 +325,6 @@ describe("Recording & Transcription", () => {
         try {
             const channelUUID = await network.getChannelUUID();
             const user = await network.connect(channelUUID, 1);
-            await user.isConnected;
 
             const audioTrack = new FakeMediaStreamTrack({ kind: "audio" });
             await user.sfuClient.updateUpload(STREAM_TYPE.AUDIO, audioTrack);
@@ -375,13 +369,11 @@ describe("Recording & Transcription", () => {
         try {
             const channelUUID = await network.getChannelUUID();
             const user1 = await network.connect(channelUUID, 1);
-            await user1.isConnected;
 
             await user1.sfuClient.startRecording({ audio: true });
             await waitFor(() => user1.sfuClient.recordingState.recording);
 
             const user2 = await network.connect(channelUUID, 2);
-            await user2.isConnected;
 
             const audioTrack = new FakeMediaStreamTrack({ kind: "audio" });
             await user2.sfuClient.updateUpload(STREAM_TYPE.AUDIO, audioTrack);
@@ -395,51 +387,87 @@ describe("Recording & Transcription", () => {
         }
     });
 
-    test("keeps one writer for overlapping initial stream uploads", async () => {
+    test("keeps the latest writer after overlapping initial stream uploads", async () => {
+        let activeWriters = 0;
+        const replacements = Promise.withResolvers<void>();
+        const firstWriterClose = Promise.withResolvers<void>();
+        let writerCount = 0;
         mockSpawn.mockClear();
         mockSpawn.mockImplementation((_cmd, args) => {
             const mp = new MockChildProcess("ffmpeg", args || []);
             mp.stdin = new PassThrough();
+            if (args?.includes("pipe:0")) {
+                activeWriters++;
+                mp.once("close", () => {
+                    activeWriters--;
+                });
+                if (!writerCount++) {
+                    mp.kill = (signal) => {
+                        mp.killed = true;
+                        void firstWriterClose.promise.then(() => mp.emit("close", null, signal));
+                        return true;
+                    };
+                }
+            }
             return mp;
         });
 
         const { restore, network, getChannel } = await recordingSetup({ RECORDING: "true" });
+        const uploads: Promise<void>[] = [];
 
         try {
             const channelUUID = await network.getChannelUUID();
             const user = await network.connect(channelUUID, 1);
-            await user.isConnected;
+            const recorder = getChannel(channelUUID)!.recorder!;
+            const mark = jest.spyOn(recorder, "mark");
+            // @ts-expect-error controlling concurrent client producer submission
+            const transport = user.sfuClient._ctsTransport!;
+            const produce = transport.produce.bind(transport);
+            let producerCount = 0;
+            jest.spyOn(transport, "produce").mockImplementation(async (options) => {
+                if (producerCount++) {
+                    await replacements.promise;
+                }
+                return produce(options);
+            });
 
             await user.sfuClient.startRecording({ audio: true });
             await waitFor(() => user.sfuClient.recordingState.recording);
 
-            const createTransport = jest.spyOn(
-                getChannel(channelUUID)!.router!,
-                "createPlainTransport"
+            uploads.push(
+                user.sfuClient.updateUpload(
+                    STREAM_TYPE.AUDIO,
+                    new FakeMediaStreamTrack({ kind: "audio" })
+                ),
+                user.sfuClient.updateUpload(
+                    STREAM_TYPE.AUDIO,
+                    new FakeMediaStreamTrack({ kind: "audio" })
+                ),
+                user.sfuClient.updateUpload(
+                    STREAM_TYPE.AUDIO,
+                    new FakeMediaStreamTrack({ kind: "audio" })
+                )
             );
-            try {
-                await Promise.all([
-                    user.sfuClient.updateUpload(
-                        STREAM_TYPE.AUDIO,
-                        new FakeMediaStreamTrack({ kind: "audio" })
-                    ),
-                    user.sfuClient.updateUpload(
-                        STREAM_TYPE.AUDIO,
-                        new FakeMediaStreamTrack({ kind: "audio" })
-                    )
-                ]);
-                await waitFor(
-                    () =>
-                        createTransport.mock.calls.length >= 2 &&
-                        mockSpawn.mock.results.filter(
-                            ({ value }) => !(value as ChildProcessLike).killed
-                        ).length === 1
-                );
-                expect(user.sfuClient.recordingState.recording).toBe(true);
-            } finally {
-                createTransport.mockRestore();
-            }
+            await waitFor(() => activeWriters === 1);
+            replacements.resolve();
+            await Promise.all(uploads);
+            firstWriterClose.resolve();
+            await waitFor(
+                () =>
+                    activeWriters === 1 &&
+                    mark.mock.calls.filter(
+                        ([tag, info]) =>
+                            tag === TIME_TAG.FILE_STATE_CHANGE &&
+                            info.type === STREAM_TYPE.AUDIO &&
+                            info.eof
+                    ).length >= 2
+            );
+            expect(activeWriters).toBe(1);
+            await recorder.stop({ save: false });
         } finally {
+            replacements.resolve();
+            firstWriterClose.resolve();
+            await Promise.allSettled(uploads);
             await restore();
         }
     });
@@ -460,7 +488,6 @@ describe("Recording & Transcription", () => {
             const { mockFs } = await import("#tests/utils/mockFileSystem.ts");
             const channelUUID = await network.getChannelUUID();
             const user = await network.connect(channelUUID, 1);
-            await user.isConnected;
 
             await user.sfuClient.startRecording({ audio: true });
             await waitFor(() => user.sfuClient.recordingState.recording);
@@ -507,7 +534,6 @@ describe("Recording & Transcription", () => {
         try {
             const channelUUID = await network.getChannelUUID();
             const user = await network.connect(channelUUID, 1);
-            await user.isConnected;
             await user.sfuClient.startRecording({ audio: true });
             await waitFor(() => user.sfuClient.recordingState.recording);
 
@@ -539,7 +565,7 @@ describe("Recording & Transcription", () => {
         }
     });
 
-    test("fails when a replaced session writer cannot close", async () => {
+    test("fails recording when session replacement cannot close its writer", async () => {
         mockSpawn.mockClear();
         const closeRequested = Promise.withResolvers<void>();
         let process: MockChildProcess | undefined;
@@ -563,9 +589,6 @@ describe("Recording & Transcription", () => {
         try {
             const channelUUID = await network.getChannelUUID();
             const user = await network.connect(channelUUID, 1);
-            await user.isConnected;
-            const secondUser = await network.connect(channelUUID, 2);
-            await secondUser.isConnected;
             await user.sfuClient.startRecording({ audio: true });
             await user.sfuClient.updateUpload(
                 STREAM_TYPE.AUDIO,
@@ -579,7 +602,7 @@ describe("Recording & Transcription", () => {
                 stopCode = update.stopCode ?? stopCode;
             });
             jest.useFakeTimers();
-            getChannel(channelUUID)!.join(1);
+            getChannel(channelUUID)!.join(user.session.id);
             await closeRequested.promise;
             await jest.advanceTimersByTimeAsync(30_001);
             jest.useRealTimers();
@@ -629,7 +652,6 @@ describe("Recording & Transcription", () => {
             const { mockFs } = await import("#tests/utils/mockFileSystem.ts");
             const channelUUID = await network.getChannelUUID();
             const user = await network.connect(channelUUID, 1);
-            await user.isConnected;
 
             await user.sfuClient.startRecording({ audio: true, video: true });
             await waitFor(() => user.sfuClient.recordingState.recording);
@@ -670,7 +692,7 @@ describe("Recording & Transcription", () => {
         }
     });
 
-    test("gates camera behind screen and clears that state on replacement", async () => {
+    test("starts a gated camera after replacing the screen session", async () => {
         mockSpawn.mockClear();
         mockSpawn.mockImplementation((_cmd, args) => {
             const mp = new MockChildProcess("ffmpeg", args || []);
@@ -687,9 +709,7 @@ describe("Recording & Transcription", () => {
         try {
             const channelUUID = await network.getChannelUUID();
             const screenUser = await network.connect(channelUUID, 1);
-            await screenUser.isConnected;
             const cameraUser = await network.connect(channelUUID, 2);
-            await cameraUser.isConnected;
 
             const screenTrack = new FakeMediaStreamTrack({ kind: "video" });
             const cameraTrack = new FakeMediaStreamTrack({ kind: "video" });
@@ -715,7 +735,7 @@ describe("Recording & Transcription", () => {
                     )
                 ).toBe(false);
 
-                channel.join(1);
+                channel.join(screenUser.session.id);
                 await waitFor(() =>
                     mockSpawn.mock.calls.some((call) =>
                         hasPath(call[1] as readonly string[] | undefined, "camera")

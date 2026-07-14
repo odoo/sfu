@@ -75,12 +75,6 @@ const workers = new Set<RtcWorker>();
  * Helpers exposed for testing purposes
  */
 export const __testing__ = {
-    hasWorker(worker: RtcWorker) {
-        return workers.has(worker);
-    },
-    get workerCount() {
-        return workers.size;
-    },
     get reservedRecordingBytes() {
         return Folder.reservedRecordingBytes;
     }
