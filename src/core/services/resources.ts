@@ -209,8 +209,11 @@ export class Folder {
         const availableDiskBytes = blockSize * availableBlocks;
         const remaining = availableDiskBytes - BigInt(Folder._reservedRecordingBytes);
         if (remaining < BigInt(size)) {
+            logger.warn(
+                `block size: ${blockSize}, available blocks: ${availableBlocks}, available disk bytes: ${availableDiskBytes}`
+            );
             throw new DiskSpaceLimitReachedError(
-                `Not enough disk space to reserve ${size} bytes for recording`
+                `Not enough disk space to reserve ${size} bytes in ${config.dir.resources} for recording, only ${remaining} bytes available`
             );
         }
         Folder._reservedRecordingBytes += size;
