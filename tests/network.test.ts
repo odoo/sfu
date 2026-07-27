@@ -237,7 +237,8 @@ describe("Full network", () => {
         // @ts-expect-error accessing private property for testing purposes
         user.session._stcTransport.close();
         await sender.sfuClient.updateUpload(STREAM_TYPE.AUDIO, track);
-        // not ideal but we have to wait a tick for the websocket message to go through
+        // not ideal but we have to wait a couple of ticks for the websocket message to go through
+        await delay();
         await delay();
         expect(user.session.errors.length).toBe(1);
         expect(user.session.state).toBe(SESSION_STATE.CONNECTED);
