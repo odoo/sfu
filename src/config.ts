@@ -282,6 +282,7 @@ const baseProducerOptions: ProducerOptions = {
 export const rtc = Object.freeze({
     // https://mediasoup.org/documentation/v3/mediasoup/api/#WorkerSettings
     workerSettings: {
+        disableLiburing: true,
         logLevel: WORKER_LOG_LEVEL,
         rtcMinPort: RTC_MIN_PORT,
         rtcMaxPort: RTC_MAX_PORT
