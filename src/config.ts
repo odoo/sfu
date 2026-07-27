@@ -240,7 +240,7 @@ export const recording = {
     directory: dir.recordings,
     enabled: RECORDING,
     metadataFileName: "metadata.bin",
-    minDuration: 30 /* sec */ * 1000,
+    minDuration: 5 /* sec */ * 1000, // TODO should probably be raised in prod
     maxDuration: 60 /* min */ * 60 * 1000,
     fileTTL: 24 /* hours */ * 60 * 60 * 1000,
     processingCooldown: 5 /* sec */ * 1000,
