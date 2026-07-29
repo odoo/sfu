@@ -8,6 +8,9 @@ import { Logger } from "#src/utils/utils.ts";
 
 type RoutingResponse = {
     destination: string;
+    method?: string;
+    headers?: Record<string, string>;
+    response_status?: number;
 };
 
 const logger = new Logger("MEDIA_UPLOADER");
@@ -87,9 +90,10 @@ export class MediaUploader {
         const uploadResponse = await this._fetchWithTimeout(
             jsonResponse.destination,
             {
-                method: "POST",
+                method: jsonResponse.method ?? "POST",
                 headers: {
                     "Content-Type": "application/octet-stream",
+                    ...jsonResponse.headers,
                     "Content-Length": fileStats.size.toString()
                 },
                 // @ts-expect-error: same as above
@@ -100,7 +104,8 @@ export class MediaUploader {
         );
         await this._discardResponse(
             uploadResponse,
-            `Failed to upload files to ${metadata.routingAddress}`
+            `Failed to upload files to ${metadata.routingAddress}`,
+            jsonResponse.response_status
         );
     }
 
@@ -115,15 +120,23 @@ export class MediaUploader {
         );
     }
 
-    private async _checkResponse(response: Response, errorMessage: string) {
-        if (!response.ok) {
+    private async _checkResponse(
+        response: Response,
+        errorMessage: string,
+        expectedStatus?: number
+    ) {
+        if (!response.ok || (expectedStatus !== undefined && response.status !== expectedStatus)) {
             await response.body?.cancel().catch(() => undefined);
             throw new Error(`${errorMessage}: ${response.status} ${response.statusText}`);
         }
     }
 
-    private async _discardResponse(response: Response, errorMessage: string) {
-        await this._checkResponse(response, errorMessage);
+    private async _discardResponse(
+        response: Response,
+        errorMessage: string,
+        expectedStatus?: number
+    ) {
+        await this._checkResponse(response, errorMessage, expectedStatus);
         await response.body?.cancel().catch(() => undefined);
     }
 
