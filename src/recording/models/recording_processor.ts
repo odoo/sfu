@@ -53,13 +53,21 @@ export class RecordingProcessor {
                     await this._uploader.transcribe({ filePath: audioPath, metadata });
                 }
                 if (metadata.audio && audioPath && !metadata.video) {
-                    await this._uploader.uploadMedia({ filePath: audioPath, metadata });
+                    await this._uploader.uploadMedia({
+                        filePath: audioPath,
+                        metadata,
+                        mimetype: config.recording.audio.mimeType
+                    });
                 }
             }
             if (metadata.video) {
                 const videoPath = await compiler.getVideo();
                 if (videoPath) {
-                    await this._uploader.uploadMedia({ filePath: videoPath, metadata });
+                    await this._uploader.uploadMedia({
+                        filePath: videoPath,
+                        metadata,
+                        mimetype: config.recording.video.mimeType
+                    });
                 }
             }
         } catch (error) {

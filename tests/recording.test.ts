@@ -1472,6 +1472,7 @@ describe("Scheduler Service network tests", () => {
 
         await uploader.uploadMedia({
             filePath,
+            mimetype: "audio/ogg",
             metadata: {
                 channelName: "channel",
                 channelUUID: "uuid",
@@ -1487,6 +1488,11 @@ describe("Scheduler Service network tests", () => {
             }
         });
 
+        expect(mockFetch).toHaveBeenNthCalledWith(
+            1,
+            "http://routing.local/routing?start_ms=1000&end_ms=2000&mimetype=audio%2Fogg",
+            expect.objectContaining({ method: "GET" })
+        );
         expect(cancelSpy).toHaveBeenCalledTimes(1);
         expect(textSpy).not.toHaveBeenCalled();
     });
@@ -1537,6 +1543,7 @@ describe("Scheduler Service network tests", () => {
         await expect(
             uploader.uploadMedia({
                 filePath,
+                mimetype: "video/mp4",
                 metadata: {
                     channelName: "channel",
                     channelUUID: "uuid",
@@ -1555,7 +1562,7 @@ describe("Scheduler Service network tests", () => {
         expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
-    test("keeps recording when a later upload fails", async () => {
+    test("keeps recording when its upload fails", async () => {
         const recordingName = "session_route_fail";
         const routingAddress = "http://www.oodo.test/routing";
         const recordingDir = `/mock/recordings/${recordingName}`;
@@ -1581,24 +1588,19 @@ describe("Scheduler Service network tests", () => {
         mockFsInstance.write(path.join(recordingDir, "audio", "audio_1.ogg"), "dummy audio");
         mockFsInstance.write(path.join(recordingDir, "camera", "cam_1.mp4"), "dummy video");
 
-        let routingRequests = 0;
         mockFetch.mockImplementation(async (url: string | URL | Request) => {
             if (url.toString().includes("/routing?")) {
-                routingRequests++;
-                if (routingRequests % 2 === 1) {
-                    return {
-                        ok: true,
-                        text: async () => JSON.stringify({ destination: "http://upload.local" })
-                    } as Response;
-                }
                 return {
-                    ok: false,
-                    status: 503,
-                    statusText: "Unavailable",
-                    text: async () => ""
+                    ok: true,
+                    text: async () => JSON.stringify({ destination: "http://upload.local" })
                 } as Response;
             }
-            return { ok: true, text: async () => "" } as Response;
+            return {
+                ok: false,
+                status: 503,
+                statusText: "Unavailable",
+                text: async () => ""
+            } as Response;
         });
 
         await mediaService.start();
@@ -1608,7 +1610,7 @@ describe("Scheduler Service network tests", () => {
         ).toHaveLength(1);
         expect(
             mockFetch.mock.calls.filter(([url]) => url.toString().includes("/routing?"))
-        ).toHaveLength(2);
+        ).toHaveLength(1);
         expect(mockFsModuleInstance.rm).not.toHaveBeenCalledWith(recordingDir, {
             recursive: true
         });
@@ -1662,7 +1664,7 @@ describe("Scheduler Service network tests", () => {
 
         await mediaService.start();
 
-        const queryParams = `?start_ms=${metadata.startedAt}&end_ms=${metadata.stoppedAt}`;
+        const queryParams = `?start_ms=${metadata.startedAt}&end_ms=${metadata.stoppedAt}&mimetype=video%2Fmp4`;
         expect(mockFetch).toHaveBeenCalledWith(
             `${routingAddress}/routing${queryParams}`,
             expect.anything()
@@ -1730,7 +1732,7 @@ describe("Scheduler Service network tests", () => {
             expect.objectContaining({
                 method: "POST",
                 headers: expect.objectContaining({
-                    "Content-Type": "application/octet-stream"
+                    "Content-Type": "video/mp4"
                 })
             })
         );

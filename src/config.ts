@@ -248,12 +248,14 @@ export const recording = {
         frameRate: "30",
         codec: "libsvtav1",
         preset: "8",
-        ext: "mp4"
+        ext: "mp4",
+        mimeType: "video/mp4"
     },
     audio: {
         codec: "libopus",
         bitRate: "32k",
-        ext: "ogg"
+        ext: "ogg",
+        mimeType: "audio/ogg"
     },
     /*
      * Limits the amount of video streams recorded at once.

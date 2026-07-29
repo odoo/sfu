@@ -40,7 +40,7 @@ export class MediaUploader {
                 method: "POST",
                 headers: {
                     Authorization: `Bearer ${this._makeJwt(metadata.channelKey)}`,
-                    "Content-Type": `audio/${config.recording.audio.ext}`,
+                    "Content-Type": config.recording.audio.mimeType,
                     "Content-Length": fileStats.size.toString()
                 },
                 // FIXME remove linter error suppression
@@ -61,11 +61,20 @@ export class MediaUploader {
         );
     }
 
-    async uploadMedia({ filePath, metadata }: { filePath: string; metadata: SealedMetaData }) {
+    async uploadMedia({
+        filePath,
+        metadata,
+        mimetype
+    }: {
+        filePath: string;
+        metadata: SealedMetaData;
+        mimetype: string;
+    }) {
         logger.debug(`Uploading files to ${metadata.routingAddress}`);
         const params = new URLSearchParams({
             start_ms: String(metadata.startedAt),
-            end_ms: String(metadata.stoppedAt)
+            end_ms: String(metadata.stoppedAt),
+            mimetype
         });
         const response = await this._fetchWithTimeout(
             `${metadata.routingAddress}/routing?${params}`,
@@ -92,7 +101,7 @@ export class MediaUploader {
             {
                 method: jsonResponse.method ?? "POST",
                 headers: {
-                    "Content-Type": "application/octet-stream", // TODO this should be recording video or audio codec
+                    "Content-Type": mimetype,
                     ...jsonResponse.headers,
                     "Content-Length": fileStats.size.toString()
                 },
