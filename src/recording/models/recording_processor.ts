@@ -52,7 +52,7 @@ export class RecordingProcessor {
                 if (metadata.transcription && audioPath) {
                     await this._uploader.transcribe({ filePath: audioPath, metadata });
                 }
-                if (metadata.audio && audioPath) {
+                if (metadata.audio && audioPath && !metadata.video) {
                     await this._uploader.uploadMedia({ filePath: audioPath, metadata });
                 }
             }

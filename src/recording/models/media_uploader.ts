@@ -92,7 +92,7 @@ export class MediaUploader {
             {
                 method: jsonResponse.method ?? "POST",
                 headers: {
-                    "Content-Type": "application/octet-stream",
+                    "Content-Type": "application/octet-stream", // TODO this should be recording video or audio codec
                     ...jsonResponse.headers,
                     "Content-Length": fileStats.size.toString()
                 },
