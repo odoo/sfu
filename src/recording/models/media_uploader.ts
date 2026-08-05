@@ -70,7 +70,7 @@ export class MediaUploader {
         metadata: SealedMetaData;
         mimetype: string;
     }) {
-        logger.debug(`Uploading files to ${metadata.routingAddress}`);
+        logger.info(`Uploading ${filePath} to ${metadata.routingAddress}`);
         const params = new URLSearchParams({
             start_ms: String(metadata.startedAt),
             end_ms: String(metadata.stoppedAt),
