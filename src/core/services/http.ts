@@ -6,6 +6,7 @@ import * as ws from "#src/core/services/ws.ts";
 import * as auth from "#src/core/services/auth.ts";
 import * as config from "#src/config.ts";
 import { Logger, parseBody, extractRequestInfo } from "#src/utils/utils.ts";
+import { AuthenticationError } from "#src/utils/errors.ts";
 import { SESSION_CLOSE_CODE, type SessionId } from "#src/core/models/session.ts";
 import { Channel, type ChannelStats } from "#src/core/models/channel.ts";
 
@@ -86,7 +87,7 @@ function setupRoutes(routeListener: RouteListener): void {
      *
      * ### Headers
      * - required:`Authorization: Bearer <JWT>`
-     *      The JWT must include the `iss` (issuer) claim identifying the caller.
+     *      The JWT must include an `exp` claim and an `iss` (issuer) claim identifying the caller.
      *      `claim.iss` ensures idempotency: only one channel is created per unique issuer.
      *      To create multiple channels, the caller must provide a distinct `iss` for each request.
      *
@@ -113,7 +114,7 @@ function setupRoutes(routeListener: RouteListener): void {
                     logger.warn(
                         `${remoteAddress}: missing authorization header when creating channel`
                     );
-                    res.statusCode = 401; // unauthorized
+                    res.statusCode = 401;
                     return res.end();
                 }
                 const claims = auth.verify<HttpChannelClaims>(jsonWebToken);
@@ -150,8 +151,15 @@ function setupRoutes(routeListener: RouteListener): void {
                 );
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : String(error);
-                logger.warn(`[${remoteAddress}] failed to create channel: ${errorMessage}`);
-                res.statusCode = 500; // internal server error
+                if (error instanceof AuthenticationError) {
+                    logger.warn(
+                        `[${remoteAddress}] failed to authenticate channel request: ${errorMessage}`
+                    );
+                    res.statusCode = 401;
+                } else {
+                    logger.error(`[${remoteAddress}] failed to create channel: ${errorMessage}`);
+                    res.statusCode = 500; // internal server error
+                }
                 return res.end();
             }
         }
@@ -166,6 +174,8 @@ function setupRoutes(routeListener: RouteListener): void {
      * - required: A string containing a signed JWT.
      *
      * ### JWT Claims
+     * - required: `exp: number`
+     *      Expiration time in seconds since the Unix epoch.
      * - required: `sessionIdsByChannel: Record<string, SessionId[]>`
      *      A mapping where keys are channel UUIDs and values are arrays of session IDs to be kicked.
      *

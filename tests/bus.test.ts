@@ -72,17 +72,24 @@ describe("Bus API", () => {
         const response = await aliceBus.request("ping" as unknown as RequestMessage);
         expect(response).toBe("pong");
     });
-    test("request() responds with empty object when onRequest throws", async () => {
+    test("request() rejects when onRequest throws", async () => {
         const { aliceSocket, bobSocket } = mockSocketPair();
         const aliceBus = new Bus(aliceSocket as unknown as WebSocket);
         const bobBus = new Bus(bobSocket as unknown as WebSocket);
         bobBus.onRequest = async () => {
             throw new Error("boom");
         };
-        const response = await aliceBus.request("ping" as unknown as RequestMessage, {
-            timeout: 50
-        });
-        expect(response).toStrictEqual({});
+        await expect(
+            aliceBus.request("ping" as unknown as RequestMessage, { timeout: 50 })
+        ).rejects.toThrow("bus request failed");
+    });
+    test("request() rejects when no request handler is registered", async () => {
+        const { aliceSocket, bobSocket } = mockSocketPair();
+        const aliceBus = new Bus(aliceSocket as unknown as WebSocket);
+        new Bus(bobSocket as unknown as WebSocket);
+        await expect(
+            aliceBus.request("ping" as unknown as RequestMessage, { timeout: 50 })
+        ).rejects.toThrow("bus request failed");
     });
     test("promises are rejected when the bus is closed", async () => {
         const { aliceSocket } = mockSocketPair();

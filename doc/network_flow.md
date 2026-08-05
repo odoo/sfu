@@ -26,7 +26,7 @@ sequenceDiagram
     HTTP-->>OS: { uuid, url }
 
     Note over OS,Sess: 2. JWT Distribution
-    OS->>OS: sign JWTs with channel key<br>claims: { sfu_channel_uuid, session_id, permissions }
+    OS->>OS: sign JWTs with channel key<br>claims: { sfu_channel_uuid, session_id, permissions, exp }
     OS-->>C1: JWT + SFU URL
     OS-->>C2: JWT + SFU URL
 
@@ -90,6 +90,7 @@ requested the associated channel (this is useful when the SFU has multiple Odoo 
 **JWT Claims for Clients:**
 ```json
 {
+  "exp": 4102444800,
   "sfu_channel_uuid": "<channel-uuid>",
   "session_id": "<unique-session-id>",
   "label": "User Name",

@@ -24,11 +24,15 @@ const HMAC_KEY = Buffer.from(HMAC_B64_KEY, "base64");
  * @param [key] - Key to sign the JWT with
  * @returns Signed JWT string
  */
-export function makeJwt<T extends object>(
-    data: T & auth.JWTClaims,
-    key: StringLike = HMAC_KEY
-): string {
-    return auth.sign<T>(data, key, { algorithm: auth.ALGORITHM.HS256 });
+export function makeJwt<T extends object>(data: T, key: StringLike = HMAC_KEY): string {
+    return auth.sign(
+        {
+            exp: Math.floor(Date.now() / 1000) + 60,
+            ...data
+        },
+        key,
+        { algorithm: auth.ALGORITHM.HS256 }
+    );
 }
 
 /**
@@ -45,8 +49,7 @@ export class LocalNetwork {
         return `http://${this.hostname}:${this.port}`;
     }
 
-    public makeJwt: <T extends object>(data: T & auth.JWTClaims, key?: StringLike) => string =
-        makeJwt;
+    public makeJwt = makeJwt;
 
     private readonly _sfuClients: SfuClient[] = [];
 

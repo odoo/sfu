@@ -74,6 +74,18 @@ describe("HTTP", () => {
         const response = await fetch(`${network.url}/v${API_VERSION}/channel`, { method: "GET" });
         expect(response.status).toBe(401);
     });
+    test.each([
+        ["malformed syntax", "not-a-jwt"],
+        ["a null header", "bnVsbA.e30.AA"],
+        ["a wrong key", makeJwt({ iss: "issuer" }, Buffer.from("wrong key"))],
+        ["an expired claim", makeJwt({ iss: "issuer", exp: 0 })]
+    ])("/channel rejects a JWT with %s", async (_description, token) => {
+        const response = await fetch(`${network.url}/v${API_VERSION}/channel`, {
+            method: "GET",
+            headers: { Authorization: "jwt " + token }
+        });
+        expect(response.status).toBe(401);
+    });
     test("/channel fails without issuer claim", async () => {
         const response = await fetch(`${network.url}/v${API_VERSION}/channel`, {
             method: "GET",
@@ -82,6 +94,20 @@ describe("HTTP", () => {
             }
         });
         expect(response.status).toBe(403);
+    });
+    test("/channel reports channel creation failures as server errors", async () => {
+        const createSpy = jest
+            .spyOn(Channel, "create")
+            .mockRejectedValueOnce(new Error("channel creation failed"));
+        try {
+            const response = await fetch(`${network.url}/v${API_VERSION}/channel`, {
+                method: "GET",
+                headers: { Authorization: "jwt " + makeJwt({ iss: "issuer" }) }
+            });
+            expect(response.status).toBe(500);
+        } finally {
+            createSpy.mockRestore();
+        }
     });
     test("/noop", async () => {
         const response = await fetch(`${network.url}/v${API_VERSION}/noop`, { method: "GET" });

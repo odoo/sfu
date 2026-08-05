@@ -8,12 +8,12 @@ import { AuthenticationError } from "#src/utils/errors";
 describe("Auth Service", () => {
     const testKey = "TEST2VjcmV0S2V5VGhhdElzMzJCeXRlc0xvbmdBdExldA==";
     const alternateKey = "TESTWx0ZXJuYXRlU2VjcmV0S2V5VGhhdElzMzJCeXRlcw==";
+    const JWT_HEADER = { alg: "HS256", typ: "JWT" };
     const base64UrlSegment = /^[A-Za-z0-9_-]+$/;
     const THIRD_PARTY_TOKEN = {
-        token: `eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRhIjoidGhpcmQgcGFydHkifQ.GadSPivgAXYx
-                    ftSwH9LKEdg5hv05x1Lihln_6x01TxY`,
+        token: `eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRhIjoidGhpcmQgcGFydHkiLCJleHAiOjQxMDI0NDQ4MDB9.qABdbUQwxY5MqEVPdqU_0YJVJPDjD-EbgcYIszBms5k`,
         key: testKey,
-        payload: { data: "third party" }
+        payload: { data: "third party", exp: 4102444800 }
     };
     beforeEach(() => {
         auth.start(testKey);
@@ -26,12 +26,23 @@ describe("Auth Service", () => {
         expect(segment).not.toContain("=");
         return Buffer.from(segment, "base64url");
     }
+    function makeToken(header: unknown, claims: unknown): string {
+        const headerSegment = auth.base64Encode(JSON.stringify(header));
+        const claimsSegment = auth.base64Encode(JSON.stringify(claims));
+        const signedData = `${headerSegment}.${claimsSegment}`;
+        const signature = crypto
+            .createHmac("sha256", Buffer.from(testKey, "base64"))
+            .update(signedData)
+            .digest("base64url");
+        return `${signedData}.${signature}`;
+    }
     test("should sign and verify a valid JWT", () => {
         const payload = {
             iss: "test-issuer",
             sub: "1234567890",
             channelUUID: "channel-123",
-            iat: Math.floor(Date.now() / 1000)
+            iat: Math.floor(Date.now() / 1000),
+            exp: Math.floor(Date.now() / 1000) + 60
         };
         const token = auth.sign(payload);
         const result = auth.verify(token);
@@ -41,7 +52,8 @@ describe("Auth Service", () => {
         const payload = {
             iss: "test-issuer",
             sub: "1234567890",
-            data: "+/="
+            data: "+/=",
+            exp: Math.floor(Date.now() / 1000) + 60
         };
         const token = auth.sign(payload);
         const [headerSegment, payloadSegment, signatureSegment] = token.split(".");
@@ -53,7 +65,7 @@ describe("Auth Service", () => {
             .digest("base64url");
 
         expect(token.split(".")).toHaveLength(3);
-        expect(header).toEqual({ alg: "HS256", typ: "JWT" });
+        expect(header).toEqual(JWT_HEADER);
         expect(decodedPayload).toEqual(payload);
         expect(signatureSegment).toMatch(base64UrlSegment);
         expect(signatureSegment).not.toContain("=");
@@ -64,12 +76,20 @@ describe("Auth Service", () => {
         expect(payload).toEqual(THIRD_PARTY_TOKEN.payload);
     });
     test("should reject a token signed with the wrong key", () => {
-        const payload = { sub: "1234567890", name: "Test User" };
+        const payload = {
+            sub: "1234567890",
+            name: "Test User",
+            exp: Math.floor(Date.now() / 1000) + 60
+        };
         const token = auth.sign(payload, alternateKey);
         expect(() => auth.verify(token)).toThrow(AuthenticationError);
     });
     test("should reject a token with tampered payload", () => {
-        const payload = { sub: "1234567890", name: "Test User" };
+        const payload = {
+            sub: "1234567890",
+            name: "Test User",
+            exp: Math.floor(Date.now() / 1000) + 60
+        };
         const token = auth.sign(payload);
         const [header, , signature] = token.split(".");
         const tamperedPayload = auth.base64Encode(
@@ -86,10 +106,18 @@ describe("Auth Service", () => {
         const token = auth.sign(payload);
         expect(() => auth.verify(token)).toThrow(AuthenticationError);
     });
+    test.each([
+        ["missing", { sub: "1234567890" }],
+        ["non-numeric", { sub: "1234567890", exp: "tomorrow" }]
+    ])("should reject a token with a %s expiration", (_description, claims) => {
+        const token = makeToken(JWT_HEADER, claims);
+        expect(() => auth.verify(token)).toThrow(AuthenticationError);
+    });
     test("should reject a token that is not valid yet", () => {
         const payload = {
             sub: "1234567890",
-            nbf: Math.floor(Date.now() / 1000) + 3600
+            nbf: Math.floor(Date.now() / 1000) + 3600,
+            exp: Math.floor(Date.now() / 1000) + 7200
         };
         const token = auth.sign(payload);
         expect(() => auth.verify(token)).toThrow(AuthenticationError);
@@ -97,7 +125,8 @@ describe("Auth Service", () => {
     test("should reject a token issued in the future (beyond clock skew)", () => {
         const payload = {
             sub: "1234567890",
-            iat: Math.floor(Date.now() / 1000) + 120
+            iat: Math.floor(Date.now() / 1000) + 120,
+            exp: Math.floor(Date.now() / 1000) + 3600
         };
         const token = auth.sign(payload);
         expect(() => auth.verify(token)).toThrow(AuthenticationError);
@@ -105,7 +134,8 @@ describe("Auth Service", () => {
     test("should accept a token with future iat within clock skew", () => {
         const payload = {
             sub: "1234567890",
-            iat: Math.floor(Date.now() / 1000) + 30
+            iat: Math.floor(Date.now() / 1000) + 30,
+            exp: Math.floor(Date.now() / 1000) + 60
         };
         const token = auth.sign(payload);
         const result = auth.verify(token);
@@ -116,6 +146,12 @@ describe("Auth Service", () => {
         for (const token of malformedTokens) {
             expect(() => auth.verify(token as string)).toThrow(AuthenticationError);
         }
+    });
+    test.each([
+        ["header", null, { exp: 4102444800 }],
+        ["claims", JWT_HEADER, null]
+    ])("should reject a token with null %s", (_description, header, claims) => {
+        expect(() => auth.verify(makeToken(header, claims))).toThrow(AuthenticationError);
     });
     test("verifying should fail with an unsupported algorithm", () => {
         const token = "eyJhbGciOiJFUzUxMiIsInR5cCI6IkpXVCJ9.e30.AA";

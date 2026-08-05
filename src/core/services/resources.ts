@@ -63,7 +63,7 @@ async function clearFileSystem() {
             logger.warn("LOCAL_KEY missing from the environment, removing old recordings");
             await fs.rm(config.dir.recordings, { recursive: true, force: true });
         }
-        await fs.rm(config.dir.resources, { recursive: true });
+        await fs.rm(config.dir.resources, { recursive: true, force: true });
     } catch (error) {
         logger.error(`Failed to clear file system: ${error}`);
     }

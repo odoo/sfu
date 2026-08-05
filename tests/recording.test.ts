@@ -244,7 +244,10 @@ describe("Recording & Transcription", () => {
             );
             expect(metadata.channelName).toBe(channel!.name);
             expect(metadata.channelUUID).toBe(channel!.uuid);
-            const jwt = auth.sign({ sub: "recording" }, metadata.channelKey);
+            const jwt = auth.sign(
+                { sub: "recording", exp: Math.floor(Date.now() / 1000) + 60 },
+                metadata.channelKey
+            );
             expect(auth.verify(jwt, channel!.key).sub).toBe("recording");
             expect(mockFs.exists(resourcePath)).toBe(false);
         } finally {

@@ -21,7 +21,7 @@ type JWTHeader = {
  */
 export type JWTClaims = {
     /** Expiration time (in seconds since epoch) */
-    exp?: number;
+    exp: number;
     /** Issued at (in seconds since epoch) */
     iat?: number;
     /** Not before (in seconds since epoch) */
@@ -161,8 +161,11 @@ function parseJwt<T>(token: string): ParsedJWT<T> {
     }
     const [headerB64, claimsB64, signatureB64] = parts;
     try {
-        const header = JSON.parse(base64Decode(headerB64).toString()) as JWTHeader;
-        const claims = JSON.parse(base64Decode(claimsB64).toString()) as JWTClaims & T;
+        const header = JSON.parse(base64Decode(headerB64).toString()) as JWTHeader | null;
+        const claims = JSON.parse(base64Decode(claimsB64).toString()) as (JWTClaims & T) | null;
+        if (!header || !claims) {
+            throw new AuthenticationError("Invalid JWT format");
+        }
         const signature = base64Decode(signatureB64);
         const signedData = `${headerB64}.${claimsB64}`;
         return { header, claims, signature, signedData };
@@ -188,7 +191,7 @@ function safeEqual(a: Buffer, b: Buffer): boolean {
  *  - token parsing fails.
  *  - the JOSE algorithm is not supported.
  *  - signature validation fails.
- *  - `exp` has been reached.
+ *  - `exp` is missing, invalid, or has been reached.
  *  - `nbf` is in the future.
  *  - `iat` is too far ahead.
  */
@@ -214,7 +217,10 @@ export function verify<T>(jsonWebToken: string, key: StringLike = jwtKey!): T & 
     }
     // Note: exp, iat, and nbf are in seconds (NumericDate per RFC7519)
     const now = Math.floor(Date.now() / 1000);
-    if (claims.exp !== undefined && claims.exp <= now) {
+    if (!Number.isFinite(claims.exp)) {
+        throw new AuthenticationError("Invalid expiration time");
+    }
+    if (claims.exp <= now) {
         throw new AuthenticationError("Token expired");
     }
     if (claims.nbf && claims.nbf > now) {

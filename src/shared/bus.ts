@@ -15,6 +15,8 @@ export type Payload = {
     needResponse?: string;
     /** Response ID if this message is responding to a request */
     responseTo?: string;
+    /** Whether the request handler failed */
+    requestFailed?: true;
 };
 type PendingRequest = {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -153,15 +155,18 @@ export class Bus {
         options: {
             needResponse?: string;
             responseTo?: string;
+            requestFailed?: true;
             batch?: boolean;
         } = {}
     ): void {
-        const { needResponse, responseTo, batch } = options;
+        const { needResponse, responseTo, requestFailed, batch } = options;
         if (batch) {
-            this._batch({ message, needResponse, responseTo });
+            this._batch({ message, needResponse, responseTo, requestFailed });
             return;
         }
-        this._websocket.send(JSON.stringify([{ message, needResponse, responseTo }]));
+        this._websocket.send(
+            JSON.stringify([{ message, needResponse, responseTo, requestFailed }])
+        );
     }
 
     /**
@@ -205,7 +210,10 @@ export class Bus {
             void this._handlePayload(payload).catch(() => {
                 if (payload.needResponse) {
                     try {
-                        this._sendPayload({}, { responseTo: payload.needResponse });
+                        this._sendPayload(null, {
+                            responseTo: payload.needResponse,
+                            requestFailed: true
+                        });
                     } catch {
                         return;
                     }
@@ -219,18 +227,25 @@ export class Bus {
      * Determines whether they are requests, responses, or plain messages
      */
     private async _handlePayload(payload: Payload): Promise<void> {
-        const { message, needResponse, responseTo } = payload;
+        const { message, needResponse, responseTo, requestFailed } = payload;
         if (responseTo) {
             // This is a response to a previous request
             const pendingRequest = this._pendingRequests.get(responseTo);
             if (pendingRequest) {
                 clearTimeout(pendingRequest.timeout);
-                pendingRequest.resolve(message);
                 this._pendingRequests.delete(responseTo);
+                if (requestFailed) {
+                    pendingRequest.reject(new Error("bus request failed"));
+                } else {
+                    pendingRequest.resolve(message);
+                }
             }
         } else if (needResponse) {
             // This is a request that expects a response
-            const response = await this.onRequest?.(message as RequestMessage);
+            if (!this.onRequest) {
+                throw new Error("bus request handler missing");
+            }
+            const response = await this.onRequest(message as RequestMessage);
             this._sendPayload(response ?? {}, { responseTo: needResponse });
         } else {
             // This is a plain message

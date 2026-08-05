@@ -33,6 +33,7 @@ see [http.ts](./src/core/services/http.ts) for more details.
         - The JWT must contain an `iss` (issuer) claim.
         - **Idempotency**: The `iss` claim identifies the caller and ensures that subsequent requests with the same issuer return the same channel. To create multiple distinct channels, the caller must provide unique `iss` values.
         - **JWT Claims**:
+            - `exp` (number, required): Expiration time in seconds since the Unix epoch.
             - `iss` (string, required): Format is typically `domain` or `domain::unique_id`.
             - `key` (string, optional): A private key used for specific channel operations/verification (if not provided, authentication will be using the global key).
 
@@ -59,6 +60,7 @@ see [http.ts](./src/core/services/http.ts) for more details.
     ```js
   jwt.sign(
     {
+      "exp": 4102444800,
       "sessionIdsByChannel": {
         [channelUUID]: [sessionId1, sessionId2]
       }
