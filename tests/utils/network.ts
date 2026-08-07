@@ -128,7 +128,9 @@ export class LocalNetwork {
 
         // @ts-expect-error injecting Node WebSocket through the private browser factory
         sfuClient._createWebSocket = (url: string): WebSocket => {
-            return new WebSocket(url);
+            return new WebSocket(url, {
+                allowSynchronousEvents: false
+            });
         };
 
         const isClientAuthenticated = Promise.withResolvers();
