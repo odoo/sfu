@@ -35,7 +35,11 @@ see [http.ts](./src/core/services/http.ts) for more details.
         - **JWT Claims**:
             - `exp` (number, required): Expiration time in seconds since the Unix epoch.
             - `iss` (string, required): Format is typically `domain` or `domain::unique_id`.
-            - `key` (string, optional): A private key used for specific channel operations/verification (if not provided, authentication will be using the global key).
+            - `keySeed` (string, optional): Base64 seed combined with `AUTH_KEY` to derive the channel signing key.
+            - `key` (string, optional): Base64 channel signing key. This legacy claim exposes the key to the connection.
+
+              The derived key is `Base64(HMAC-SHA256(Base64Decode(AUTH_KEY), Base64Decode(keySeed)))`.
+              `keySeed` takes precedence over `key`. If both are omitted, authentication uses the global key.
 
     ### Query Parameters
     - `webRTC` (string, optional): Defaults to `"true"`.

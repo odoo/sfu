@@ -20,13 +20,14 @@ sequenceDiagram
     Note over OS,Sess: 1. Channel Creation
     OS->>HTTP: GET /v1/channel<br>Authorization: Bearer <JWT>
     HTTP->>Auth: verify(JWT)
-    Auth-->>HTTP: claims { iss, key? }
+    Auth-->>HTTP: claims { iss, key?, keySeed? }
+    HTTP->>Auth: derive key from keySeed or use legacy key
     HTTP->>Ch: Channel.create(iss, options)
     Ch-->>HTTP: channel { uuid, router }
     HTTP-->>OS: { uuid, url }
 
     Note over OS,Sess: 2. JWT Distribution
-    OS->>OS: sign JWTs with channel key<br>claims: { sfu_channel_uuid, session_id, permissions, exp }
+    OS->>OS: derive channel key from AUTH_KEY + keySeed<br>sign JWTs with channel key
     OS-->>C1: JWT + SFU URL
     OS-->>C2: JWT + SFU URL
 
@@ -69,7 +70,7 @@ The Odoo server initiates a channel by calling `GET /v1/channel` with a signed (
 The SFU:
 1. Verifies the JWT using the global `AUTH_KEY`
 2. Creates (or retrieves) a channel identified by the `iss` claim
-3. If a `key` is provided, it's associated to the channel for futur authentication
+3. Derives the channel key from `keySeed` or uses the legacy `key` claim
 
 reponds with:
 ```json
@@ -82,10 +83,9 @@ reponds with:
 
 ### 2. JWT Distribution
 
-The Odoo server uses the channel `uuid` and the optional `key` (fallback to global `AUTH_KEY`) to sign JWTs for its clients. These JWTs are distributed to clients along with the SFU URL.
+The Odoo server derives the same channel key from `AUTH_KEY` and `keySeed`, then uses the channel `uuid` and derived key to sign JWTs for its clients. These JWTs are distributed to clients along with the SFU URL.
 
-Note: the diference between `key` and `AUTH_KEY` is that the `key` is specific to the channel, while `AUTH_KEY` is global. `key` is exchanged when requesting the channel and is only known by the specific Odoo server that
-requested the associated channel (this is useful when the SFU has multiple Odoo servers behind it and needs to authenticate clients from different servers, like for SaaS/Odoo.sh).
+`keySeed` is specific to the Odoo channel. The derived key never crosses the Odoo-to-SFU connection and cannot be computed from the seed without the global `AUTH_KEY`. The legacy `key` claim remains supported for compatibility and accepts the risk of sending the channel key over the connection. If both claims are present, `keySeed` takes precedence.
 
 **JWT Claims for Clients:**
 ```json

@@ -80,5 +80,13 @@ process.title = "odoo_sfu";
 for (const [signal, handler] of Object.entries(processHandlers)) {
     process.on(signal, handler);
 }
-await run();
+// covers awaited startup failures such as authentication setup, recording
+// directory creation, mediasoup worker creation or HTTP binding. Later callback failures
+// reach the process handler above.
+try {
+    await run();
+} catch (error) {
+    process.exitCode = 1;
+    throw error;
+}
 // ==================== ======= ====================

@@ -33,9 +33,12 @@ export class MediaUploader {
 
     async transcribe({ filePath, metadata }: { filePath: string; metadata: SealedMetaData }) {
         const fileStats = await fs.stat(filePath);
-        const queryParams = ["start_ms=" + metadata.startedAt, "end_ms=" + metadata.stoppedAt];
+        const params = new URLSearchParams({
+            start_ms: String(metadata.startedAt),
+            end_ms: String(metadata.stoppedAt)
+        });
         const response = await this._fetchWithTimeout(
-            `${metadata.routingAddress}/transcribe?${queryParams.join("&")}`,
+            `${metadata.routingAddress}/transcribe?${params}`,
             {
                 method: "POST",
                 headers: {

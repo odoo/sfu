@@ -9,7 +9,7 @@ import { OvercrowdedError } from "#src/utils/errors";
 import { timeouts } from "#src/config";
 import { __testing__ as wsTesting } from "#src/core/services/ws";
 
-import { LocalNetwork, makeJwt } from "#tests/utils/network";
+import { LocalNetwork } from "#tests/utils/network";
 import { waitFor } from "#tests/utils/utils";
 
 describe("WebSocket Service", () => {
@@ -62,7 +62,7 @@ describe("WebSocket Service", () => {
         await once(ws, "open");
 
         const channelUUID = "non-existent-uuid";
-        const jwt = makeJwt({
+        const jwt = network.makeChannelJwt(channelUUID, {
             sfu_channel_uuid: channelUUID,
             session_id: 1,
             permissions: {}
@@ -83,7 +83,7 @@ describe("WebSocket Service", () => {
         const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);
         await once(ws, "open");
 
-        const jwt = makeJwt({
+        const jwt = network.makeChannelJwt(channelUUID, {
             sfu_channel_uuid: channelUUID,
             permissions: {}
         });
@@ -107,7 +107,7 @@ describe("WebSocket Service", () => {
             throw new OvercrowdedError("Channel is full");
         });
 
-        const jwt = makeJwt({
+        const jwt = network.makeChannelJwt(channelUUID, {
             sfu_channel_uuid: channelUUID,
             session_id: 1,
             permissions: {}

@@ -75,6 +75,23 @@ describe("Auth Service", () => {
         const payload = auth.verify(THIRD_PARTY_TOKEN.token, THIRD_PARTY_TOKEN.key);
         expect(payload).toEqual(THIRD_PARTY_TOKEN.payload);
     });
+    test("should derive the shared Odoo channel key", () => {
+        const authKey = "u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng=";
+        const channelSeed =
+            "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZg==";
+
+        expect(auth.deriveChannelKey(channelSeed, authKey).toString("base64")).toBe(
+            "HENUokImFacg/rZ/mJ7kQZxMVsffKHTdI2x1MqdMjI8="
+        );
+        expect(
+            auth
+                .deriveChannelKey(
+                    "__7__v_-__7__v_-__7__v_-__7__v_-__7__v_-__4",
+                    "-__7__v_-__7__v_-__7__v_-__7__v_-__7__v_-_8"
+                )
+                .toString("base64")
+        ).toBe("rO7BLYI5td5yDmpFtuL3EEJkipz1UM3rC2OJYrJpvTk=");
+    });
     test("should reject a token signed with the wrong key", () => {
         const payload = {
             sub: "1234567890",

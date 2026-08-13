@@ -25,6 +25,7 @@ type RouteCallback = (
 ) => Promise<ServerResponse> | ServerResponse;
 type HttpChannelClaims = {
     key?: string;
+    keySeed?: string;
 };
 type HttpDisconnectClaims = {
     sessionIdsByChannel: Record<string, SessionId[]>;
@@ -100,7 +101,7 @@ function setupRoutes(routeListener: RouteListener): void {
      *
      * ### Responses
      * - `200 OK` returns `{ uuid: string, url: string }`
-     * - `400 Bad Request` provided a `recordingAddress` without a `key` claim
+     * - `400 Bad Request` provided a `recordingAddress` without a `key` or `keySeed` claim
      * - `401 Unauthorized` missing or invalid Authorization header
      * - `403 Forbidden` missing `iss` claim
      * - `500 Internal Server Error` failed to create the channel
@@ -124,20 +125,18 @@ function setupRoutes(routeListener: RouteListener): void {
                     return res.end();
                 }
                 const recordingAddress = searchParams.get("recordingAddress");
-                if (recordingAddress && !claims.key) {
-                    /**
-                     * A key is required as we will use it to sign the JWT
-                     * that the SFU will use to authenticate when accessing
-                     * the provided route to dispatch the recordings.
-                     */
+                const channelKey = claims.keySeed
+                    ? auth.deriveChannelKey(claims.keySeed)
+                    : claims.key;
+                if (recordingAddress && !channelKey) {
                     logger.warn(
-                        `${remoteAddress}: missing key claim when creating channel with recording address`
+                        `${remoteAddress}: missing key or key seed when creating channel with recording address`
                     );
                     res.statusCode = 400; // bad request
                     return res.end();
                 }
                 const channel = await Channel.create(remoteAddress, claims.iss, {
-                    key: claims.key,
+                    key: channelKey,
                     useWebRtc: searchParams.get("webRTC") !== "false",
                     recordingAddress
                 });

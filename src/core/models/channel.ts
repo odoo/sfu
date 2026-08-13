@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import type { Router, WebRtcServer } from "mediasoup/node/lib/types";
 
 import * as config from "#src/config.ts";
-import { getAllowedCodecs, Logger } from "#src/utils/utils.ts";
+import { b64toBuffer, getAllowedCodecs, Logger } from "#src/utils/utils.ts";
 import { AuthenticationError, OvercrowdedError } from "#src/utils/errors.ts";
 import {
     Session,
@@ -15,7 +15,7 @@ import {
 import { Recorder, STOP_CODE, type UpdateData } from "#src/recording/models/recorder.ts";
 import { getWorker, type RtcWorker } from "#src/core/services/resources.ts";
 import { SERVER_MESSAGE } from "#src/shared/enums.ts";
-import type { RecordingState } from "#src/shared/types.ts";
+import type { RecordingState, StringLike } from "#src/shared/types.ts";
 
 const logger = new Logger("CHANNEL");
 
@@ -52,8 +52,8 @@ export type ChannelStats = {
     webRtcEnabled: boolean;
 };
 type ChannelCreateOptions = {
-    /** Optional encryption key for channel authentication */
-    key?: string;
+    /** Optional signing key for channel authentication */
+    key?: StringLike;
     /** Whether to enable WebRTC functionality */
     useWebRtc?: boolean;
     recordingAddress?: string | null;
@@ -91,7 +91,7 @@ export class Channel extends EventEmitter {
     public readonly uuid: string;
     /** Short name for logging (last 5 chars of UUID) */
     public readonly name: string;
-    /** Optional encryption key for authentication */
+    /** Optional signing key for authentication */
     public readonly key?: Buffer;
     /** mediasoup Router for media routing */
     public readonly router?: Router;
@@ -216,7 +216,7 @@ export class Channel extends EventEmitter {
         this.remoteAddress = remoteAddress;
         this._worker = worker;
         this.router = router;
-        this.key = key ? Buffer.from(key, "base64") : undefined;
+        this.key = key ? b64toBuffer(key) : undefined;
         this.uuid = crypto.randomUUID();
         this.name = `${remoteAddress}*${this.uuid.slice(-5)}`;
         this.recorder =
