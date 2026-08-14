@@ -16,6 +16,7 @@ import type { WebSocketCredentials } from "#src/shared/types.ts";
 type WSConnectClaims = {
     sfu_channel_uuid: string;
     session_id: string;
+    partner_id?: number;
     label?: string;
     permissions?: SessionPermissions;
 };
@@ -135,7 +136,7 @@ function connect(webSocket: WebSocket, credentials: WebSocketCredentials): Sessi
     const { channelUUID, jwt } = credentials;
     let channel = channelUUID ? Channel.records.get(channelUUID) : undefined;
     const authResult = verify<WSConnectClaims>(jwt, channel?.key);
-    const { sfu_channel_uuid, session_id, label, permissions } = authResult;
+    const { sfu_channel_uuid, session_id, partner_id, label, permissions } = authResult;
     if (!channelUUID && sfu_channel_uuid) {
         // Cases where the channelUUID is not provided in the credentials for backwards compatibility with version 1.1 and earlier.
         channel = Channel.records.get(sfu_channel_uuid);
@@ -148,11 +149,18 @@ function connect(webSocket: WebSocket, credentials: WebSocketCredentials): Sessi
     if (!channel) {
         throw new AuthenticationError("Channel does not exist");
     }
-    if (!session_id) {
+    if (
+        !session_id ||
+        (partner_id !== undefined && (!Number.isSafeInteger(partner_id) || partner_id <= 0))
+    ) {
         throw new AuthenticationError("Malformed JWT payload");
     }
     const bus = new Bus(webSocket, { batchDelay: config.timeouts.busBatch });
-    const { session } = Channel.join(channel.uuid, session_id, { label, permissions });
+    const { session } = Channel.join(channel.uuid, session_id, {
+        label,
+        partnerId: partner_id,
+        permissions
+    });
     webSocket.send(JSON.stringify(session.startupData)); // client can start using ws after this message.
     session.once(Session.Events.CLOSE, ({ code }: { code: string }) => {
         let wsCloseCode = WS_CLOSE_CODE.CLEAN;

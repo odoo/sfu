@@ -47,6 +47,7 @@ export type Metadata = {
     channelName: string;
     channelUUID: string;
     routingAddress: string;
+    partnerId?: number;
     startedAt?: number;
     timeStamps: TimeStampData[];
     labels: Record<SessionId, string>;
@@ -164,10 +165,18 @@ export class Recorder extends EventEmitter {
      * @param [options={}]
      * @param [options.audio] - whether to generate an audio file
      * @param [options.video] - whether to generate a video file
+     * @param [options.partnerId] - partner that started the recording
      * @param [options.transcription] - whether to generate a transcription, this flags the
      * current recording for transcription, can be changed at runtime.
      */
-    start(options: { audio?: boolean; video?: boolean; transcription?: boolean } = {}) {
+    start(
+        options: {
+            audio?: boolean;
+            video?: boolean;
+            partnerId?: number;
+            transcription?: boolean;
+        } = {}
+    ) {
         return this._enqueueTransition(async () => {
             this.transcription = options.transcription ?? this.transcription;
             this.audio = options.audio ?? this.audio;
@@ -184,6 +193,7 @@ export class Recorder extends EventEmitter {
             this.isRecording = true;
             this.video = Boolean(options.video);
             this._hasFailed = false;
+            this._metaData.partnerId = options.partnerId;
             this._metaData.startedAt = Date.now();
             await this._startRecording();
         });
@@ -300,6 +310,7 @@ export class Recorder extends EventEmitter {
             this._emitStatus(STOP_CODE.RECORDING_FAILED);
         } finally {
             this._metaData.timeStamps = [];
+            this._metaData.partnerId = undefined;
             this._metaData.startedAt = undefined;
             this._metaData.labels = {};
         }

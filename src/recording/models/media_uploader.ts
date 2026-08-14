@@ -35,14 +35,15 @@ export class MediaUploader {
         const fileStats = await fs.stat(filePath);
         const params = new URLSearchParams({
             start_ms: String(metadata.startedAt),
-            end_ms: String(metadata.stoppedAt)
+            end_ms: String(metadata.stoppedAt),
+            has_media_output: String(metadata.audio || metadata.video)
         });
         const response = await this._fetchWithTimeout(
             `${metadata.routingAddress}/transcribe?${params}`,
             {
                 method: "POST",
                 headers: {
-                    Authorization: `Bearer ${this._makeJwt(metadata.channelKey)}`,
+                    Authorization: `Bearer ${this._makeJwt(metadata)}`,
                     "Content-Type": config.recording.audio.mimeType,
                     "Content-Length": fileStats.size.toString()
                 },
@@ -84,7 +85,7 @@ export class MediaUploader {
             {
                 method: "GET",
                 headers: {
-                    Authorization: `Bearer ${this._makeJwt(metadata.channelKey)}`
+                    Authorization: `Bearer ${this._makeJwt(metadata)}`
                 }
             },
             this._routingTimeoutMs
@@ -121,14 +122,15 @@ export class MediaUploader {
         );
     }
 
-    private _makeJwt(key: string) {
+    private _makeJwt(metadata: SealedMetaData) {
         const nowSeconds = Date.now() / 1000;
         return sign(
             {
                 exp: nowSeconds + 120,
-                iat: nowSeconds
+                iat: nowSeconds,
+                ...(metadata.partnerId === undefined ? {} : { partner_id: metadata.partnerId })
             },
-            key
+            metadata.channelKey
         );
     }
 

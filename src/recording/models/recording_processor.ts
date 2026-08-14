@@ -47,28 +47,21 @@ export class RecordingProcessor {
                 stoppedAt: metadata.stoppedAt,
                 timeStamps: metadata.timeStamps
             });
-            if (metadata.audio || metadata.transcription) {
-                const audioPath = await compiler.getAudio();
-                if (metadata.transcription && audioPath) {
-                    await this._uploader.transcribe({ filePath: audioPath, metadata });
-                }
-                if (metadata.audio && audioPath && !metadata.video) {
-                    await this._uploader.uploadMedia({
-                        filePath: audioPath,
-                        metadata,
-                        mimetype: config.recording.audio.mimeType
-                    });
-                }
+            const audioPath =
+                metadata.audio || metadata.transcription ? await compiler.getAudio() : undefined;
+            if (metadata.transcription && audioPath) {
+                await this._uploader.transcribe({ filePath: audioPath, metadata });
             }
-            if (metadata.video) {
-                const videoPath = await compiler.getVideo();
-                if (videoPath) {
-                    await this._uploader.uploadMedia({
-                        filePath: videoPath,
-                        metadata,
-                        mimetype: config.recording.video.mimeType
-                    });
-                }
+            const videoPath = metadata.video ? await compiler.getVideo() : undefined;
+            const mediaPath = videoPath ?? (metadata.audio ? audioPath : undefined);
+            if (mediaPath) {
+                await this._uploader.uploadMedia({
+                    filePath: mediaPath,
+                    metadata,
+                    mimetype: videoPath
+                        ? config.recording.video.mimeType
+                        : config.recording.audio.mimeType
+                });
             }
         } catch (error) {
             if (!(error instanceof DiscardRecordingError)) {

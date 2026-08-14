@@ -90,6 +90,7 @@ after decryption it contains the recording timeline and upload contract
   "channelUUID": "e71d3571-60c8-4c4a-9c49-7686f9a24690",
   "routingAddress": "http://www.oodo.com/discuss/recording/routing/1234",
   "channelKey": "base64-channel-key",
+  "partnerId": 42, // optional partner that started the recording
   "audio": true,
   "video": true,
   "transcription": false,

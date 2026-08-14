@@ -212,9 +212,11 @@ describe("Recording & Transcription", () => {
 
         try {
             const channelUUID = await network.getChannelUUID();
-            const user = await network.connect(channelUUID, 1);
+            const starter = await network.connect(channelUUID, 1, { partnerId: 11 });
+            const updater = await network.connect(channelUUID, 2, { partnerId: 22 });
 
-            expect(await user.sfuClient.startRecording({ audio: true })).toBe(true);
+            expect(await starter.sfuClient.startRecording({ audio: true })).toBe(true);
+            expect(await updater.sfuClient.startRecording({ transcription: true })).toBe(true);
             const channel = Channel.records.get(channelUUID);
             expect(channel?.recorder?.path).toBeDefined();
 
@@ -244,6 +246,7 @@ describe("Recording & Transcription", () => {
             );
             expect(metadata.channelName).toBe(channel!.name);
             expect(metadata.channelUUID).toBe(channel!.uuid);
+            expect(metadata.partnerId).toBe(11);
             const jwt = auth.sign(
                 { sub: "recording", exp: Math.floor(Date.now() / 1000) + 60 },
                 metadata.channelKey
@@ -787,7 +790,10 @@ describe("Scheduler Service", () => {
         global.fetch = originalFetch;
     });
 
-    test("should process a valid recording", async () => {
+    test.each([
+        { name: "audio recording", video: false },
+        { name: "video recording without video output", video: true }
+    ])("should process a valid $name", async ({ video }) => {
         const recordingName = "session_123";
         const routingAddress = "http://www.oodo.test/routin";
         const recordingDir = `/mock/recordings/${recordingName}`;
@@ -802,7 +808,7 @@ describe("Scheduler Service", () => {
                 fileState(STREAM_TYPE.AUDIO, "audio_1.ogg", 4000, { active: false })
             ],
             audio: true,
-            video: false,
+            video,
             transcription: false
         };
         const uploadDestination = "http://upload.local/video";
@@ -839,6 +845,10 @@ describe("Scheduler Service", () => {
             expect.objectContaining({ stdio: "ignore" })
         );
         expect(mockFetch).toHaveBeenCalledTimes(2);
+        expect(mockFetch).toHaveBeenCalledWith(
+            `${routingAddress}/routing?start_ms=${metadata.startedAt}&end_ms=${metadata.stoppedAt}&mimetype=audio%2Fogg`,
+            expect.anything()
+        );
         expect(mockFsModule.rm).toHaveBeenCalledWith(recordingDir, {
             recursive: true
         });
@@ -1481,6 +1491,7 @@ describe("Scheduler Service network tests", () => {
                 channelUUID: "uuid",
                 routingAddress: "http://routing.local",
                 channelKey: "key",
+                partnerId: 42,
                 labels: {},
                 startedAt: 1000,
                 stoppedAt: 2000,
@@ -1496,11 +1507,16 @@ describe("Scheduler Service network tests", () => {
             "http://routing.local/routing?start_ms=1000&end_ms=2000&mimetype=audio%2Fogg",
             expect.objectContaining({ method: "GET" })
         );
+        const auth = await import("#src/core/services/auth.ts");
+        expect(auth.sign).toHaveBeenCalledWith(expect.objectContaining({ partner_id: 42 }), "key");
         expect(cancelSpy).toHaveBeenCalledTimes(1);
         expect(textSpy).not.toHaveBeenCalled();
     });
 
-    test("uses the Odoo transcription route", async () => {
+    test.each([
+        { audio: false, video: false, partnerId: undefined, expected: "false" },
+        { audio: true, video: true, partnerId: 42, expected: "true" }
+    ])("uses the Odoo transcription route with media output $expected", async (options) => {
         const { MediaUploader } = await import("#src/recording/models/media_uploader.ts");
         const filePath = "/mock/audio.ogg";
         mockFsInstance.write(filePath, "audio");
@@ -1517,20 +1533,25 @@ describe("Scheduler Service network tests", () => {
                 channelUUID: "uuid",
                 routingAddress: "http://routing.local",
                 channelKey: "key",
+                partnerId: options.partnerId,
                 labels: {},
                 startedAt: 1000,
                 stoppedAt: 2000,
                 timeStamps: [],
-                audio: false,
-                video: false,
+                audio: options.audio,
+                video: options.video,
                 transcription: true
             }
         });
 
         expect(mockFetch).toHaveBeenCalledWith(
-            "http://routing.local/transcribe?start_ms=1000&end_ms=2000",
+            `http://routing.local/transcribe?start_ms=1000&end_ms=2000&has_media_output=${options.expected}`,
             expect.objectContaining({ method: "POST" })
         );
+        const auth = await import("#src/core/services/auth.ts");
+        const claims = jest.mocked(auth.sign).mock.calls[0]?.[0];
+        expect(Reflect.get(claims ?? {}, "partner_id")).toBe(options.partnerId);
+        expect(Object.hasOwn(claims ?? {}, "partner_id")).toBe(options.partnerId !== undefined);
     });
 
     test("rejects an oversized routing response", async () => {

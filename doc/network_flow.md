@@ -93,6 +93,7 @@ The Odoo server derives the same channel key from `AUTH_KEY` and `keySeed`, then
   "exp": 4102444800,
   "sfu_channel_uuid": "<channel-uuid>",
   "session_id": "<unique-session-id>",
+  "partner_id": 42, // optional partner identity
   "label": "User Name",
   "permissions": {
     "recording": true,

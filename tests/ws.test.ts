@@ -98,6 +98,26 @@ describe("WebSocket Service", () => {
         const [code] = await once(ws, "close");
         expect(code).toBe(WS_CLOSE_CODE.AUTHENTICATION_FAILED);
     });
+    test.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, "1", null, true])(
+        "Closes connection when partner_id is invalid (%p)",
+        async (partnerId) => {
+            const channelUUID = await network.getChannelUUID({ useWebRtc: false });
+            const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);
+            await once(ws, "open");
+
+            const jwt = network.makeChannelJwt(channelUUID, {
+                sfu_channel_uuid: channelUUID,
+                session_id: 1,
+                partner_id: partnerId,
+                permissions: {}
+            });
+
+            ws.send(JSON.stringify({ channelUUID, jwt }));
+
+            const [code] = await once(ws, "close");
+            expect(code).toBe(WS_CLOSE_CODE.AUTHENTICATION_FAILED);
+        }
+    );
     test("Closes connection with CHANNEL_FULL when channel is overcrowded", async () => {
         const channelUUID = await network.getChannelUUID();
         const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);

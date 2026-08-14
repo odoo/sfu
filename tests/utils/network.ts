@@ -122,13 +122,17 @@ export class LocalNetwork {
      * @param channelUUID - Channel UUID to connect to
      * @param sessionId - Session identifier
      * @param [param2.key] - Channel key
+     * @param [param2.partnerId] - Partner represented by the session
      * @returns Promise resolving to connection result
      * @throws {Error} If either endpoint closes before connecting
      */
     async connect(
         channelUUID: string,
         sessionId: number,
-        { key = this._channelKeys.get(channelUUID) }: { key?: StringLike } = {}
+        {
+            key = this._channelKeys.get(channelUUID),
+            partnerId
+        }: { key?: StringLike; partnerId?: number } = {}
     ) {
         if (!this.port) {
             throw new Error("Network not started - call start() first");
@@ -179,6 +183,7 @@ export class LocalNetwork {
                 {
                     sfu_channel_uuid: channelUUID,
                     session_id: sessionId,
+                    partner_id: partnerId,
                     permissions: {
                         audioRecording: true,
                         videoRecording: true,

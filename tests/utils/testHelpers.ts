@@ -83,7 +83,7 @@ export async function setupUnitTestsEnv() {
     jest.doMock("#src/core/services/auth.ts", () => ({
         __esModule: true,
         decrypt: (content: string) => content,
-        sign: () => "mock_jwt"
+        sign: jest.fn(() => "mock_jwt")
     }));
 
     jest.doMock("#src/utils/utils.ts", () => ({

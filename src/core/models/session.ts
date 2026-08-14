@@ -71,6 +71,7 @@ export type SessionPermissions = {
 };
 export type SessionOptions = {
     label?: string;
+    partnerId?: number;
     permissions?: SessionPermissions;
 };
 export type TransportConfig = {
@@ -143,6 +144,7 @@ export class Session extends EventEmitter {
     public bus?: Bus;
     /** A human-friendly way to identify the session, optionally provided by the remote server */
     public label?: string;
+    public readonly partnerId?: number;
     /** Unique session identifier */
     public readonly id: SessionId;
     /** Session information visible to other participants */
@@ -183,10 +185,11 @@ export class Session extends EventEmitter {
      * @param options - Session options set at creation
      */
     constructor(id: SessionId, channel: Channel, options: SessionOptions = {}) {
-        const { label, permissions } = options;
+        const { label, partnerId, permissions } = options;
         super();
         this.id = id;
         this.label = label;
+        this.partnerId = partnerId;
         this.updatePermissions(permissions);
         this._channel = channel;
         this.info = Object.seal({
@@ -760,6 +763,7 @@ export class Session extends EventEmitter {
                         return false;
                     }
                     this._channel.recorder!.start({
+                        partnerId: this.partnerId,
                         transcription: Boolean(transcription)
                     });
                     return true;
@@ -775,6 +779,7 @@ export class Session extends EventEmitter {
                     this._channel.recorder!.start({
                         audio: Boolean(audio),
                         video: Boolean(video),
+                        partnerId: this.partnerId,
                         transcription: Boolean(transcription)
                     });
                     return true;
