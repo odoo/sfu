@@ -5,6 +5,7 @@ import { EventEmitter, once } from "node:events";
 
 import { describe, expect, jest, test, beforeEach, afterEach } from "@jest/globals";
 import { FakeMediaStreamTrack } from "fake-mediastreamtrack";
+import type { Consumer } from "mediasoup/node/lib/types";
 
 import { STREAM_TYPE } from "#src/shared/enums.ts";
 import { CLIENT_UPDATE } from "#src/client";
@@ -317,6 +318,46 @@ describe("Recording & Transcription", () => {
 
             expect(audioArgs).toBeDefined();
             expect(videoArgs).toBeDefined();
+        } finally {
+            await restore();
+        }
+    });
+
+    test("defers recording activation until the first outgoing RTP packet", async () => {
+        const { restore, network, getChannel } = await recordingSetup({
+            RECORDING: "true"
+        });
+
+        try {
+            const channelUUID = await network.getChannelUUID();
+            const user = await network.connect(channelUUID, 1);
+            const channel = getChannel(channelUUID)!;
+            const consumerPromise = new Promise<Consumer>((resolve) => {
+                channel.router!.observer.once("newtransport", (transport) => {
+                    transport.observer.once("newconsumer", resolve);
+                });
+            });
+            const mark = jest.spyOn(channel.recorder!, "mark");
+
+            await user.sfuClient.startRecording({ audio: true });
+            const audioTrack = new FakeMediaStreamTrack({ kind: "audio" });
+            await user.sfuClient.updateUpload(STREAM_TYPE.AUDIO, audioTrack);
+            const consumer = await consumerPromise;
+
+            // The consumer is resumed and RTP tracing is armed, but until a packet
+            // is actually forwarded the stream must not be marked active.
+            await waitFor(() => !consumer.paused && consumer.listenerCount("trace") === 1);
+            expect(mark.mock.calls.some(([, info]) => info.active)).toBe(false);
+
+            const rtpTrace = { type: "rtp", direction: "out", timestamp: 0, info: {} } as const;
+            consumer.emit("trace", rtpTrace);
+            expect(mark.mock.calls.filter(([, info]) => info.active)).toHaveLength(1);
+
+            // Tracing is torn down after the first packet so it does not fire for
+            // every subsequent one, and the stream is only ever activated once.
+            expect(consumer.listenerCount("trace")).toBe(0);
+            consumer.emit("trace", rtpTrace);
+            expect(mark.mock.calls.filter(([, info]) => info.active)).toHaveLength(1);
         } finally {
             await restore();
         }

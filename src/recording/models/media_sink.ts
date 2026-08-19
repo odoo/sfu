@@ -50,6 +50,7 @@ export class MediaSink extends EventEmitter {
     private _directory: string;
     private _allowed = true;
     private readonly _availabilityMarker: string;
+    private _firstPacketListener?: () => void;
 
     set allowed(value: boolean) {
         if (this._allowed === value) {
@@ -202,20 +203,73 @@ export class MediaSink extends EventEmitter {
     }
 
     private async _updateConsumer(available: boolean) {
-        const active = available && this._allowed;
-        if (active) {
-            await this._consumer?.resume();
-            if (this._consumer?.kind === "video") {
-                // need to request a keyframe so that the recording has a starting frame
-                // otherwise it could have a back screen at the start
-                await this._consumer.requestKeyFrame();
-            }
-        } else {
-            await this._consumer?.pause();
-        }
-        if (this._isClosed) {
+        const consumer = this._consumer;
+        if (!consumer) {
             return;
         }
+        if (!available || !this._allowed) {
+            this._stopAwaitingFirstPacket();
+            await consumer.pause();
+            if (!this._isClosed) {
+                this._emitState(false, available);
+            }
+            return;
+        }
+        if (!consumer.paused || this._firstPacketListener) {
+            return; // already recording, or already waiting for the first packet
+        }
+        // Activation is timestamped from the first RTP packet the consumer
+        // forwards, not from resume(): a video stream only starts flowing once its
+        // keyframe request has completed a round-trip, so resuming would leave it
+        // misaligned against audio in the compiled output.
+        await this._awaitFirstPacket(consumer);
+        if (this._isClosed || !this._allowed || consumer.producerPaused) {
+            this._stopAwaitingFirstPacket();
+            return;
+        }
+        await consumer.resume();
+        if (consumer.kind === "video") {
+            // request a keyframe so the recording opens on a full frame instead of
+            // a gray screen until the producer's next periodic keyframe
+            await consumer.requestKeyFrame();
+        }
+    }
+
+    /**
+     * Marks the stream active once the consumer forwards its first RTP packet.
+     *
+     * mediasoup only surfaces outgoing packet timing through `trace` events, so a
+     * one-shot `rtp` trace pinpoints that first packet; tracing is turned off again
+     * as soon as it arrives to avoid an event per packet for the rest of the
+     * recording.
+     */
+    private async _awaitFirstPacket(consumer: Consumer) {
+        this._firstPacketListener = () => {
+            this._stopAwaitingFirstPacket();
+            if (!this._isClosed) {
+                this._emitState(true, true);
+            }
+        };
+        consumer.once("trace", this._firstPacketListener);
+        await consumer.enableTraceEvent(["rtp"]);
+    }
+
+    private _stopAwaitingFirstPacket() {
+        const listener = this._firstPacketListener;
+        if (!listener) {
+            return;
+        }
+        this._firstPacketListener = undefined;
+        this._consumer?.off("trace", listener);
+        // Best-effort: leaving the trace on only costs an unused event per packet.
+        void this._consumer?.enableTraceEvent().catch((error: unknown) => {
+            if (!this._isClosed) {
+                logger.warn(`failed to disable RTP trace for ${this.name}: ${error}`);
+            }
+        });
+    }
+
+    private _emitState(active: boolean, available: boolean) {
         this.emit(MediaSink.Events.FILE_STATE_CHANGE, {
             active,
             available,
@@ -232,6 +286,10 @@ export class MediaSink extends EventEmitter {
     private async _cleanup() {
         const mediaWriter = this._mediaWriter;
         const writerFailureListener = this._writerFailureListener;
+        if (this._firstPacketListener) {
+            this._consumer?.off("trace", this._firstPacketListener);
+            this._firstPacketListener = undefined;
+        }
         this.emit(MediaSink.Events.FILE_STATE_CHANGE, {
             active: false,
             available: false,
