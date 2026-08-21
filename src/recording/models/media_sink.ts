@@ -237,11 +237,6 @@ export class MediaSink extends EventEmitter {
 
     /**
      * Marks the stream active once the consumer forwards its first RTP packet.
-     *
-     * mediasoup only surfaces outgoing packet timing through `trace` events, so a
-     * one-shot `rtp` trace pinpoints that first packet; tracing is turned off again
-     * as soon as it arrives to avoid an event per packet for the rest of the
-     * recording.
      */
     private async _awaitFirstPacket(consumer: Consumer) {
         this._firstPacketListener = () => {
