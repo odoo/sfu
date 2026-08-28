@@ -192,7 +192,7 @@ export const timeouts: TimeoutConfig = Object.freeze({
     // how long to wait before we try to recover a session (consuming or producing media) after an error
     recovery: 2_000,
     // how long before a channel is closed after the last session leaves
-    channel: 60 * 60_000,
+    channel: 60_000,
     // how long to wait to gather messages before sending through the bus
     busBatch: process.env.JEST_WORKER_ID ? 10 : 300
 });
