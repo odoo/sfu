@@ -152,7 +152,7 @@ function connect(webSocket: WebSocket, credentials: WebSocketCredentials): Sessi
     const bus = new Bus(webSocket, { batchDelay: config.timeouts.busBatch });
     const { session } = Channel.join(channel.uuid, session_id);
     webSocket.send(""); // client can start using ws after this message.
-    session.once("close", ({ code }: { code: string }) => {
+    session.once(Session.Events.CLOSE, ({ code }: { code: string }) => {
         let wsCloseCode = WS_CLOSE_CODE.CLEAN;
         switch (code) {
             case SESSION_CLOSE_CODE.ERROR:

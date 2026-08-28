@@ -1,14 +1,14 @@
 import { EventEmitter } from "node:events";
 
 import type {
-    IceParameters,
-    IceCandidate,
-    DtlsParameters,
-    SctpParameters,
     Consumer,
+    DtlsParameters,
+    IceCandidate,
+    IceParameters,
     Producer,
-    WebRtcTransport,
-    RtpCapabilities
+    RtpCapabilities,
+    SctpParameters,
+    WebRtcTransport
 } from "mediasoup/node/lib/types";
 
 import * as config from "#src/config.ts";
@@ -20,7 +20,7 @@ import {
     SERVER_REQUEST,
     STREAM_TYPE
 } from "#src/shared/enums.ts";
-import type { JSONSerializable, StreamType, BusMessage } from "#src/shared/types";
+import type { BusMessage, JSONSerializable, RequestMessage, StreamType } from "#src/shared/types";
 import type { Bus } from "#src/shared/bus.ts";
 import type { Channel } from "#src/models/channel.ts";
 
@@ -56,7 +56,7 @@ export enum SESSION_CLOSE_CODE {
     KICKED = "kicked",
     ERROR = "error"
 }
-export interface TransportConfig {
+export type TransportConfig = {
     /** Transport identifier */
     id: string;
     /** ICE parameters for connection establishment */
@@ -67,37 +67,37 @@ export interface TransportConfig {
     dtlsParameters: DtlsParameters;
     /** SCTP parameters for data channel support */
     sctpParameters: SctpParameters;
-}
-interface Consumers {
+};
+type Consumers = {
     /** Audio consumer */
     [STREAM_TYPE.AUDIO]: Consumer | null;
     /** Camera video consumer */
     [STREAM_TYPE.CAMERA]: Consumer | null;
     /** Screen sharing consumer */
     [STREAM_TYPE.SCREEN]: Consumer | null;
-}
-interface Producers {
+};
+type Producers = {
     /** Audio producer */
     [STREAM_TYPE.AUDIO]: Producer | null;
     /** Camera video producer */
     [STREAM_TYPE.CAMERA]: Producer | null;
     /** Screen sharing producer */
     [STREAM_TYPE.SCREEN]: Producer | null;
-}
-interface SessionCloseOptions {
+};
+type SessionCloseOptions = {
     /** Close code indicating reason for termination */
     code?: SESSION_CLOSE_CODE;
     /** Human-readable cause description */
     cause?: string;
-}
-interface ProducerBitRates {
+};
+type ProducerBitRates = {
     /** Audio bitrate in bps */
     [STREAM_TYPE.AUDIO]?: number;
     /** Camera video bitrate in bps */
     [STREAM_TYPE.CAMERA]?: number;
     /** Screen sharing bitrate in bps */
     [STREAM_TYPE.SCREEN]?: number;
-}
+};
 
 const logger = new Logger("SESSION");
 
@@ -107,8 +107,15 @@ const logger = new Logger("SESSION");
  *
  * @fires Session#stateChange - Emitted when session state changes
  * @fires Session#close - Emitted when session is closed
+ * @fires Session#handledError - Emitted when an error is handled
  */
 export class Session extends EventEmitter {
+    static readonly Events = {
+        STATE_CHANGE: "stateChange",
+        CLOSE: "close",
+        HANDLED_ERROR: "handledError"
+    } as const;
+
     /** Communication bus for WebSocket messaging */
     public bus?: Bus;
     /** Unique session identifier */
@@ -171,7 +178,11 @@ export class Session extends EventEmitter {
 
     set state(state: SESSION_STATE) {
         this._state = state;
-        this.emit("stateChange", state);
+        /**
+         * @event Session#stateChange
+         * @type {{ state: SESSION_STATE }}
+         */
+        this.emit(Session.Events.STATE_CHANGE, state);
     }
 
     async getProducerBitRates(): Promise<ProducerBitRates> {
@@ -254,7 +265,7 @@ export class Session extends EventEmitter {
          * @event Session#close
          * @type {{ id: SessionId, code: number }}
          */
-        this.emit("close", { id: this.id, code });
+        this.emit(Session.Events.CLOSE, { id: this.id, code });
     }
 
     async connect(bus: Bus): Promise<void> {
@@ -305,6 +316,9 @@ export class Session extends EventEmitter {
         await Promise.all(promises);
     }
 
+    /**
+     * @throws {Error} Rethrows the exact upstream error from createWebRtcTransport(...), INIT_TRANSPORTS bus request, or bitrate setters.
+     */
     private async _initializeTransports(): Promise<void> {
         try {
             const [ctsTransport, stcTransport] = await Promise.all([
@@ -323,15 +337,15 @@ export class Session extends EventEmitter {
                 this._ctsTransport?.close();
                 this._stcTransport?.close();
             });
-            this._clientCapabilities = (await this.bus!.request({
+            this._clientCapabilities = await this.bus!.request({
                 name: SERVER_REQUEST.INIT_TRANSPORTS,
                 payload: {
                     capabilities: this._channel.router!.rtpCapabilities,
-                    stcConfig: this._createTransportConfig(this._stcTransport),
-                    ctsConfig: this._createTransportConfig(this._ctsTransport),
+                    stcConfig: this._createTransportConfig(this._stcTransport!),
+                    ctsConfig: this._createTransportConfig(this._ctsTransport!),
                     producerOptionsByKind: config.rtc.producerOptionsByKind
                 }
-            })) as RtpCapabilities;
+            });
             await Promise.all([
                 this._ctsTransport.setMaxIncomingBitrate(config.MAX_BITRATE_IN),
                 this._stcTransport.setMaxOutgoingBitrate(config.MAX_BITRATE_OUT)
@@ -360,7 +374,7 @@ export class Session extends EventEmitter {
     }
 
     /**
-     * Creates missing consumers for each producer of `params.session` and sets their appropriate `paused` state.
+     * Creates missing consumers for each producer of {@link session} and sets their appropriate `paused` state.
      * This batches the consumption of all streams.
      */
     async consume(session: Session): Promise<void> {
@@ -487,6 +501,7 @@ export class Session extends EventEmitter {
      */
     private _handleError(error: Error): void {
         this.errors.push(error);
+        this.emit(Session.Events.HANDLED_ERROR, error);
         logger.error(
             `[${this.name}] handling error (${this.errors.length}): ${error.message} : ${error.stack}`
         );
@@ -553,7 +568,7 @@ export class Session extends EventEmitter {
                 if (!producer) {
                     return;
                 }
-                logger.debug(`[${this.name}] ${type} ${active ? "on" : "off"}`);
+                logger.verbose(`[${this.name}] ${type} ${active ? "on" : "off"}`);
 
                 if (active) {
                     await producer.resume();
@@ -598,7 +613,15 @@ export class Session extends EventEmitter {
         }
     }
 
-    private async _handleRequest({ name, payload }: BusMessage): Promise<JSONSerializable | void> {
+    /**
+     * @throws {Error} when:
+     *  - producer creation fails (rethrows the exact error from _ctsTransport.produce(...)).
+     *  - request name is unsupported.
+     */
+    private async _handleRequest({
+        name,
+        payload
+    }: RequestMessage): Promise<JSONSerializable | void> {
         switch (name) {
             case CLIENT_REQUEST.CONNECT_STC_TRANSPORT: {
                 const { dtlsParameters } = payload;
@@ -625,7 +648,7 @@ export class Session extends EventEmitter {
                     throw error;
                 }
                 this.producers[type] = producer;
-                this.on("close", () => {
+                this.on(Session.Events.CLOSE, () => {
                     producer.close();
                     this.producers[type] = null;
                 });
@@ -635,7 +658,7 @@ export class Session extends EventEmitter {
                     this.info.isCameraOn = true;
                 }
                 const codec = producer.rtpParameters.codecs[0];
-                logger.debug(`[${this.name}] producing ${type}: ${codec?.mimeType}`);
+                logger.verbose(`[${this.name}] producing ${type}: ${codec?.mimeType}`);
                 this._updateRemoteConsumers();
                 this._broadcastInfo();
                 return { id: producer.id };
