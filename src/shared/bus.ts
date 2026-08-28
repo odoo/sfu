@@ -6,36 +6,38 @@ import type {
     RequestMessage,
     RequestName,
     ResponseFrom
-} from "./types";
+} from "#src/shared/types.ts";
+
 type BusResponse = ResponseFrom<RequestName>;
-export interface Payload {
+
+export type Payload = {
     /** The actual message content */
     message: BusMessage | JSONSerializable | BusResponse;
     /** Request ID if this message expects a response */
     needResponse?: string;
     /** Response ID if this message is responding to a request */
     responseTo?: string;
-}
-interface PendingRequest {
+};
+type PendingRequest = {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolve: (value: any) => void;
     reject: (error: Error | string) => void;
     timeout: NodeJS.Timeout;
-}
-interface BusOptions {
+};
+type BusOptions = {
     /** Batch delay in milliseconds */
     batchDelay?: number;
-}
-interface RequestOptions {
+};
+type RequestOptions = {
     /** Request timeout in milliseconds */
     timeout?: number;
     /** Whether to batch this request */
     batch?: boolean;
-}
-interface SendOptions {
+};
+type SendOptions = {
     /** Whether to batch this message */
     batch?: boolean;
-}
+};
 type WebSocketLike = WebSocket | NodeWebSocket;
 type WSHandler<K extends keyof WebSocketEventMap> = (ev: WebSocketEventMap[K]) => void;
 
@@ -112,7 +114,11 @@ export class Bus {
                 reject(new Error("bus request timed out"));
                 this._pendingRequests.delete(requestId);
             }, timeout);
-            this._pendingRequests.set(requestId, { resolve, reject, timeout: timeoutId });
+            this._pendingRequests.set(requestId, {
+                resolve,
+                reject,
+                timeout: timeoutId
+            });
             this._sendPayload(message, { needResponse: requestId, batch });
         });
     }
@@ -198,7 +204,7 @@ export class Bus {
         const payloads: Payload[] = JSON.parse(normalizedMessage);
         // Handle each payload in parallel (not awaited)
         for (const payload of payloads) {
-            this._handlePayload(payload);
+            void this._handlePayload(payload);
         }
     }
 
@@ -213,8 +219,8 @@ export class Bus {
             const pendingRequest = this._pendingRequests.get(responseTo);
             if (pendingRequest) {
                 clearTimeout(pendingRequest.timeout);
-                pendingRequest.resolve(message);
                 this._pendingRequests.delete(responseTo);
+                pendingRequest.resolve(message);
             }
         } else if (needResponse) {
             // This is a request that expects a response

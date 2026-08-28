@@ -10,11 +10,6 @@ export type StreamType = "audio" | "camera" | "screen";
 
 export type StringLike = Buffer | string;
 
-export type WebSocketCredentials = {
-    channelUUID?: string;
-    jwt: string;
-};
-
 export type RecordingFlags = {
     audio: boolean;
     transcription: boolean;
@@ -43,8 +38,14 @@ export type StartupData = {
     recordingState: RecordingFlags;
 };
 
-import type { DownloadStates } from "#src/client.ts";
+export type WebSocketCredentials = {
+    channelUUID?: string;
+    jwt: string;
+};
+
 import type { SessionId, SessionInfo, TransportConfig } from "#src/models/session.ts";
+
+export type DownloadStates = Partial<Record<StreamType, boolean>>;
 
 import type {
     DtlsParameters,
@@ -54,7 +55,7 @@ import type {
     RtpParameters
     // eslint-disable-next-line node/no-unpublished-import
 } from "mediasoup-client/lib/types";
-import type { CLIENT_MESSAGE, CLIENT_REQUEST, SERVER_MESSAGE, SERVER_REQUEST } from "./enums.ts";
+import type { CLIENT_MESSAGE, CLIENT_REQUEST, SERVER_MESSAGE, SERVER_REQUEST } from "./enums";
 
 export type BusMessage =
     | { name: typeof CLIENT_MESSAGE.BROADCAST; payload: JSONSerializable }
