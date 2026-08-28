@@ -183,10 +183,12 @@ describe("Full network", () => {
         const channelUUID = await network.getChannelUUID();
         const sender = await network.connect(channelUUID, 3);
         const track = new FakeMediaStreamTrack({ kind: "audio" });
+        const errorPromise = once(sender.sfuClient, "handledError");
         // closing the transport so the `updateUpload` should fail.
         // @ts-expect-error accessing private property for testing purposes
         sender.sfuClient._ctsTransport.close();
         await sender.sfuClient.updateUpload(STREAM_TYPE.AUDIO, track);
+        await errorPromise;
         expect(sender.sfuClient.errors.length).toBe(1);
         expect(sender.sfuClient.state).toBe(SFU_CLIENT_STATE.CONNECTED);
     });

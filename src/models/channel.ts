@@ -72,6 +72,8 @@ export class Channel extends EventEmitter {
     static records = new Map<string, Channel>();
     /** Global registry of channels by issuer for reuse */
     static recordsByIssuer = new Map<string, Channel>();
+    /** shares in-flight channel creation by issuer so concurrent requests await the same channel */
+    private static _creationsByIssuer = new Map<string, Promise<Channel>>();
     /** Channel creation timestamp */
     public readonly createDate: string;
     /** Remote address that created this channel */
@@ -111,35 +113,49 @@ export class Channel extends EventEmitter {
             logger.verbose(`reusing channel ${oldChannel.uuid}`);
             return oldChannel;
         }
-        const channelOptions: ChannelCreateOptions & {
-            worker?: RtcWorker;
-            router?: Router;
-        } = { key };
-        if (useWebRtc) {
-            channelOptions.worker = await getWorker();
-            channelOptions.router = await channelOptions.worker.createRouter({
-                mediaCodecs
-            });
+        const oldCreation = Channel._creationsByIssuer.get(safeIssuer);
+        if (oldCreation) {
+            return oldCreation;
         }
-        const channel = new Channel(remoteAddress, channelOptions);
-        Channel.recordsByIssuer.set(safeIssuer, channel);
-        Channel.records.set(channel.uuid, channel);
-        logger.info(
-            `created channel ${channel.uuid} (${key ? "unique" : "global"} key) for ${safeIssuer}`
-        );
-        logger.verbose(`rtc feature: ${Boolean(channel.router)}`);
-        const onWorkerDeath = () => {
-            logger.warn(`worker died, closing channel ${channel.uuid}`);
-            void channel.close();
-        };
-        channelOptions.worker?.once("died", onWorkerDeath);
-        channel.once(Channel.Events.CLOSE, () => {
-            channelOptions.worker?.off("died", onWorkerDeath);
-            Channel.recordsByIssuer.delete(safeIssuer);
-            Channel.records.delete(channel.uuid);
-        });
-        channel.setCloseTimeout(true);
-        return channel;
+        const creation = (async () => {
+            const channelOptions: ChannelCreateOptions & {
+                worker?: RtcWorker;
+                router?: Router;
+            } = { key };
+            if (useWebRtc) {
+                channelOptions.worker = await getWorker();
+                channelOptions.router = await channelOptions.worker.createRouter({
+                    mediaCodecs
+                });
+            }
+            const channel = new Channel(remoteAddress, channelOptions);
+            Channel.recordsByIssuer.set(safeIssuer, channel);
+            Channel.records.set(channel.uuid, channel);
+            logger.info(
+                `created channel ${channel.uuid} (${
+                    key ? "unique" : "global"
+                } key) for ${safeIssuer}`
+            );
+            logger.verbose(`rtc feature: ${Boolean(channel.router)}`);
+            const onWorkerDeath = () => {
+                logger.warn(`worker died, closing channel ${channel.uuid}`);
+                void channel.close();
+            };
+            channelOptions.worker?.once("died", onWorkerDeath);
+            channel.once(Channel.Events.CLOSE, () => {
+                channelOptions.worker?.off("died", onWorkerDeath);
+                Channel.recordsByIssuer.delete(safeIssuer);
+                Channel.records.delete(channel.uuid);
+            });
+            channel.setCloseTimeout(true);
+            return channel;
+        })();
+        Channel._creationsByIssuer.set(safeIssuer, creation);
+        try {
+            return await creation;
+        } finally {
+            Channel._creationsByIssuer.delete(safeIssuer);
+        }
     }
 
     /**
@@ -154,7 +170,7 @@ export class Channel extends EventEmitter {
         if (!channel) {
             throw new AuthenticationError(`channel [${uuid}] does not exist`);
         }
-        if (channel.sessions.size >= config.CHANNEL_SIZE) {
+        if (channel.sessions.size >= config.CHANNEL_SIZE && !channel.sessions.has(sessionId)) {
             throw new OvercrowdedError(`channel [${uuid}] is full`);
         }
         const session = channel.join(sessionId);
@@ -165,6 +181,7 @@ export class Channel extends EventEmitter {
      * Closes all active channels
      */
     static async closeAll(): Promise<void> {
+        await Promise.allSettled(Channel._creationsByIssuer.values());
         await Promise.all([...Channel.records.values()].map((channel) => channel.close()));
     }
 

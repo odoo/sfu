@@ -7,6 +7,7 @@ import { Channel } from "#src/models/channel.ts";
 import * as config from "#src/config";
 import * as auth from "#src/services/auth";
 import { API_VERSION } from "#src/services/http";
+import * as rtc from "#src/services/rtc";
 
 import { LocalNetwork, makeJwt } from "#tests/utils/network";
 import { withMockEnv } from "#tests/utils/utils";
@@ -130,8 +131,10 @@ describe("HTTP", () => {
                     })
             }
         };
-        const response = await fetch(`${network.url}/v${API_VERSION}/channel`, request);
-        const response2 = await fetch(`${network.url}/v${API_VERSION}/channel`, request);
+        const [response, response2] = await Promise.all([
+            fetch(`${network.url}/v${API_VERSION}/channel`, request),
+            fetch(`${network.url}/v${API_VERSION}/channel`, request)
+        ]);
         const [responseJson, response2Json] = await Promise.all([
             response.json(),
             response2.json()
@@ -149,6 +152,31 @@ describe("HTTP", () => {
         });
         const response3Json = await response3.json();
         expect(responseJson.uuid).not.toBe(response3Json.uuid);
+    });
+    test("channel cleanup waits for pending creation", async () => {
+        const worker = await rtc.getWorker();
+        const getResourceUsage = worker.getResourceUsage.bind(worker);
+        const creationStarted = Promise.withResolvers<void>();
+        const creationGate = Promise.withResolvers<void>();
+        const resourceUsageSpy = jest
+            .spyOn(worker, "getResourceUsage")
+            .mockImplementation(async () => {
+                creationStarted.resolve();
+                await creationGate.promise;
+                return getResourceUsage();
+            });
+        const creation = Channel.create("pending-remote", "pending-issuer");
+        try {
+            await creationStarted.promise;
+            const closePromise = Channel.closeAll();
+            creationGate.resolve();
+            await Promise.all([creation, closePromise]);
+            expect(Channel.records.size).toBe(0);
+        } finally {
+            creationGate.resolve();
+            await creation.catch(() => undefined);
+            resourceUsageSpy.mockRestore();
+        }
     });
     test("/disconnect", async () => {
         const channelUUID = await network.getChannelUUID();

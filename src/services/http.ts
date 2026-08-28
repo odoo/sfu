@@ -23,16 +23,6 @@ type RouteCallback = (
     res: ServerResponse,
     info: RequestInfo
 ) => Promise<ServerResponse> | ServerResponse;
-interface RouteOptions {
-    /** CORS origin header value */
-    cors?: string;
-    /** Route handler callback */
-    callback?: RouteCallback;
-}
-interface RouteEntry extends RouteOptions {
-    /** Allowed HTTP methods for this route */
-    methods: string;
-}
 type HttpChannelClaims = {
     key?: string;
     keySeed?: string;
@@ -67,7 +57,7 @@ export async function close(): Promise<void> {
     ws.close();
     const server = httpServer;
     httpServer = undefined;
-    if (!server) {
+    if (!server?.listening) {
         return;
     }
     await new Promise<void>((resolve, reject) => {
@@ -76,24 +66,20 @@ export async function close(): Promise<void> {
 }
 
 function setupRoutes(routeListener: RouteListener): void {
-    routeListener.get(`/v${API_VERSION}/noop`, {
-        callback: (req, res) => {
-            res.statusCode = 200;
-            res.setHeader("content-type", "application/json");
-            return res.end(JSON.stringify({ result: "ok" }));
-        }
+    routeListener.get(`/v${API_VERSION}/noop`, (req, res) => {
+        res.statusCode = 200;
+        res.setHeader("content-type", "application/json");
+        return res.end(JSON.stringify({ result: "ok" }));
     });
-    routeListener.get(`/v${API_VERSION}/stats`, {
-        callback: async (req, res) => {
-            const channelStatsPromises: Promise<ChannelStats>[] = [];
-            for (const channel of Channel.records.values()) {
-                channelStatsPromises.push(channel.getStats());
-            }
-            const channelStats = await Promise.all(channelStatsPromises);
-            res.statusCode = 200;
-            res.setHeader("content-type", "application/json");
-            return res.end(JSON.stringify(channelStats));
+    routeListener.get(`/v${API_VERSION}/stats`, async (req, res) => {
+        const channelStatsPromises: Promise<ChannelStats>[] = [];
+        for (const channel of Channel.records.values()) {
+            channelStatsPromises.push(channel.getStats());
         }
+        const channelStats = await Promise.all(channelStatsPromises);
+        res.statusCode = 200;
+        res.setHeader("content-type", "application/json");
+        return res.end(JSON.stringify(channelStats));
     });
     /**
      * GET /v1/channel
@@ -102,7 +88,7 @@ function setupRoutes(routeListener: RouteListener): void {
      *
      * ### Headers
      * - required:`Authorization: Bearer <JWT>`
-     *      The JWT must include an `exp` claim and an `iss` (issuer) claim identifying the caller.
+     *      The JWT must include an `exp` claim and an `iss` claim identifying the caller.
      *      `claim.iss` ensures idempotency: only one channel is created per unique issuer.
      *      To create multiple channels, the caller must provide a distinct `iss` for each request.
      *
@@ -116,15 +102,16 @@ function setupRoutes(routeListener: RouteListener): void {
      * - `403 Forbidden` missing `iss` claim
      * - `500 Internal Server Error` failed to create the channel
      */
-    routeListener.get(`/v${API_VERSION}/channel`, {
-        callback: async (req, res, { host, protocol, remoteAddress, searchParams }) => {
+    routeListener.get(
+        `/v${API_VERSION}/channel`,
+        async (req, res, { host, protocol, remoteAddress, searchParams }) => {
             try {
                 const jsonWebToken = req.headers.authorization?.split(" ")[1];
                 if (!jsonWebToken) {
                     logger.warn(
                         `${remoteAddress}: missing authorization header when creating channel`
                     );
-                    res.statusCode = 401;
+                    res.statusCode = 401; // unauthorized
                     return res.end();
                 }
                 const claims = auth.verify<HttpChannelClaims>(jsonWebToken);
@@ -162,12 +149,12 @@ function setupRoutes(routeListener: RouteListener): void {
                 return res.end();
             }
         }
-    });
+    );
     /**
      * POST /v1/disconnect
      *
      * Disconnects specific sessions from their respective channels.
-     * Only the creator of a channel (matching remote address) is authorized to disconnect sessions from it.
+     * Only the creator of a channel is authorized to disconnect sessions from it.
      *
      * ### Body
      * - required: A string containing a signed JWT.
@@ -183,96 +170,66 @@ function setupRoutes(routeListener: RouteListener): void {
      * - `400 Bad Request` the request body is not a valid string.
      * - `422 Unprocessable Entity` invalid JWT or error during processing.
      */
-    routeListener.post(`/v${API_VERSION}/disconnect`, {
-        callback: async (req, res, { remoteAddress }) => {
-            try {
-                const jsonWebToken = await parseBody(req);
-                if (typeof jsonWebToken !== "string") {
-                    res.statusCode = 400; // bad request
-                    return res.end();
-                }
-                const claims = auth.verify<HttpDisconnectClaims>(jsonWebToken);
-                for (const [channelUuid, sessionIds] of Object.entries(
-                    claims.sessionIdsByChannel
-                )) {
-                    const channel = Channel.records.get(channelUuid);
-                    if (!channel) {
-                        continue;
-                    }
-                    // only allow disconnection from own channels
-                    if (channel.remoteAddress !== remoteAddress) {
-                        logger.warn(
-                            `[${remoteAddress}] tried to disconnect sessions from channel ${channelUuid} but is not the owner, requested by: ${remoteAddress}, authorized for: ${channel.remoteAddress}`
-                        );
-                        continue;
-                    }
-                    for (const sessionId of sessionIds) {
-                        const session = channel.sessions.get(sessionId);
-                        session?.close({
-                            code: SESSION_CLOSE_CODE.KICKED,
-                            cause: `/disconnect by ${remoteAddress}`
-                        });
-                    }
-                }
-                res.statusCode = 200;
-            } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : String(error);
-                logger.error(`[${remoteAddress}] failed to disconnect session: ${errorMessage}`);
-                res.statusCode = 422; // unprocessable entity
+    routeListener.post(`/v${API_VERSION}/disconnect`, async (req, res, { remoteAddress }) => {
+        try {
+            const jsonWebToken = await parseBody(req);
+            if (typeof jsonWebToken !== "string") {
+                res.statusCode = 400; // bad request
+                return res.end();
             }
-            return res.end();
+            const claims = auth.verify<HttpDisconnectClaims>(jsonWebToken);
+            for (const [channelUuid, sessionIds] of Object.entries(claims.sessionIdsByChannel)) {
+                const channel = Channel.records.get(channelUuid);
+                if (!channel) {
+                    continue;
+                }
+                // only allow disconnection from own channels
+                if (channel.remoteAddress !== remoteAddress) {
+                    logger.warn(
+                        `[${remoteAddress}] tried to disconnect sessions from channel ${channelUuid} but is not the owner, requested by: ${remoteAddress}, authorized for: ${channel.remoteAddress}`
+                    );
+                    continue;
+                }
+                for (const sessionId of sessionIds) {
+                    const session = channel.sessions.get(sessionId);
+                    session?.close({
+                        code: SESSION_CLOSE_CODE.KICKED,
+                        cause: `/disconnect by ${remoteAddress}`
+                    });
+                }
+            }
+            res.statusCode = 200;
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            logger.error(`[${remoteAddress}] failed to disconnect session: ${errorMessage}`);
+            res.statusCode = 422; // unprocessable entity
         }
+        return res.end();
     });
 }
 
 class RouteListener {
-    private readonly GETs = new Map<string, RouteEntry>();
-    private readonly POSTs = new Map<string, RouteEntry>();
-    private readonly OPTIONs = new Map<string, RouteEntry>();
+    private readonly GETs = new Map<string, RouteCallback>();
+    private readonly POSTs = new Map<string, RouteCallback>();
 
     constructor() {
         this.listen = this.listen.bind(this);
     }
 
-    get(pattern: string, options: RouteOptions): void {
-        let methods = "GET";
-        if (options.cors) {
-            methods = "GET, OPTIONS";
-            this.OPTIONs.set(pattern, {
-                cors: options.cors,
-                methods
-            });
-        }
-        this.GETs.set(pattern, {
-            ...options,
-            methods
-        });
+    get(pattern: string, callback: RouteCallback): void {
+        this.GETs.set(pattern, callback);
     }
 
-    post(pattern: string, options: RouteOptions): void {
-        let methods = "POST";
-        if (options.cors) {
-            methods = "POST, OPTIONS";
-            this.OPTIONs.set(pattern, {
-                cors: options.cors,
-                methods
-            });
-        }
-        this.POSTs.set(pattern, {
-            ...options,
-            methods
-        });
+    post(pattern: string, callback: RouteCallback): void {
+        this.POSTs.set(pattern, callback);
     }
 
     async listen(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const { host, protocol, remoteAddress, pathname, searchParams } = extractRequestInfo(req);
         logger.verbose(`${remoteAddress} - ${req.method} - ${req.url}`);
         res.statusCode = 404; // Default to Not Found
-        let registeredRoutes: IterableIterator<[string, RouteEntry]>;
+        let registeredRoutes: IterableIterator<[string, RouteCallback]>;
         switch (req.method) {
-            case "OPTIONS":
-                registeredRoutes = this.OPTIONs.entries();
-                break;
             case "GET":
                 registeredRoutes = this.GETs.entries();
                 break;
@@ -285,33 +242,23 @@ class RouteListener {
                 res.end();
                 return;
         }
-        for (const [pattern, routeEntry] of registeredRoutes) {
+        for (const [pattern, callback] of registeredRoutes) {
             if (pathname === pattern) {
-                if (routeEntry.cors) {
-                    res.setHeader("Access-Control-Allow-Origin", routeEntry.cors);
-                    res.setHeader("Access-Control-Allow-Methods", routeEntry.methods);
-                    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+                try {
+                    await callback(req, res, {
+                        host,
+                        protocol,
+                        remoteAddress,
+                        searchParams
+                    });
+                    return;
+                } catch (error) {
+                    const errorMessage = error instanceof Error ? error.message : String(error);
+                    logger.error(`[${remoteAddress}] error in ${req.url}: ${errorMessage}`);
+                    res.statusCode = 500; // Internal server error
+                    res.end();
+                    return;
                 }
-                if (routeEntry.callback) {
-                    try {
-                        await routeEntry.callback(req, res, {
-                            host,
-                            protocol,
-                            remoteAddress,
-                            searchParams
-                        });
-                        return;
-                    } catch (error) {
-                        const errorMessage = error instanceof Error ? error.message : String(error);
-                        logger.error(`[${remoteAddress}] error in ${req.url}: ${errorMessage}`);
-                        res.statusCode = 500; // Internal server error
-                        res.end();
-                        return;
-                    }
-                }
-                // if there is no callback, it is a preflight (OPTIONS) request
-                res.statusCode = 202; // Accepted
-                break;
             }
         }
         res.end();

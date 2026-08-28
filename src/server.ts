@@ -82,6 +82,7 @@ try {
     await run();
 } catch (error) {
     process.exitCode = 1;
+    await cleanup();
     throw error;
 }
 // ==================== ======= ====================
