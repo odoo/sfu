@@ -18,35 +18,41 @@ import {
     SERVER_REQUEST,
     WS_CLOSE_CODE
 } from "#src/shared/enums.ts";
-import type { JSONSerializable, StreamType, BusMessage } from "#src/shared/types";
-import type { TransportConfig, SessionId, SessionInfo } from "#src/models/session";
+import type {
+    DownloadStates,
+    JSONSerializable,
+    StreamType,
+    BusMessage,
+    RequestMessage,
+    WebSocketCredentials
+} from "#src/shared/types";
+import type { TransportConfig, SessionId, SessionInfo } from "#src/models/session.ts";
 
-interface Consumers {
+type Consumers = {
     audio: Consumer | null;
     camera: Consumer | null;
     screen: Consumer | null;
-}
-interface Producers {
+};
+type Producers = {
     audio: Producer | null;
     camera: Producer | null;
     screen: Producer | null;
-}
-interface ProducerRecoveryTimeouts {
+};
+type ProducerRecoveryTimeouts = {
     audio?: number;
     camera?: number;
     screen?: number;
-}
-interface ConnectOptions {
+};
+type ConnectOptions = {
     /** Channel UUID to connect to */
     channelUUID?: string;
     /** ICE servers for WebRTC connection */
     iceServers?: RTCIceServer[];
-}
-interface UpdateInfoOptions {
+};
+type UpdateInfoOptions = {
     /** Whether server should refresh local info from all sessions */
     needRefresh?: boolean;
-}
-export type DownloadStates = Partial<Record<StreamType, boolean>>;
+};
 export enum CLIENT_UPDATE {
     /** A new track has been received */
     TRACK = "track",
@@ -67,14 +73,14 @@ type ClientUpdatePayload =
           track: MediaStreamTrack;
           active: boolean;
       };
-interface SfuStats {
+type SfuStats = {
     /** Upload transport statistics */
     uploadStats?: RTCStatsReport;
     /** Download transport statistics */
     downloadStats?: RTCStatsReport;
     /** Producer statistics by stream type */
     [key: string]: RTCStatsReport | undefined;
-}
+};
 
 const INITIAL_RECONNECT_DELAY = 1_000;
 const MAXIMUM_RECONNECT_DELAY = 30_000;
@@ -256,7 +262,6 @@ export class SfuClient extends EventTarget {
         await Promise.all(proms);
         return stats;
     }
-
     /**
      * Updates the server with the info of the session (isTalking, isCameraOn,...) so that it can broadcast it to the
      * other call participants.
@@ -314,6 +319,7 @@ export class SfuClient extends EventTarget {
     /**
      * @param type - Media type to update
      * @param track - MediaStreamTrack to upload (null removes the track)
+     * @throws {Error} when `type` is not one of the supported stream types.
      */
     async updateUpload(type: StreamType, track: MediaStreamTrack | null): Promise<void> {
         if (!SUPPORTED_TYPES.has(type)) {
@@ -344,11 +350,8 @@ export class SfuClient extends EventTarget {
                 appData: { type }
             });
         } catch (error) {
-            this.errors.push(error as Error);
-            // if we reach the max error count, we restart the whole connection from scratch
-            if (this.errors.length > MAX_ERRORS) {
-                // not awaited
-                this._handleConnectionEnd();
+            const exit = this._handleError(error as Error);
+            if (exit) {
                 return;
             }
             // retry after some delay
@@ -395,6 +398,25 @@ export class SfuClient extends EventTarget {
         this._bus.onRequest = this._handleRequest;
     }
 
+    /**
+     * Handles an error and returns true if the connection should be closed.
+     */
+    private _handleError(error: Error): boolean {
+        this.errors.push(error);
+        this.dispatchEvent(
+            new CustomEvent("handledError", {
+                detail: { error }
+            })
+        );
+        // if we reach the max error count, we restart the whole connection from scratch
+        if (this.errors.length > MAX_ERRORS) {
+            // not awaited
+            this._handleConnectionEnd();
+            return true;
+        }
+        return false;
+    }
+
     private _close(cause?: string): void {
         this._clear();
         const state = SfuClientState.CLOSED;
@@ -435,7 +457,7 @@ export class SfuClient extends EventTarget {
                         JSON.stringify({
                             channelUUID: this._channelUUID,
                             jwt: this._jsonWebToken
-                        })
+                        } as WebSocketCredentials)
                     );
                 },
                 { once: true }
@@ -488,10 +510,10 @@ export class SfuClient extends EventTarget {
         });
         transport.on("produce", async ({ kind, rtpParameters, appData }, callback, errback) => {
             try {
-                const result = (await this._bus!.request({
+                const result = await this._bus!.request({
                     name: CLIENT_REQUEST.INIT_PRODUCER,
                     payload: { type: appData.type as StreamType, kind, rtpParameters }
-                })) as { id: string };
+                });
                 callback({ id: result.id });
             } catch (error) {
                 errback(error as Error);
@@ -558,7 +580,7 @@ export class SfuClient extends EventTarget {
         // Retry connecting with an exponential backoff.
         this._connectRetryDelay =
             Math.min(this._connectRetryDelay * 1.5, MAXIMUM_RECONNECT_DELAY) + 1000 * Math.random();
-        const timeout = window.setTimeout(() => this._connect(), this._connectRetryDelay);
+        const timeout = setTimeout(() => this._connect(), this._connectRetryDelay);
         this._onCleanup(() => clearTimeout(timeout));
     }
 
@@ -579,7 +601,10 @@ export class SfuClient extends EventTarget {
         }
     }
 
-    private async _handleRequest({ name, payload }: BusMessage): Promise<JSONSerializable | void> {
+    private async _handleRequest({
+        name,
+        payload
+    }: RequestMessage): Promise<JSONSerializable | void> {
         switch (name) {
             case SERVER_REQUEST.INIT_CONSUMER: {
                 const { id, kind, producerId, rtpParameters, sessionId, type, active } = payload;
