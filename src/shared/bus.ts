@@ -1,34 +1,41 @@
 import type { WebSocket as NodeWebSocket } from "ws";
 
-import type { JSONSerializable, BusMessage } from "./types";
-export interface Payload {
+import type {
+    JSONSerializable,
+    BusMessage,
+    RequestMessage,
+    RequestName,
+    ResponseFrom
+} from "#src/shared/types.ts";
+
+export type Payload = {
     /** The actual message content */
-    message: BusMessage;
+    message: BusMessage | JSONSerializable;
     /** Request ID if this message expects a response */
     needResponse?: string;
     /** Response ID if this message is responding to a request */
     responseTo?: string;
-}
-interface PendingRequest {
+};
+type PendingRequest = {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolve: (value: any) => void;
     reject: (error: Error | string) => void;
     timeout: NodeJS.Timeout;
-}
-interface BusOptions {
+};
+type BusOptions = {
     /** Batch delay in milliseconds */
     batchDelay?: number;
-}
-interface RequestOptions {
+};
+type RequestOptions = {
     /** Request timeout in milliseconds */
     timeout?: number;
     /** Whether to batch this request */
     batch?: boolean;
-}
-interface SendOptions {
+};
+type SendOptions = {
     /** Whether to batch this message */
     batch?: boolean;
-}
+};
 type WebSocketLike = WebSocket | NodeWebSocket;
 type WSHandler<K extends keyof WebSocketEventMap> = (ev: WebSocketEventMap[K]) => void;
 
@@ -46,11 +53,9 @@ export class Bus {
     /** Global ID counter for Bus instances */
     private static _idCount = 0;
     /** Message handler for incoming messages */
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     public onMessage?: (message: BusMessage) => void;
     /** Request handler for incoming requests */
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    public onRequest?: (request: BusMessage) => Promise<any | void>;
+    public onRequest?: (request: RequestMessage) => Promise<JSONSerializable | void>;
     /** Unique bus instance identifier */
     public readonly id: number = Bus._idCount++;
     /** Request counter for generating unique request IDs */
@@ -96,8 +101,10 @@ export class Bus {
     /**
      * Sends a request and waits for a response
      */
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    request(message: BusMessage, options: RequestOptions = {}): Promise<JSONSerializable> {
+    request<T extends RequestName>(
+        message: RequestMessage<T>,
+        options: RequestOptions = {}
+    ): Promise<ResponseFrom<T>> {
         const { timeout = 5000, batch } = options;
         const requestId = this._getNextRequestId();
         return new Promise((resolve, reject) => {
@@ -105,7 +112,11 @@ export class Bus {
                 reject(new Error("bus request timed out"));
                 this._pendingRequests.delete(requestId);
             }, timeout);
-            this._pendingRequests.set(requestId, { resolve, reject, timeout: timeoutId });
+            this._pendingRequests.set(requestId, {
+                resolve,
+                reject,
+                timeout: timeoutId
+            });
             this._sendPayload(message, { needResponse: requestId, batch });
         });
     }
@@ -138,8 +149,7 @@ export class Bus {
     }
 
     private _sendPayload(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        message: BusMessage,
+        message: BusMessage | JSONSerializable,
         options: {
             needResponse?: string;
             responseTo?: string;
@@ -192,7 +202,7 @@ export class Bus {
         const payloads: Payload[] = JSON.parse(normalizedMessage);
         // Handle each payload in parallel (not awaited)
         for (const payload of payloads) {
-            this._handlePayload(payload);
+            void this._handlePayload(payload);
         }
     }
 
@@ -207,16 +217,16 @@ export class Bus {
             const pendingRequest = this._pendingRequests.get(responseTo);
             if (pendingRequest) {
                 clearTimeout(pendingRequest.timeout);
-                pendingRequest.resolve(message);
                 this._pendingRequests.delete(responseTo);
+                pendingRequest.resolve(message);
             }
         } else if (needResponse) {
             // This is a request that expects a response
-            const response = await this.onRequest?.(message);
+            const response = await this.onRequest?.(message as RequestMessage);
             this._sendPayload(response!, { responseTo: needResponse });
         } else {
             // This is a plain message
-            this.onMessage?.(message);
+            this.onMessage?.(message as BusMessage);
         }
     }
 }
