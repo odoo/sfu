@@ -1,14 +1,16 @@
 import { EventEmitter } from "node:events";
 
 import type {
-    IceParameters,
-    IceCandidate,
-    DtlsParameters,
-    SctpParameters,
+    AppData,
     Consumer,
+    DtlsParameters,
+    IceCandidate,
+    IceParameters,
     Producer,
-    WebRtcTransport,
-    RtpCapabilities
+    Router,
+    RtpCapabilities,
+    SctpParameters,
+    WebRtcTransport
 } from "mediasoup/node/lib/types";
 
 import * as config from "#src/config.ts";
@@ -20,9 +22,15 @@ import {
     SERVER_REQUEST,
     STREAM_TYPE
 } from "#src/shared/enums.ts";
-import type { JSONSerializable, StreamType, BusMessage } from "#src/shared/types";
+import type {
+    BusMessage,
+    JSONSerializable,
+    RequestMessage,
+    StartupData,
+    StreamType
+} from "#src/shared/types";
 import type { Bus } from "#src/shared/bus.ts";
-import type { Channel } from "#src/models/channel.ts";
+import type { Channel } from "#src/core/models/channel.ts";
 
 export type SessionId = number | string;
 export type SessionInfo = {
@@ -56,7 +64,17 @@ export enum SESSION_CLOSE_CODE {
     KICKED = "kicked",
     ERROR = "error"
 }
-export interface TransportConfig {
+export type SessionPermissions = {
+    transcription?: boolean;
+    audioRecording?: boolean;
+    videoRecording?: boolean;
+};
+export type SessionOptions = {
+    label?: string;
+    partnerId?: number;
+    permissions?: SessionPermissions;
+};
+export type TransportConfig = {
     /** Transport identifier */
     id: string;
     /** ICE parameters for connection establishment */
@@ -67,37 +85,41 @@ export interface TransportConfig {
     dtlsParameters: DtlsParameters;
     /** SCTP parameters for data channel support */
     sctpParameters: SctpParameters;
-}
-interface Consumers {
+};
+type Consumers = {
     /** Audio consumer */
     [STREAM_TYPE.AUDIO]: Consumer | null;
     /** Camera video consumer */
     [STREAM_TYPE.CAMERA]: Consumer | null;
     /** Screen sharing consumer */
     [STREAM_TYPE.SCREEN]: Consumer | null;
-}
-interface Producers {
+};
+export type SessionAppData = AppData & {
+    router: Router;
+};
+export type SessionProducer = Producer<SessionAppData>;
+type Producers = {
     /** Audio producer */
-    [STREAM_TYPE.AUDIO]: Producer | null;
+    [STREAM_TYPE.AUDIO]: SessionProducer | null;
     /** Camera video producer */
-    [STREAM_TYPE.CAMERA]: Producer | null;
+    [STREAM_TYPE.CAMERA]: SessionProducer | null;
     /** Screen sharing producer */
-    [STREAM_TYPE.SCREEN]: Producer | null;
-}
-interface SessionCloseOptions {
+    [STREAM_TYPE.SCREEN]: SessionProducer | null;
+};
+type SessionCloseOptions = {
     /** Close code indicating reason for termination */
     code?: SESSION_CLOSE_CODE;
     /** Human-readable cause description */
     cause?: string;
-}
-interface ProducerBitRates {
+};
+type ProducerBitRates = {
     /** Audio bitrate in bps */
     [STREAM_TYPE.AUDIO]?: number;
     /** Camera video bitrate in bps */
     [STREAM_TYPE.CAMERA]?: number;
     /** Screen sharing bitrate in bps */
     [STREAM_TYPE.SCREEN]?: number;
-}
+};
 
 const logger = new Logger("SESSION");
 
@@ -107,10 +129,22 @@ const logger = new Logger("SESSION");
  *
  * @fires Session#stateChange - Emitted when session state changes
  * @fires Session#close - Emitted when session is closed
+ * @fires Session#producer - Emitted when a new producer is created
+ * @fires Session#handledError - Emitted when an error is handled
  */
 export class Session extends EventEmitter {
+    static readonly Events = {
+        STATE_CHANGE: "stateChange",
+        CLOSE: "close",
+        HANDLED_ERROR: "handledError",
+        PRODUCER: "producer"
+    } as const;
+
     /** Communication bus for WebSocket messaging */
     public bus?: Bus;
+    /** A human-friendly way to identify the session, optionally provided by the remote server */
+    public label?: string;
+    public readonly partnerId?: number;
     /** Unique session identifier */
     public readonly id: SessionId;
     /** Session information visible to other participants */
@@ -135,6 +169,11 @@ export class Session extends EventEmitter {
         camera: null,
         screen: null
     };
+    public readonly permissions: SessionPermissions = Object.seal({
+        transcription: false,
+        audioRecording: false,
+        videoRecording: false
+    });
     /** Parent channel containing this session */
     private readonly _channel: Channel;
     /** Recovery timeouts for failed consumers */
@@ -143,10 +182,15 @@ export class Session extends EventEmitter {
     /**
      * @param id - Unique session identifier
      * @param channel - Parent channel containing this session
+     * @param options - Session options set at creation
      */
-    constructor(id: SessionId, channel: Channel) {
+    constructor(id: SessionId, channel: Channel, options: SessionOptions = {}) {
+        const { label, partnerId, permissions } = options;
         super();
         this.id = id;
+        this.label = label;
+        this.partnerId = partnerId;
+        this.updatePermissions(permissions);
         this._channel = channel;
         this.info = Object.seal({
             isRaisingHand: undefined,
@@ -161,6 +205,32 @@ export class Session extends EventEmitter {
         this.setMaxListeners(config.CHANNEL_SIZE * 2);
     }
 
+    get startupData(): StartupData {
+        return {
+            availableFeatures: {
+                rtc: Boolean(this._channel.router),
+                transcription: this.canTranscriptionRecord,
+                audioRecording: this.canAudioRecord,
+                videoRecording: this.canVideoRecord
+            },
+            recordingState: this._channel.recordingState
+        };
+    }
+    // TODO rename canRecordAudio
+    get canAudioRecord(): boolean {
+        return Boolean(
+            this._channel.recorder && config.RECORDING && this.permissions.audioRecording
+        );
+    }
+
+    get canVideoRecord(): boolean {
+        return Boolean(this.canAudioRecord && this.permissions.videoRecording);
+    }
+
+    get canTranscriptionRecord(): boolean {
+        return Boolean(this.canAudioRecord && this.permissions.transcription);
+    }
+
     get name(): string {
         return `${this._channel.name}:${this.id}@${this.remote}`;
     }
@@ -169,9 +239,31 @@ export class Session extends EventEmitter {
         return this._state;
     }
 
+    get router() {
+        return this._channel.router;
+    }
+
     set state(state: SESSION_STATE) {
         this._state = state;
-        this.emit("stateChange", state);
+        /**
+         * @event Session#stateChange
+         * @type {{ state: SESSION_STATE }}
+         */
+        this.emit(Session.Events.STATE_CHANGE, state);
+    }
+
+    updatePermissions(permissions: SessionPermissions | undefined): void {
+        if (!permissions) {
+            return;
+        }
+        for (const key of Object.keys(this.permissions) as (keyof SessionPermissions)[]) {
+            const newVal = permissions[key];
+            if (newVal === undefined) {
+                continue;
+            }
+            this.permissions[key] = Boolean(permissions[key]);
+            logger.verbose(`Permissions updated: ${key} = ${this.permissions[key]}`);
+        }
     }
 
     async getProducerBitRates(): Promise<ProducerBitRates> {
@@ -254,7 +346,7 @@ export class Session extends EventEmitter {
          * @event Session#close
          * @type {{ id: SessionId, code: number }}
          */
-        this.emit("close", { id: this.id, code });
+        this.emit(Session.Events.CLOSE, { id: this.id, code });
     }
 
     async connect(bus: Bus): Promise<void> {
@@ -305,6 +397,9 @@ export class Session extends EventEmitter {
         await Promise.all(promises);
     }
 
+    /**
+     * @throws {Error} Rethrows the exact upstream error from createWebRtcTransport(...), INIT_TRANSPORTS bus request, or bitrate setters.
+     */
     private async _initializeTransports(): Promise<void> {
         try {
             const [ctsTransport, stcTransport] = await Promise.all([
@@ -323,15 +418,15 @@ export class Session extends EventEmitter {
                 this._ctsTransport?.close();
                 this._stcTransport?.close();
             });
-            this._clientCapabilities = (await this.bus!.request({
+            this._clientCapabilities = await this.bus!.request({
                 name: SERVER_REQUEST.INIT_TRANSPORTS,
                 payload: {
                     capabilities: this._channel.router!.rtpCapabilities,
-                    stcConfig: this._createTransportConfig(this._stcTransport),
-                    ctsConfig: this._createTransportConfig(this._ctsTransport),
+                    stcConfig: this._createTransportConfig(this._stcTransport!),
+                    ctsConfig: this._createTransportConfig(this._ctsTransport!),
                     producerOptionsByKind: config.rtc.producerOptionsByKind
                 }
-            })) as RtpCapabilities;
+            });
             await Promise.all([
                 this._ctsTransport.setMaxIncomingBitrate(config.MAX_BITRATE_IN),
                 this._stcTransport.setMaxOutgoingBitrate(config.MAX_BITRATE_OUT)
@@ -360,7 +455,7 @@ export class Session extends EventEmitter {
     }
 
     /**
-     * Creates missing consumers for each producer of `params.session` and sets their appropriate `paused` state.
+     * Creates missing consumers for each producer of {@link session} and sets their appropriate `paused` state.
      * This batches the consumption of all streams.
      */
     async consume(session: Session): Promise<void> {
@@ -487,6 +582,7 @@ export class Session extends EventEmitter {
      */
     private _handleError(error: Error): void {
         this.errors.push(error);
+        this.emit(Session.Events.HANDLED_ERROR, error);
         logger.error(
             `[${this.name}] handling error (${this.errors.length}): ${error.message} : ${error.stack}`
         );
@@ -553,7 +649,7 @@ export class Session extends EventEmitter {
                 if (!producer) {
                     return;
                 }
-                logger.debug(`[${this.name}] ${type} ${active ? "on" : "off"}`);
+                logger.verbose(`[${this.name}] ${type} ${active ? "on" : "off"}`);
 
                 if (active) {
                     await producer.resume();
@@ -585,7 +681,7 @@ export class Session extends EventEmitter {
                     this.bus!.send(
                         {
                             name: SERVER_MESSAGE.INFO_CHANGE,
-                            payload,
+                            payload
                         },
                         { batch: true }
                     );
@@ -598,7 +694,15 @@ export class Session extends EventEmitter {
         }
     }
 
-    private async _handleRequest({ name, payload }: BusMessage): Promise<JSONSerializable | void> {
+    /**
+     * @throws {Error} when:
+     *  - producer creation fails (rethrows the exact error from _ctsTransport.produce(...)).
+     *  - request name is unsupported.
+     */
+    private async _handleRequest({
+        name,
+        payload
+    }: RequestMessage): Promise<JSONSerializable | void> {
         switch (name) {
             case CLIENT_REQUEST.CONNECT_STC_TRANSPORT: {
                 const { dtlsParameters } = payload;
@@ -614,18 +718,19 @@ export class Session extends EventEmitter {
                 const { type, kind, rtpParameters } = payload;
                 this.producers[type]?.close();
                 this.producers[type] = null;
-                let producer: Producer;
+                let producer: SessionProducer;
                 try {
-                    producer = await this._ctsTransport!.produce({
+                    producer = await this._ctsTransport!.produce<SessionAppData>({
                         kind,
-                        rtpParameters
+                        rtpParameters,
+                        appData: { router: this._channel.router! }
                     });
                 } catch (error) {
                     this._handleError(error as Error);
                     throw error;
                 }
                 this.producers[type] = producer;
-                this.on("close", () => {
+                this.on(Session.Events.CLOSE, () => {
                     producer.close();
                     this.producers[type] = null;
                 });
@@ -635,10 +740,57 @@ export class Session extends EventEmitter {
                     this.info.isCameraOn = true;
                 }
                 const codec = producer.rtpParameters.codecs[0];
-                logger.debug(`[${this.name}] producing ${type}: ${codec?.mimeType}`);
+                logger.verbose(`[${this.name}] producing ${type}: ${codec?.mimeType}`);
                 this._updateRemoteConsumers();
                 this._broadcastInfo();
+                /**
+                 * @event Session#producer
+                 * @type {{ type: StreamType, producer: Producer }}
+                 */
+                this.emit(Session.Events.PRODUCER, { type, producer });
                 return { id: producer.id };
+            }
+            case CLIENT_REQUEST.START_RECORDING: {
+                const { audio, video, transcription } = payload || {};
+                if (this._channel.recorder?.isRecording) {
+                    /**
+                     * While recording, only transcription can be mutated.
+                     */
+                    if (audio !== undefined || video !== undefined) {
+                        return false;
+                    }
+                    if (transcription === undefined || !this.canTranscriptionRecord) {
+                        return false;
+                    }
+                    this._channel.recorder!.start({
+                        partnerId: this.partnerId,
+                        transcription: Boolean(transcription)
+                    });
+                    return true;
+                }
+                if (
+                    (audio && !this.canAudioRecord) ||
+                    (video && !this.canVideoRecord) ||
+                    (transcription && !this.canTranscriptionRecord)
+                ) {
+                    return false;
+                }
+                if (audio || video || transcription) {
+                    this._channel.recorder!.start({
+                        audio: Boolean(audio),
+                        video: Boolean(video),
+                        partnerId: this.partnerId,
+                        transcription: Boolean(transcription)
+                    });
+                    return true;
+                }
+                return false;
+            }
+            case CLIENT_REQUEST.STOP_RECORDING: {
+                if (this.canAudioRecord || this.canVideoRecord || this.canTranscriptionRecord) {
+                    this._channel.recorder!.stop();
+                }
+                return this.canAudioRecord || this.canVideoRecord || this.canTranscriptionRecord;
             }
             default:
                 logger.warn(`[${this.name}] Unknown request type: ${name}`);

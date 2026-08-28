@@ -1,20 +1,22 @@
+import { once } from "node:events";
+
 import { WebSocket } from "ws";
 import { Device, FakeHandler, testFakeParameters } from "mediasoup-client";
 
-import * as auth from "#src/services/auth";
-import * as http from "#src/services/http";
-import * as rtc from "#src/services/rtc";
+import * as auth from "#src/core/services/auth";
+import * as http from "#src/core/services/http";
+import * as resources from "#src/core/services/resources";
 import { SfuClient, SfuClientState } from "#src/client";
-import { Channel } from "#src/models/channel";
-import type { Session } from "#src/models/session";
-import type { JWTClaims } from "#src/services/auth";
+import { Channel } from "#src/core/models/channel";
+import { Session, SESSION_STATE } from "#src/core/models/session";
 import { StringLike } from "#src/shared/types.ts";
 
 /**
  * HMAC key for JWT signing in tests
  */
-const HMAC_B64_KEY = "u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng=";
-const HMAC_KEY = Buffer.from(HMAC_B64_KEY, "base64");
+export const AUTH_KEY = "u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng=";
+const HMAC_KEY = Buffer.from(AUTH_KEY, "base64");
+const CHANNEL_KEY_SEED = Buffer.from("odoo-channel-key-seed").toString("base64");
 
 /**
  * Creates a JWT token for testing
@@ -23,18 +25,15 @@ const HMAC_KEY = Buffer.from(HMAC_B64_KEY, "base64");
  * @param [key] - Key to sign the JWT with
  * @returns Signed JWT string
  */
-export function makeJwt(data: JWTClaims, key: StringLike = HMAC_KEY): string {
-    return auth.sign(data, key, { algorithm: auth.ALGORITHM.HS256 });
-}
-
-/**
- * Connection result containing session and client instances
- */
-interface ConnectionResult {
-    /** Server-side session instance */
-    session: Session;
-    /** Client-side SFU client instance */
-    sfuClient: SfuClient;
+export function makeJwt<T extends object>(data: T, key: StringLike = HMAC_KEY): string {
+    return auth.sign(
+        {
+            exp: Math.floor(Date.now() / 1000) + 60,
+            ...data
+        },
+        key,
+        { algorithm: auth.ALGORITHM.HS256 }
+    );
 }
 
 /**
@@ -44,53 +43,54 @@ interface ConnectionResult {
  * their respective clients.
  */
 export class LocalNetwork {
-    /** Server hostname */
-    public hostname?: string;
-
-    /** Server port */
+    public readonly hostname = "127.0.0.1";
     public port?: number;
+    private readonly _channelKeys = new Map<string, Buffer>();
 
-    /** JWT creation function (can be overridden for testing) */
-    public makeJwt: (data: JWTClaims, key?: StringLike) => string = makeJwt;
+    get url(): string {
+        return `http://${this.hostname}:${this.port}`;
+    }
 
-    /** Active SFU client instances */
+    public makeJwt = makeJwt;
+
     private readonly _sfuClients: SfuClient[] = [];
 
-    /**
-     * Starts the local network with all required services
-     *
-     * @param hostname - Hostname to bind server to
-     * @param port - Port to bind server to
-     */
-    async start(hostname: string, port: number): Promise<void> {
-        this.hostname = hostname;
-        this.port = port;
-
-        // Start all services in correct order
-        await rtc.start();
-        await http.start({ httpInterface: hostname, port });
-        await auth.start(HMAC_B64_KEY);
+    async start(): Promise<void> {
+        await resources.start();
+        this.port = await http.start({ httpInterface: this.hostname, port: 0 });
+        auth.start(AUTH_KEY);
     }
 
     /**
      * Creates a new channel and returns its UUID
      * @param [param0] - options
      * @param [param0.useWebRtc=true] - Whether to enable WebRTC for the channel
-     * @param [param0.key=HMAC_B64_KEY] - Channel key
+     * @param [param0.keySeed=CHANNEL_KEY_SEED] - Channel key seed
      * @returns Promise resolving to channel UUID
      */
-    async getChannelUUID({ useWebRtc = true, key = HMAC_B64_KEY } = {}): Promise<string> {
-        if (!this.hostname || !this.port) {
+    async getChannelUUID({
+        useWebRtc = true,
+        key,
+        keySeed,
+        recordingAddress = "dummy-dest"
+    }: {
+        useWebRtc?: boolean;
+        key?: string;
+        keySeed?: string;
+        recordingAddress?: string;
+    } = {}): Promise<string> {
+        if (!this.port) {
             throw new Error("Network not started - call start() first");
         }
+        const channelKeySeed = keySeed ?? (key === undefined ? CHANNEL_KEY_SEED : undefined);
 
         const jwt = this.makeJwt({
-            iss: `http://${this.hostname}:${this.port}/`,
-            key
+            iss: `${this.url}/`,
+            key,
+            keySeed: channelKeySeed
         });
-
         const response = await fetch(
-            `http://${this.hostname}:${this.port}/v${http.API_VERSION}/channel?webRTC=${useWebRtc}`,
+            `${this.url}/v${http.API_VERSION}/channel?webRTC=${useWebRtc}&recordingAddress=${recordingAddress}`,
             {
                 method: "GET",
                 headers: {
@@ -104,7 +104,16 @@ export class LocalNetwork {
         }
 
         const result = (await response.json()) as { uuid: string };
+        if (channelKeySeed) {
+            this._channelKeys.set(result.uuid, auth.deriveChannelKey(channelKeySeed, HMAC_KEY));
+        } else if (key) {
+            this._channelKeys.set(result.uuid, Buffer.from(key, "base64"));
+        }
         return result.uuid;
+    }
+
+    makeChannelJwt<T extends object>(channelUUID: string, data: T): string {
+        return this.makeJwt(data, this._channelKeys.get(channelUUID));
     }
 
     /**
@@ -112,113 +121,117 @@ export class LocalNetwork {
      *
      * @param channelUUID - Channel UUID to connect to
      * @param sessionId - Session identifier
-     * @param [param2]
-     * @param [param2.key=HMAC_B64_KEY] - Channel key
+     * @param [param2.key] - Channel key
+     * @param [param2.partnerId] - Partner represented by the session
      * @returns Promise resolving to connection result
-     * @throws {Error} If client is closed before authentication
+     * @throws {Error} If either endpoint closes before connecting
      */
     async connect(
         channelUUID: string,
         sessionId: number,
-        { key = HMAC_KEY }: { key?: StringLike } = {}
-    ): Promise<ConnectionResult> {
-        if (!this.hostname || !this.port) {
+        {
+            key = this._channelKeys.get(channelUUID),
+            partnerId
+        }: { key?: StringLike; partnerId?: number } = {}
+    ) {
+        if (!this.port) {
             throw new Error("Network not started - call start() first");
         }
 
-        // Create SFU client with test overrides
         const sfuClient = new SfuClient();
         this._sfuClients.push(sfuClient);
 
-        // @ts-expect-error private property
+        // @ts-expect-error injecting the Node test device through the private browser factory
         sfuClient._createDevice = (): Device => {
-            // Mock device creation since we're in a server environment without real WebRTC
             return new Device({
                 handlerFactory: FakeHandler.createFactory(testFakeParameters)
             });
         };
 
-        // @ts-expect-error private property
+        // @ts-expect-error injecting Node WebSocket through the private browser factory
         sfuClient._createWebSocket = (url: string): WebSocket => {
-            // Replace browser WebSocket with Node.js ws package
-            return new WebSocket(url);
+            return new WebSocket(url, {
+                allowSynchronousEvents: false
+            });
         };
 
-        // Set up authentication promise
-        const isClientAuthenticated = new Promise<boolean>((resolve, reject) => {
-            const handleStateChange = (event: CustomEvent) => {
-                const { state } = event.detail;
-                switch (state) {
-                    case SfuClientState.AUTHENTICATED:
-                        sfuClient.removeEventListener(
-                            "stateChange",
-                            handleStateChange as EventListener
-                        );
-                        resolve(true);
-                        break;
-                    case SfuClientState.CLOSED:
-                        sfuClient.removeEventListener(
-                            "stateChange",
-                            handleStateChange as EventListener
-                        );
-                        reject(new Error("client closed"));
-                        break;
-                }
-            };
+        const isClientAuthenticated = Promise.withResolvers();
+        const handleStateChange = (event: CustomEvent) => {
+            const { state } = event.detail;
+            switch (state) {
+                case SfuClientState.AUTHENTICATED:
+                    sfuClient.removeEventListener(
+                        "stateChange",
+                        handleStateChange as EventListener
+                    );
+                    isClientAuthenticated.resolve(true);
+                    break;
+                case SfuClientState.CLOSED:
+                    sfuClient.removeEventListener(
+                        "stateChange",
+                        handleStateChange as EventListener
+                    );
+                    isClientAuthenticated.reject(new Error("client closed"));
+                    break;
+            }
+        };
+        sfuClient.addEventListener("stateChange", handleStateChange as EventListener);
 
-            sfuClient.addEventListener("stateChange", handleStateChange as EventListener);
-        });
-
-        // Start connection
         sfuClient.connect(
             `ws://${this.hostname}:${this.port}`,
             this.makeJwt(
                 {
                     sfu_channel_uuid: channelUUID,
-                    session_id: sessionId
+                    session_id: sessionId,
+                    partner_id: partnerId,
+                    permissions: {
+                        audioRecording: true,
+                        videoRecording: true,
+                        transcription: true
+                    }
                 },
                 key
             ),
             { channelUUID }
         );
 
-        // Get channel and wait for authentication
         const channel = Channel.records.get(channelUUID);
         if (!channel) {
             throw new Error(`Channel ${channelUUID} not found`);
         }
 
-        await isClientAuthenticated;
+        await isClientAuthenticated.promise;
 
-        // Get session from channel
         const session = channel.sessions.get(sessionId);
         if (!session) {
             throw new Error(`Session ${sessionId} not found in channel ${channelUUID}`);
         }
 
+        if (session.state === SESSION_STATE.CLOSED) {
+            throw new Error("server session closed before connecting");
+        }
+        if (session.state !== SESSION_STATE.CONNECTED) {
+            const [state] = await once(session, Session.Events.STATE_CHANGE);
+            if (state !== SESSION_STATE.CONNECTED) {
+                throw new Error("server session closed before connecting");
+            }
+        }
         return { session, sfuClient };
     }
 
-    /**
-     * Closes the network and cleans up all resources
-     */
-    close(): void {
-        // Disconnect all SFU clients
+    async close(): Promise<void> {
         for (const sfuClient of this._sfuClients) {
-            sfuClient?.disconnect();
+            sfuClient.disconnect();
         }
         this._sfuClients.length = 0;
+        this._channelKeys.clear();
 
-        // Close all channels
-        Channel.closeAll();
+        await Channel.closeAll();
 
-        // Stop all services
         auth.close();
-        http.close();
-        rtc.close();
+        await http.close();
+        await resources.close();
 
-        // Clear network info
-        this.hostname = undefined;
         this.port = undefined;
     }
 }

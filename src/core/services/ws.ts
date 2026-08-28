@@ -1,19 +1,26 @@
-import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "node:http";
+import type { AddressInfo } from "node:net";
+
+import { WebSocketServer, WebSocket } from "ws";
 
 import * as config from "#src/config.ts";
 import { WS_CLOSE_CODE } from "#src/shared/enums.ts";
 import { Bus } from "#src/shared/bus.ts";
 import { Logger, extractRequestInfo } from "#src/utils/utils.ts";
 import { AuthenticationError, OvercrowdedError } from "#src/utils/errors.ts";
-import { Session, SESSION_CLOSE_CODE } from "#src/models/session.ts";
-import { Channel } from "#src/models/channel.ts";
-import { verify } from "#src/services/auth.ts";
+import { Session, SESSION_CLOSE_CODE, type SessionPermissions } from "#src/core/models/session.ts";
+import { Channel } from "#src/core/models/channel.ts";
+import { verify } from "#src/core/services/auth.ts";
+import type { WebSocketCredentials } from "#src/shared/types.ts";
 
-interface Credentials {
-    channelUUID?: string;
-    jwt: string;
-}
+type WSConnectClaims = {
+    sfu_channel_uuid: string;
+    session_id: string;
+    partner_id?: number;
+    label?: string;
+    permissions?: SessionPermissions;
+};
+type AuthenticationPayload = WebSocketCredentials | string;
 
 const logger = new Logger("WS");
 const unauthenticatedWebSockets = new Map<number, WebSocket>();
@@ -21,11 +28,15 @@ const authenticatedWebSockets = new Set<WebSocket>();
 let pendingId = 0;
 let server: WebSocketServer | undefined;
 
+export const __testing__ = {
+    get unauthenticatedWebSocketCount(): number {
+        return unauthenticatedWebSockets.size;
+    }
+};
+
 export async function start(
     options: ConstructorParameters<typeof WebSocketServer>[0]
 ): Promise<WebSocketServer> {
-    logger.info("starting...");
-
     server = new WebSocketServer(options);
 
     /**
@@ -41,24 +52,30 @@ export async function start(
         unauthenticatedWebSockets.set(currentPendingId, webSocket);
 
         const timeout = setTimeout(() => {
-            if (webSocket.readyState > webSocket.OPEN) {
-                return;
+            if (webSocket.readyState <= webSocket.OPEN) {
+                webSocket.close(WS_CLOSE_CODE.TIMEOUT);
+                logger.warn(`${remoteAddress} WS timed out, closing it`);
             }
-            webSocket.close(WS_CLOSE_CODE.TIMEOUT);
-            logger.warn(`${remoteAddress} WS timed out, closing it`);
-            unauthenticatedWebSockets.delete(currentPendingId);
+            clearPendingAuthentication();
         }, config.timeouts.authentication);
+        const clearPendingAuthentication = () => {
+            clearTimeout(timeout);
+            unauthenticatedWebSockets.delete(currentPendingId);
+        };
+        webSocket.once("close", clearPendingAuthentication);
 
         // Handle first message (authentication)
         webSocket.once("message", (message: string) => {
+            let isAuthenticated = false;
             try {
-                const credentials = JSON.parse(message);
-                const session = connect(webSocket, {
-                    channelUUID: credentials?.channelUUID,
-                    jwt: credentials.jwt || credentials
-                });
+                const payload = JSON.parse(message) as AuthenticationPayload;
+                const credentials: WebSocketCredentials =
+                    typeof payload === "string" ? { jwt: payload } : payload;
+
+                const session = connect(webSocket, credentials);
                 session.remote = remoteAddress;
                 logger.info(`session [${session.name}] authenticated and created`);
+                isAuthenticated = true;
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : String(error);
                 logger.warn(`${errorMessage} : ${error instanceof Error ? error.cause ?? "" : ""}`);
@@ -70,12 +87,15 @@ export async function start(
                     webSocket.close(WS_CLOSE_CODE.ERROR);
                 }
             }
-            unauthenticatedWebSockets.delete(currentPendingId);
-            authenticatedWebSockets.add(webSocket);
-            clearTimeout(timeout);
+            webSocket.off("close", clearPendingAuthentication);
+            clearPendingAuthentication();
+            if (isAuthenticated) {
+                authenticatedWebSockets.add(webSocket);
+            }
         });
     });
-
+    const addr = server.address() as AddressInfo;
+    logger.info(`websocket listening at ${addr.address}:${addr.port}`);
     return server;
 }
 
@@ -106,13 +126,17 @@ export function close(): void {
  * @param webSocket - WebSocket connection
  * @param credentials - Authentication credentials
  * @returns Created session
- * @throws {AuthenticationError} If authentication fails
+ * @throws {OvercrowdedError}  when:
+ *  - channel capacity is reached.
+ * @throws {AuthenticationError}  when:
+ *  - JWT verification fails.
+ *  - channel access fails.
  */
-function connect(webSocket: WebSocket, credentials: Credentials): Session {
+function connect(webSocket: WebSocket, credentials: WebSocketCredentials): Session {
     const { channelUUID, jwt } = credentials;
     let channel = channelUUID ? Channel.records.get(channelUUID) : undefined;
-    const authResult = verify(jwt, channel?.key);
-    const { sfu_channel_uuid, session_id } = authResult;
+    const authResult = verify<WSConnectClaims>(jwt, channel?.key);
+    const { sfu_channel_uuid, session_id, partner_id, label, permissions } = authResult;
     if (!channelUUID && sfu_channel_uuid) {
         // Cases where the channelUUID is not provided in the credentials for backwards compatibility with version 1.1 and earlier.
         channel = Channel.records.get(sfu_channel_uuid);
@@ -125,13 +149,20 @@ function connect(webSocket: WebSocket, credentials: Credentials): Session {
     if (!channel) {
         throw new AuthenticationError("Channel does not exist");
     }
-    if (!session_id) {
+    if (
+        !session_id ||
+        (partner_id !== undefined && (!Number.isSafeInteger(partner_id) || partner_id <= 0))
+    ) {
         throw new AuthenticationError("Malformed JWT payload");
     }
-    webSocket.send(""); // client can start using ws after this message.
     const bus = new Bus(webSocket, { batchDelay: config.timeouts.busBatch });
-    const { session } = Channel.join(channel.uuid, session_id);
-    session.once("close", ({ code }: { code: string }) => {
+    const { session } = Channel.join(channel.uuid, session_id, {
+        label,
+        partnerId: partner_id,
+        permissions
+    });
+    webSocket.send(JSON.stringify(session.startupData)); // client can start using ws after this message.
+    session.once(Session.Events.CLOSE, ({ code }: { code: string }) => {
         let wsCloseCode = WS_CLOSE_CODE.CLEAN;
         switch (code) {
             case SESSION_CLOSE_CODE.ERROR:

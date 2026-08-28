@@ -1,27 +1,21 @@
 import { once } from "node:events";
 
 import { WebSocket } from "ws";
-import { describe, beforeEach, afterEach, expect, jest } from "@jest/globals";
+import { describe, beforeEach, afterEach, expect } from "@jest/globals";
 
-import { Channel } from "#src/models/channel";
-import { WS_CLOSE_CODE } from "#src/shared/enums";
-import { timeouts } from "#src/config";
+import { Channel } from "#src/core/models/channel";
+import * as auth from "#src/core/services/auth";
 
-import { LocalNetwork } from "#tests/utils/network";
-
-const HTTP_INTERFACE = "0.0.0.0";
-const PORT = 62348;
+import { AUTH_KEY, LocalNetwork, makeJwt } from "#tests/utils/network";
 
 describe("Security", () => {
     let network: LocalNetwork;
     beforeEach(async () => {
         network = new LocalNetwork();
-        await network.start(HTTP_INTERFACE, PORT);
-        jest.useFakeTimers();
+        await network.start();
     });
-    afterEach(() => {
-        network.close();
-        jest.useRealTimers();
+    afterEach(async () => {
+        await network.close();
     });
     test("Authentication fails with wrong JWT", async () => {
         const channelUUID = await network.getChannelUUID();
@@ -30,29 +24,67 @@ describe("Security", () => {
         await expect(network.connect(channelUUID, 54)).rejects.toThrow();
         expect(channel!.sessions.size).toBe(0);
     });
-    test("Websocket does timeout if the authentication process is not started", async () => {
-        jest.spyOn(global, "setTimeout");
-        const websocket = new WebSocket(`ws://${HTTP_INTERFACE}:${PORT}`);
-        await once(websocket, "open");
-        jest.advanceTimersByTime(timeouts.authentication + 100);
-        const [event] = await once(websocket, "close");
-        expect(event).toBe(WS_CLOSE_CODE.TIMEOUT);
-    });
     test("cannot access a channel with the wrong key", async () => {
-        const channelUUID = await network.getChannelUUID({ key: "channel-specific-key" });
+        const keySeed = Buffer.from("channel-specific-seed").toString("base64");
+        const channelUUID = await network.getChannelUUID({ keySeed });
         const channel = Channel.records.get(channelUUID);
-        // testing the default/global key
-        await expect(network.connect(channelUUID, 3)).rejects.toThrow();
+        await expect(network.connect(channelUUID, 3, { key: AUTH_KEY })).rejects.toThrow();
         expect(channel!.sessions.size).toBe(0);
-        // any arbitrary wrong key
         await expect(network.connect(channelUUID, 3, { key: "wrong-key" })).rejects.toThrow();
         expect(channel!.sessions.size).toBe(0);
     });
-    test("can join a channel with its specific key", async () => {
-        const key = "channel-specific-key";
+    test("can join a channel with its derived key", async () => {
+        const keySeed = Buffer.from("channel-specific-seed").toString("base64");
+        const key = auth.deriveChannelKey(keySeed);
+        const channelUUID = await network.getChannelUUID({ keySeed });
+        const channel = Channel.records.get(channelUUID);
+        await network.connect(channelUUID, 4, { key });
+        expect(channel!.sessions.size).toBe(1);
+    });
+    test("can join a channel with its legacy key", async () => {
+        const key = Buffer.from("legacy-channel-key").toString("base64");
         const channelUUID = await network.getChannelUUID({ key });
         const channel = Channel.records.get(channelUUID);
         await network.connect(channelUUID, 4, { key });
         expect(channel!.sessions.size).toBe(1);
+    });
+    test("prefers a channel key seed over a legacy key", async () => {
+        const keySeed = Buffer.from("channel-specific-seed").toString("base64");
+        const key = Buffer.from("legacy-channel-key").toString("base64");
+        const channelUUID = await network.getChannelUUID({ key, keySeed });
+        const channel = Channel.records.get(channelUUID);
+        await expect(network.connect(channelUUID, 4, { key })).rejects.toThrow();
+        expect(channel!.sessions.size).toBe(0);
+        await network.connect(channelUUID, 4);
+        expect(channel!.sessions.size).toBe(1);
+    });
+    test("Legacy Auth: Succeeds if channel has NO key and channelUUID not provided", async () => {
+        const channelUUID = await network.getChannelUUID({
+            keySeed: "",
+            recordingAddress: ""
+        });
+        const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);
+        await once(ws, "open");
+
+        const jwt = makeJwt({
+            sfu_channel_uuid: channelUUID,
+            session_id: 1,
+            permissions: {}
+        });
+
+        ws.send(JSON.stringify({ jwt }));
+
+        const [message] = await once(ws, "message");
+        const data = JSON.parse(message.toString());
+        expect(data).toHaveProperty("availableFeatures");
+
+        const close = once(ws, "close");
+        ws.close();
+        await close;
+    });
+    test("cannot omit key or key seed when recordingAddress is provided", async () => {
+        await expect(
+            network.getChannelUUID({ keySeed: "", recordingAddress: "dummy-dest" })
+        ).rejects.toThrow();
     });
 });

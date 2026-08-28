@@ -1,5 +1,12 @@
 # Odoo SFU
 
+> [!WARNING]  
+> Early phase of developments, the readme may not be up to date, or be incorrect,
+> needs some cleanup, remove todos, fix broken links (since some files were moved). will finalize when the PR is ready
+> Current documentation is split/rewrite of the old readme, some parts may still be split into
+> secondary documentataion files
+>
+
 ## Overview
 
 Contains the code for the SFU (Selective Forwarding Unit) server 
@@ -9,8 +16,11 @@ between users and providing channels to coordinate these connections.
 The server is not stand-alone, it does not serve any HTML or any interface code for calls. It only contains
 the SFU and a [client bundle/library](#client-api-bundle) to connect to it.
 
+The SFU uses [Mediasoup](https://mediasoup.org/) WebRTC library for the routing/transport of streams.
+
 ## Prerequisites
 - [Node.js 24.13.0 (LTS)](https://nodejs.org/en/download)
+- [FFmpeg 8](https://ffmpeg.org/download.html) (if using the recording feature)
 
 ## Before deployment
 
@@ -32,35 +42,49 @@ interacted with as described [here](#client-api-bundle).
     ```
 2. Run the SFU server.
     ```bash
-        npm PROXY=1 PUBLIC_IP=134.123.222.111 AUTH_KEY=u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng= run start
+        npm PROXY=1 PUBLIC_IP=sfu.example.com AUTH_KEY=u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng= run start
     ```
 
 The available environment variables are:
 
-- **PUBLIC_IP** (required): used to establish webRTC connections to the server
-- **AUTH_KEY** (required): the base64 encoded encryption key used for authentication
-- **HTTP_INTERFACE**:  HTTP/WS interface, defaults to "0.0.0.0" (listen on all interfaces)
-- **PORT**: port for HTTP/WS, defaults to standard ports
-- **RTC_INTERFACE**: Interface address for RTC, defaults to "0.0.0.0"
-- **PROXY**: set if behind a proxy, the proxy must properly implement "x-forwarded-for", "x-forwarded-proto" and "x-forwarded-host"
-- **AUDIO_CODECS**: comma separated list of audio codecs to use, default to all available
-- **VIDEO_CODECS**: comma separated list of video codecs to use, default to all available
-- **RTC_MIN_PORT**: Lower bound for the range of ports used by the RTC server, must be open in both TCP and UDP
-- **RTC_MAX_PORT**: Upper bound for the range of ports used by the RTC server, must be open in both TCP and UDP
-- **MAX_BUF_IN**: if set, limits the incoming buffer size per session (user)
-- **MAX_BUF_OUT**: if set, limits the outgoing buffer size per session (user)
-- **MAX_BITRATE_IN**: if set, limits the incoming bitrate per session (user), defaults to 8mbps
-- **MAX_BITRATE_OUT**: if set, limits the outgoing bitrate per session (user), defaults to 10mbps
-- **MAX_VIDEO_BITRATE**: if set, defines the `maxBitrate` of the highest encoding layer (simulcast), defaults to 4mbps
-- **CHANNEL_SIZE**: the maximum amount of users per channel, defaults to 100
-- **WORKER_LOG_LEVEL**: "none" | "error" | "warn" | "debug", will only work if `DEBUG` is properly set.
-- **LOG_LEVEL**: "none" | "error" | "warn" | "info" | "debug" | "verbose"
-- **LOG_TIMESTAMP**: adds a timestamp to the log lines, defaults to true, to disable it, set to "disable", "false", "none", "no" or "0"
-- **LOG_COLOR**: If set, colors the log lines based on their level
-- **DEBUG**: an env variable used by the [debug](https://www.npmjs.com/package/debug) module. e.g.: `DEBUG=*`, `DEBUG=mediasoup*`
+| Variable              | Default         | Description                                                                        |
+| :-------------------- | :-------------- | :--------------------------------------------------------------------------------- |
+| `PUBLIC_IP` (required)| -               | Used to establish WebRTC connections to the server.                                |
+| `AUTH_KEY` (required) | -               | The base64 encoded encryption key used for JWT authentication.                     |
+| `HTTP_INTERFACE`      | `0.0.0.0`       | HTTP and WebSocket listening interface.                                            |
+| `PORT`                | `8070`          | Port for HTTP and WebSocket.                                                       |
+| `RTC_INTERFACE`       | `0.0.0.0`       | Interface address for RTC.                                                         |
+| `PROXY`               | `false`         | Set to true if behind a proxy to trust forwarding headers.                         |
+| `AUDIO_CODECS`        | All             | Comma separated list of audio codecs to use (e.g., `opus,PCMU,PCMA`).              |
+| `VIDEO_CODECS`        | All             | Comma separated list of video codecs to use (e.g., `VP8,H264,VP9`).                |
+| `RTC_MIN_PORT`        | `40000`         | Lower bound for the range of ports used by the RTC server (TCP/UDP).               |
+| `RTC_MAX_PORT`        | `49999`         | Upper bound for the range of ports used by the RTC server (TCP/UDP).               |
+| `NUM_WORKERS`         | CPU count       | Number of mediasoup workers to spawn.                                              |
+| `MAX_BUF_IN`          | `0` (unlimited) | Maximum incoming buffer size in bytes for SCTP messages per session.               |
+| `MAX_BUF_OUT`         | `0` (unlimited) | Maximum outgoing buffer size in bytes for SCTP messages per session.               |
+| `MAX_BITRATE_IN`      | `8000000`       | Maximum incoming bitrate in bps per session (upload).                              |
+| `MAX_BITRATE_OUT`     | `10000000`      | Maximum outgoing bitrate in bps per session (download).                            |
+| `MAX_VIDEO_BITRATE`   | `4000000`       | Maximum bitrate in bps for the highest simulcast video layer.                      |
+| `CHANNEL_SIZE`        | `100`           | Maximum amount of concurrent users per channel.                                    |
+| `LOG_LEVEL`           | `error`         | SFU log level (`none`, `error`, `warn`, `info`, `debug`, `verbose`).               |
+| `LOG_TIMESTAMP`       | `true`          | Prefix timestamps to log lines.                                                    |
+| `LOG_COLOR`           | TTY detection   | Colors log lines based on their level.                                             |
+| `DEBUG`               | -               | Used by the [debug](https://www.npmjs.com/package/debug) module (e.g., `DEBUG=*`). |
+| `WORKER_LOG_LEVEL`    | `none`          | Mediasoup worker log level. Requires `DEBUG` to be active.                         |
+| `DATA_PATH`           | `/tmp/odoo_sfu` | Base path for SFU local storage (`recordings`, `resources`, `debug` subfolders).   |
 
 
-See [config.js](./src/config.js) for more details and examples.
+Recording specific env variables:
+
+| Variable                                | Default            | Required | Description                                                                                                            |
+| :-------------------------------------- | :----------------- | :------: | :--------------------------------------------------------------------------------------------------------------------- |
+| `RECORDING`                             | `false`            | Enables the recording feature.                                                                                         |
+| `LOCAL_KEY`                             | Randomly generated | 32-byte base64 key for encrypting local data. If missing, data loses persistence between restarts.                     |
+| `DYNAMIC_MIN_PORT` / `DYNAMIC_MAX_PORT` | `50000` / `59999`  | Range of ports used for recording routing.                                                                             |
+| `KEEP_RECORDINGS`                       | `false`            | If true, keeps raw recording files after they are uploaded.                                                            |
+| `FFMPEG_LOGGING`                        | `false`            | If true, generates `.log` files alongside ffmpeg outputs and archives processed recordings under `${DATA_PATH}/debug`. |
+
+See [config.js](./src/config.js) for more details.
 
 ## Binding the SFU and the Odoo server together
 
@@ -69,9 +93,9 @@ Set the `AUTH_KEY` env variable with  the base64 encryption key that can be used
 
 ### On Odoo 
 Go to the Discuss settings and configure the `RTC Server URL` and `RTC server KEY` fields. The `RTC server KEY`
-must be the same base64 encoded string as `AUTH_KEY` on the SFU server.
+must be the same base64 encoded string as `AUTH_KEY` on the SFU server. Or pass the as env variables (`ODOO_SFU_URL` and `ODOO_SFU_KEY`).
 
-## Interacting with the SFU server
+## Inter-process communication with the SFU server
 
 The SFU server responds to the following IPC signals:
 
@@ -81,160 +105,14 @@ The SFU server responds to the following IPC signals:
 
 See [server.js](./src/server.js) for more details.
 
-## HTTP API
+## Documentation
 
-- GET `/v1/stats`: returns the server statistics as an array with one entry per channel, in JSON:
-    ```json
-    [
-        {
-            "createDate": "2023-10-25T04:57:45.453Z",
-            "uuid": "86079c25-9cf8-4d58-9dea-cef44cf845e2",
-            "remoteAddress": "whoever-requested-the-room.com",
-            "sessionsStats": {
-                "incomingBitRate": {
-                    "audio": 5,
-                    "camera": 700000,
-                    "screen": 0,
-                    "total": 700005
-                    },
-                "count": 3,
-                "cameraCount": 2,
-                "screenCount": 0
-            },
-            "webRtcEnabled": true
-        }
-    ]
-    ```
-- GET `/v1/channel`: create a channel and returns information required to connect to it in JSON:
-   ```json
-   {
-      "uuid": "31dcc5dc-4d26-453e-9bca-ab1f5d268303",
-      "url": "https://example-odoo-sfu.com"
-  }
-  ```
+- [Architecture](./doc/architecture.md)
+- [Full Network Flow](./doc/network_flow.md)
+- [HTTP API](./doc/http.md)
+- [Recording](./doc/recording.md)
+- [Client API bundle](./doc/client.md)
 
-- POST `/v1/disconnect` disconnects sessions, expects the body to be a Json Web Token formed as such:
-    ```js
-  jwt.sign(
-    {
-      "sessionIdsByChannel": {
-        [channelUUID]: [sessionId1, sessionId2]
-      }
-    },
-    "HS256",
-  );
-    ```
-
-See [http.js](./src/services/http.js) for more details.
-
-## Client API (bundle)
-
-The bundle built with the `build` script in [package.json](./package.json) can be imported
-in the client(js) code that implements the call feature like this:
-
-```js
-import { SfuClient, SFU_CLIENT_STATE } from "/bundle/odoo_sfu.js";
-const sfu = new SfuClient();
-```
-`SfuClient` exposes the following API:
-
-- connect()
-    ```js
-    sfu.connect("https://my-sfu.com", jsonWebToken, { iceServers });
-    ```
-- disconnect()
-    ```js
-    sfu.disconnect();
-    sfu.state === SFU_CLIENT_STATE.DISCONNECTED; // true
-    ```
-- broadcast()
-    ```js
-    // in the sender's client
-    sfu.broadcast("hello");
-    ```
-    ```js
-    // in the clients of other members of that channel
-    sfu.addEventListener("update", ({ detail: { name, payload } }) => {
-        switch (name) {
-            case "broadcast":
-                {
-                    const { senderId, message } = payload;
-                    console.log(`${senderId} says: "${message}"`); // 87 says "hello"
-                }
-                return;
-            // ...
-        }
-    });
-    ```
-- updateUpload()
-    ```js
-    const audioStream = await window.navigator.mediaDevices.getUserMedia({
-        audio: true,
-    });
-    const audioTrack = audioStream.getAudioTracks()[0];
-    await sfu.updateUpload("audio", audioTrack); // we upload a new audio track to the server
-    await sfu.updateUpload("audio", undefined); // we stop uploading audio
-    ```
-- updateDownload()
-    ```js
-    sfu.updateDownload(remoteSessionId, {
-        camera: false, // we want to stop downloading their camera
-        screen: true, // we want to download their screen
-    });
-    ```
-- updateInfo()
-    ```js
-    sfu.updateInfo({
-        isMuted: true,
-        isCameraOn: false,
-        // ...
-    });
-    ```
-- getStats()
-    ```js
-    const { uploadStats, downloadStats, ...producerStats } = await sfu.getStats();
-    typeof uploadStats === "RTCStatsReport"; // true
-    typeof producerStats["camera"] === "RTCStatsReport"; // true
-    // see https://w3c.github.io/webrtc-pc/#rtcstatsreport-object
-    ```
-- @fires "update"
-    ```js
-    sfu.addEventListener("update", ({ detail: { name, payload } }) => {
-        switch (name) {
-            case "track":
-                {
-                    const { sessionId, type, track, active } = payload;
-                    const remoteParticipantViewer = findParticipantById(sessionId);
-                    if (type === "camera") {
-                        remoteParticipantViewer.cameraTrack = track;
-                        remoteParticipantViewer.isCameraOn = active; // indicates whether the track is active or paused
-                    }
-                }
-                return;
-            // ...
-        }
-    });
-    ```
-- @fires "stateChange"
-    ```js
-    sfu.addEventListener("stateChange", ({ detail: { state, cause } }) => {
-        switch (state) {
-            case SFU_CLIENT_STATE.CONNECTED:
-                console.log("Connected to the SFU server.");
-                // we can start uploading now
-                client.updateUpload("audio", myMicrophoneTrack);
-                client.updateUpload("camera", myWebcamTrack);
-                break;
-            case SFU_CLIENT_STATE.CLOSED:
-                console.log("Connection to the SFU server closed.");
-                break;
-            // ...
-        }
-    });
-    ```
-
-see [client.js](./src/client.js) for more details.
-
-## Architecture
-
-![](./data/architecture.svg)
+// TODO maybe a section for dev (testing, profiling,...),
+already written a bit at https://www.odoo.com/odoo/knowledge/46743 so
+could unify

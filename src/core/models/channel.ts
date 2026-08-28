@@ -1,23 +1,27 @@
 import { EventEmitter } from "node:events";
 import crypto from "node:crypto";
 
-import type { Router, Worker, WebRtcServer } from "mediasoup/node/lib/types";
+import type { Router, WebRtcServer } from "mediasoup/node/lib/types";
 
 import * as config from "#src/config.ts";
-import { getAllowedCodecs, Logger } from "#src/utils/utils.ts";
+import { b64toBuffer, getAllowedCodecs, Logger } from "#src/utils/utils.ts";
 import { AuthenticationError, OvercrowdedError } from "#src/utils/errors.ts";
 import {
     Session,
     SESSION_CLOSE_CODE,
     type SessionId,
-} from "#src/models/session.ts";
-import { getWorker, type RtcWorker } from "#src/services/rtc.ts";
+    type SessionOptions
+} from "#src/core/models/session.ts";
+import { Recorder, STOP_CODE, type UpdateData } from "#src/recording/models/recorder.ts";
+import { getWorker, type RtcWorker } from "#src/core/services/resources.ts";
+import { SERVER_MESSAGE } from "#src/shared/enums.ts";
+import type { RecordingState, StringLike } from "#src/shared/types.ts";
 
 const logger = new Logger("CHANNEL");
 
 const mediaCodecs = getAllowedCodecs();
 
-export interface SessionsStats {
+export type SessionsStats = {
     incomingBitRate: {
         /** Total bitrate across all media types */
         total: number;
@@ -34,8 +38,8 @@ export interface SessionsStats {
     cameraCount: number;
     /** Number of sessions with screen sharing enabled */
     screenCount: number;
-}
-export interface ChannelStats {
+};
+export type ChannelStats = {
     /** Channel creation timestamp */
     createDate: string;
     /** Unique channel identifier */
@@ -46,19 +50,20 @@ export interface ChannelStats {
     sessionsStats: SessionsStats;
     /** Whether WebRTC functionality is enabled */
     webRtcEnabled: boolean;
-}
-interface ChannelCreateOptions {
-    /** Optional encryption key for channel authentication */
-    key?: string;
+};
+type ChannelCreateOptions = {
+    /** Optional signing key for channel authentication */
+    key?: StringLike;
     /** Whether to enable WebRTC functionality */
     useWebRtc?: boolean;
-}
-interface JoinResult {
+    recordingAddress?: string | null;
+};
+type JoinResult = {
     /** The channel instance */
     channel: Channel;
     /** The created session */
     session: Session;
-}
+};
 
 /**
  * @fires Channel#sessionJoin
@@ -66,10 +71,18 @@ interface JoinResult {
  * @fires Channel#close
  */
 export class Channel extends EventEmitter {
+    static readonly Events = {
+        SESSION_JOIN: "sessionJoin",
+        SESSION_LEAVE: "sessionLeave",
+        CLOSE: "close"
+    } as const;
+
     /** Global registry of all active channels by UUID */
     static records = new Map<string, Channel>();
     /** Global registry of channels by issuer for reuse */
     static recordsByIssuer = new Map<string, Channel>();
+    /** shares in-flight channel creation by issuer so concurrent requests await the same channel */
+    private static _creationsByIssuer = new Map<string, Promise<Channel>>();
     /** Channel creation timestamp */
     public readonly createDate: string;
     /** Remote address that created this channel */
@@ -78,16 +91,19 @@ export class Channel extends EventEmitter {
     public readonly uuid: string;
     /** Short name for logging (last 5 chars of UUID) */
     public readonly name: string;
-    /** Optional encryption key for authentication */
+    /** Optional signing key for authentication */
     public readonly key?: Buffer;
     /** mediasoup Router for media routing */
     public readonly router?: Router;
+    /** Manages the recording of this channel, undefined if the feature is disabled */
+    public readonly recorder?: Recorder;
     /** Active sessions in this channel */
     public readonly sessions = new Map<SessionId, Session>();
     /** mediasoup Worker handling this channel */
     private readonly _worker?: RtcWorker;
     /** Timeout for auto-closing empty channels */
     private _closeTimeout?: NodeJS.Timeout;
+    private _closePromise?: Promise<void>;
 
     /**
      * @param remoteAddress - IP address of the client creating the channel
@@ -101,69 +117,85 @@ export class Channel extends EventEmitter {
         issuer: string,
         options: ChannelCreateOptions = {}
     ): Promise<Channel> {
-        const { key, useWebRtc = true } = options;
+        const { key, useWebRtc = true, recordingAddress } = options;
         const safeIssuer = `${remoteAddress}::${issuer}`;
         const oldChannel = Channel.recordsByIssuer.get(safeIssuer);
         if (oldChannel) {
             logger.verbose(`reusing channel ${oldChannel.uuid}`);
             return oldChannel;
         }
-        const channelOptions: ChannelCreateOptions & {
-            worker?: Worker;
-            router?: Router;
-        } = { key };
-        if (useWebRtc) {
-            channelOptions.worker = await getWorker();
-            channelOptions.router = await channelOptions.worker.createRouter({
-                mediaCodecs
-            });
+        const oldCreation = Channel._creationsByIssuer.get(safeIssuer);
+        if (oldCreation) {
+            return oldCreation;
         }
-        const channel = new Channel(remoteAddress, channelOptions);
-        Channel.recordsByIssuer.set(safeIssuer, channel);
-        Channel.records.set(channel.uuid, channel);
-        logger.info(
-            `created channel ${channel.uuid} (${key ? "unique" : "global"} key) for ${safeIssuer}`
-        );
-        const onWorkerDeath = () => {
-            logger.warn(`worker died, closing channel ${channel.uuid}`);
-            channel.close();
-        };
-        channelOptions.worker?.once("died", onWorkerDeath);
-        channel.once("close", () => {
-            channelOptions.worker?.off("died", onWorkerDeath);
-            Channel.recordsByIssuer.delete(safeIssuer);
-            Channel.records.delete(channel.uuid);
-        });
-        channel.setCloseTimeout(true);
-        return channel;
+        const creation = (async () => {
+            const channelOptions: ChannelCreateOptions & {
+                worker?: RtcWorker;
+                router?: Router;
+            } = { key, recordingAddress: useWebRtc ? recordingAddress : null };
+            if (useWebRtc) {
+                channelOptions.worker = await getWorker();
+                channelOptions.router = await channelOptions.worker.createRouter({
+                    mediaCodecs
+                });
+            }
+            const channel = new Channel(remoteAddress, channelOptions);
+            Channel.recordsByIssuer.set(safeIssuer, channel);
+            Channel.records.set(channel.uuid, channel);
+            logger.info(
+                `created channel ${channel.uuid} (${
+                    key ? "unique" : "global"
+                } key) for ${safeIssuer}`
+            );
+            logger.verbose(`rtc feature: ${Boolean(channel.router)}`);
+            logger.verbose(`recording feature: ${Boolean(channel.recorder)}`);
+            const onWorkerDeath = () => {
+                logger.warn(`worker died, closing channel ${channel.uuid}`);
+                void channel.close();
+            };
+            channelOptions.worker?.once("died", onWorkerDeath);
+            channel.once(Channel.Events.CLOSE, () => {
+                channelOptions.worker?.off("died", onWorkerDeath);
+                Channel.recordsByIssuer.delete(safeIssuer);
+                Channel.records.delete(channel.uuid);
+            });
+            channel.setCloseTimeout(true);
+            return channel;
+        })();
+        Channel._creationsByIssuer.set(safeIssuer, creation);
+        try {
+            return await creation;
+        } finally {
+            Channel._creationsByIssuer.delete(safeIssuer);
+        }
     }
 
     /**
      * @param uuid - Channel UUID
      * @param sessionId - Session identifier
+     * @param sessionOptions - Session options set at creation
      * @returns Object containing the channel and created session
      * @throws {AuthenticationError} If channel doesn't exist
      * @throws {OvercrowdedError} If channel is at capacity
      */
-    static join(uuid: string, sessionId: SessionId): JoinResult {
+    static join(uuid: string, sessionId: SessionId, sessionOptions?: SessionOptions): JoinResult {
         const channel = Channel.records.get(uuid);
         if (!channel) {
             throw new AuthenticationError(`channel [${uuid}] does not exist`);
         }
-        if (channel.sessions.size >= config.CHANNEL_SIZE) {
+        if (channel.sessions.size >= config.CHANNEL_SIZE && !channel.sessions.has(sessionId)) {
             throw new OvercrowdedError(`channel [${uuid}] is full`);
         }
-        const session = channel.join(sessionId);
+        const session = channel.join(sessionId, sessionOptions);
         return { channel, session };
     }
 
     /**
      * Closes all active channels
      */
-    static closeAll(): void {
-        for (const channel of Channel.records.values()) {
-            channel.close();
-        }
+    static async closeAll(): Promise<void> {
+        await Promise.allSettled(Channel._creationsByIssuer.values());
+        await Promise.all([...Channel.records.values()].map((channel) => channel.close()));
     }
 
     /**
@@ -173,7 +205,7 @@ export class Channel extends EventEmitter {
     constructor(
         remoteAddress: string,
         options: ChannelCreateOptions & {
-            worker?: Worker;
+            worker?: RtcWorker;
             router?: Router;
         } = {}
     ) {
@@ -182,13 +214,18 @@ export class Channel extends EventEmitter {
         const now = new Date();
         this.createDate = now.toISOString();
         this.remoteAddress = remoteAddress;
-        this.key = key ? Buffer.from(key, "base64") : undefined;
+        this._worker = worker;
+        this.router = router;
+        this.key = key ? b64toBuffer(key) : undefined;
         this.uuid = crypto.randomUUID();
         this.name = `${remoteAddress}*${this.uuid.slice(-5)}`;
-        this.router = router;
-        this._worker = worker;
-
-        // Bind event handlers
+        this.recorder =
+            this.router && config.recording.enabled && options.recordingAddress
+                ? new Recorder(this, options.recordingAddress)
+                : undefined;
+        this.recorder?.on(Recorder.Events.UPDATE, (data: UpdateData) =>
+            this._broadcastState({ recorderData: data })
+        );
         this._onSessionClose = this._onSessionClose.bind(this);
     }
 
@@ -198,8 +235,12 @@ export class Channel extends EventEmitter {
             uuid: this.uuid,
             remoteAddress: this.remoteAddress,
             sessionsStats: await this.getSessionsStats(),
-            webRtcEnabled: Boolean(this._worker)
+            webRtcEnabled: Boolean(this.router)
         };
+    }
+
+    get recordingState(): RecordingState {
+        return this.recorder?.state || {};
     }
 
     get webRtcServer(): WebRtcServer | undefined {
@@ -248,13 +289,13 @@ export class Channel extends EventEmitter {
         };
     }
 
-    join(sessionId: SessionId): Session {
+    join(sessionId: SessionId, sessionOptions?: SessionOptions): Session {
         const oldSession = this.sessions.get(sessionId);
         if (oldSession) {
             oldSession.off("close", this._onSessionClose);
             oldSession.close({ code: SESSION_CLOSE_CODE.REPLACED });
         }
-        const session = new Session(sessionId, this);
+        const session = new Session(sessionId, this, sessionOptions);
         this.sessions.set(session.id, session);
         if (this.sessions.size > 1) {
             this.setCloseTimeout(false);
@@ -264,7 +305,7 @@ export class Channel extends EventEmitter {
          * @event Channel#sessionJoin
          * @type {SessionId} sessionId - ID of the joining session
          */
-        this.emit("sessionJoin", session.id);
+        this.emit(Channel.Events.SESSION_JOIN, session.id);
         return session;
     }
 
@@ -274,7 +315,7 @@ export class Channel extends EventEmitter {
                 return;
             }
             this._closeTimeout = setTimeout(() => {
-                this.close();
+                void this.close();
             }, config.timeouts.channel);
         } else {
             clearTimeout(this._closeTimeout);
@@ -285,19 +326,59 @@ export class Channel extends EventEmitter {
     /**
      * @fires Channel#close
      */
-    close(): void {
+    close(): Promise<void> {
+        if (this._closePromise) {
+            return this._closePromise;
+        }
+        this._closePromise = this._close();
+        return this._closePromise;
+    }
+
+    /**
+     * @fires Channel#close
+     */
+    private async _close(): Promise<void> {
+        const recorderStop = this.recorder?.stop({
+            stopCode: STOP_CODE.CHANNEL_CLOSED
+        });
         for (const session of this.sessions.values()) {
             session.off("close", this._onSessionClose);
             session.close({ code: SESSION_CLOSE_CODE.CHANNEL_CLOSED });
         }
         clearTimeout(this._closeTimeout);
         this.sessions.clear();
-        Channel.records.delete(this.uuid);
         /**
          * @event Channel#close
          * @type {string} channelId - UUID of the closed channel
          */
-        this.emit("close", this.uuid);
+        this.emit(Channel.Events.CLOSE, this.uuid);
+        try {
+            await recorderStop;
+        } finally {
+            this.router?.close();
+        }
+    }
+
+    /**
+     * Broadcast the state of this channel to all its participants
+     */
+    private _broadcastState({ recorderData }: { recorderData?: UpdateData }) {
+        for (const session of this.sessions.values()) {
+            if (!session.bus) {
+                logger.warn(`tried to broadcast state to session ${session.id}, but had no Bus`);
+                continue;
+            }
+            session.bus.send(
+                {
+                    name: SERVER_MESSAGE.CHANNEL_INFO_CHANGE,
+                    payload: {
+                        state: this.recordingState,
+                        stopCode: recorderData?.stopCode
+                    }
+                },
+                { batch: true }
+            );
+        }
     }
 
     /**
@@ -310,13 +391,16 @@ export class Channel extends EventEmitter {
          * @event Channel#sessionLeave
          * @type {SessionId} sessionId
          */
-        this.emit("sessionLeave", id);
-        if (this.sessions.size <= 1) {
+        this.emit(Channel.Events.SESSION_LEAVE, id);
+        if (this.sessions.size === 1) {
             /**
              * If there is only one person left in the call, we already start the timeout as
              * a single person should not keep a channel alive forever.
              */
             this.setCloseTimeout(true);
+            this.recorder?.stop({ stopCode: STOP_CODE.CHANNEL_CLOSED });
+        } else if (this.sessions.size === 0) {
+            void this.close();
         }
     }
 }
