@@ -4,7 +4,7 @@ import * as ws from "#src/services/ws.ts";
 import * as auth from "#src/services/auth.ts";
 import * as config from "#src/config.ts";
 import { Logger, parseBody, extractRequestInfo } from "#src/utils/utils.ts";
-import { SESSION_CLOSE_CODE } from "#src/models/session.ts";
+import { SESSION_CLOSE_CODE, type SessionId } from "#src/models/session.ts";
 import { Channel, type ChannelStats } from "#src/models/channel.ts";
 
 interface RequestInfo {
@@ -34,6 +34,12 @@ interface HttpStartOptions {
     httpInterface?: string;
     port?: number;
 }
+type HttpChannelClaims = {
+    key?: string;
+};
+type HttpDisconnectClaims = {
+    sessionIdsByChannel: Record<string, SessionId[]>;
+};
 
 export const API_VERSION = 1;
 const logger = new Logger("HTTP");
@@ -90,7 +96,7 @@ function setupRoutes(routeListener: RouteListener): void {
                     res.statusCode = 401; // unauthorized
                     return res.end();
                 }
-                const claims = auth.verify(jsonWebToken);
+                const claims = auth.verify<HttpChannelClaims>(jsonWebToken);
                 if (!claims.iss) {
                     logger.warn(`${remoteAddress}: missing issuer claim when creating channel`);
                     res.statusCode = 403; // forbidden
@@ -124,9 +130,9 @@ function setupRoutes(routeListener: RouteListener): void {
                     res.statusCode = 400; // bad request
                     return res.end();
                 }
-                const claims = auth.verify(jsonWebToken);
+                const claims = auth.verify<HttpDisconnectClaims>(jsonWebToken);
                 for (const [channelUuid, sessionIds] of Object.entries(
-                    claims.sessionIdsByChannel!
+                    claims.sessionIdsByChannel
                 )) {
                     const channel = Channel.records.get(channelUuid);
                     if (!channel) {
