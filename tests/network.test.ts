@@ -120,14 +120,14 @@ describe("Full network", () => {
         user3.sfuClient.updateInfo(user3Info);
         const [event] = await once(user2.sfuClient, "update");
         expect(event.detail.payload).toEqual({
-            [user3.session.id]: user3Info,
+            [user3.session.id]: user3Info
         });
         // with needRefresh, the client should receive the info of all sessions except that of their own
         user2.sfuClient.updateInfo({ isTalking: true }, { needRefresh: true });
         const [event2] = await once(user2.sfuClient, "update");
         expect(event2.detail.payload).toEqual({
             [user1.session.id]: {},
-            [user3.session.id]: user3Info,
+            [user3.session.id]: user3Info
         });
     });
     test("Connecting multiple times with the same session id closes the previous ones", async () => {
