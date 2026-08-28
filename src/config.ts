@@ -1,16 +1,19 @@
 import os from "node:os";
+import path from "node:path";
 
-import type {
-    RouterRtpCodecCapability,
-    WorkerSettings,
-    WebRtcServerOptions
-} from "mediasoup/node/lib/types";
+import type { RouterRtpCodecCapability } from "mediasoup/node/lib/types";
 // eslint-disable-next-line node/no-unpublished-import
 import type { ProducerOptions } from "mediasoup-client/lib/Producer";
 
 const FALSY_INPUT = new Set(["disable", "false", "none", "no", "0"]);
+const envFlag = (value?: string) => {
+    const normalized = value?.trim().toLowerCase();
+    return Boolean(normalized && !FALSY_INPUT.has(normalized));
+};
 type LogLevel = "none" | "error" | "warn" | "info" | "debug" | "verbose";
 type WorkerLogLevel = "none" | "error" | "warn" | "debug";
+const testingMode = Boolean(process.env.JEST_WORKER_ID);
+export const tmpDir = path.join(os.tmpdir(), "odoo_sfu");
 
 // ------------------------------------------------------------
 // ------------------   ENV VARIABLES   -----------------------
@@ -22,11 +25,12 @@ type WorkerLogLevel = "none" | "error" | "warn" | "debug";
  * e.g: AUTH_KEY=u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng=
  */
 export const AUTH_KEY: string = process.env.AUTH_KEY!;
-if (!AUTH_KEY && !process.env.JEST_WORKER_ID) {
-    throw new Error(
-        "AUTH_KEY env variable is required, it is not possible to authenticate requests without it"
-    );
-}
+
+/**
+ * A key used for encrypting/decrypting data locally, if not set one will be randomly generated.
+ * It MUST be a 32bytes base64 key, for example generated from `openssl rand 32 | base64`
+ */
+export const LOCAL_KEY: string | undefined = process.env.LOCAL_KEY;
 
 /**
  * This env variable is <<REQUIRED>>, the server needs to communicate its public IP to the clients as this is the IP
@@ -34,11 +38,6 @@ if (!AUTH_KEY && !process.env.JEST_WORKER_ID) {
  * e.g: PUBLIC_IP=190.165.1.70
  */
 export const PUBLIC_IP: string = process.env.PUBLIC_IP!;
-if (!PUBLIC_IP && !process.env.JEST_WORKER_ID) {
-    throw new Error(
-        "PUBLIC_IP env variable is required, clients cannot establish webRTC connections without it"
-    );
-}
 
 /**
  * The RTC listening interface
@@ -63,7 +62,6 @@ export const HTTP_INTERFACE: string = process.env.HTTP_INTERFACE || "0.0.0.0";
  * Port of HTTP and Websocket, defaults to standard port 8070.
  */
 export const PORT: number = Number(process.env.PORT) || 8070;
-
 /**
  * The number of workers to spawn (up to core limits) to manage RTC servers.
  * 0 < NUM_WORKERS <= os.availableParallelism()
@@ -96,7 +94,6 @@ export const RTC_MIN_PORT: number =
  */
 export const RTC_MAX_PORT: number =
     (process.env.RTC_MAX_PORT && Number(process.env.RTC_MAX_PORT)) || 49999;
-
 /**
  * The maximum size of the buffer in byes for incoming messages per session
  */
@@ -151,7 +148,6 @@ export const LOG_LEVEL: LogLevel = (process.env.LOG_LEVEL as LogLevel) ?? "error
  * Prefixes yyyy-mm-dd hh:mm:ss,mmm to the logs.
  */
 export const LOG_TIMESTAMP: boolean = !FALSY_INPUT.has(process.env.LOG_TIMESTAMP!);
-
 /**
  * Colors the logs according to their level.
  */
@@ -159,30 +155,62 @@ export const LOG_COLOR: boolean = process.env.LOG_COLOR
     ? Boolean(process.env.LOG_COLOR)
     : process.stdout.isTTY;
 
+// ---------------------------------------------------------------------
+// ------------------   RECORDING ENV VARS   ---------------------------
+// ---------------------------------------------------------------------
+
+/**
+ * Whether the recording feature is enabled, false by default.
+ */
+export const RECORDING: boolean = envFlag(process.env.RECORDING);
+
+/**
+ * Base path used by local SFU storage directories, defaults to `${tmpDir}`.
+ */
+export const DATA_PATH: string = process.env.DATA_PATH || tmpDir;
+/**
+ * Lower bound for the range of ports that the SFU server can use for dynamic ports, used for
+ * routing streams to internal processes (recording).
+ */
+export const DYNAMIC_MIN_PORT: number =
+    (process.env.DYNAMIC_MIN_PORT && Number(process.env.DYNAMIC_MIN_PORT)) || 50000;
+/**
+ * Upper bound for the range of ports that the SFU server can use for dynamic ports
+ */
+export const DYNAMIC_MAX_PORT: number =
+    (process.env.DYNAMIC_MAX_PORT && Number(process.env.DYNAMIC_MAX_PORT)) || 59999;
+/**
+ * If set, generates `.log` files alongside all ffmpeg file outputs.
+ * eg: `recording_1768377901321.mp4` will have an associated `recording_1768377901321.mp4.log`
+ */
+export const FFMPEG_LOGGING = envFlag(process.env.FFMPEG_LOGGING);
+
+// ---------------------------------
+// ---------- CHECKS ---------------
+// ---------------------------------
+
+if (!testingMode) {
+    if (!AUTH_KEY) {
+        throw new Error(
+            "AUTH_KEY env variable is required, it is not possible to authenticate requests without it"
+        );
+    }
+    if (!PUBLIC_IP) {
+        throw new Error(
+            "PUBLIC_IP env variable is required, clients cannot establish webRTC connections without it"
+        );
+    }
+}
+if (RECORDING && !(DYNAMIC_MAX_PORT < RTC_MIN_PORT || DYNAMIC_MIN_PORT > RTC_MAX_PORT)) {
+    throw new Error("Dynamic ports overlap with RTC ports");
+}
+
 // ------------------------------------------------------------
 // --------------------   SETTINGS   --------------------------
 // ------------------------------------------------------------
 
-/**
- * Timeout configuration interface
- */
-export interface TimeoutConfig {
-    /** how long a session can take to respond (to a ping or to a connection attempt) */
-    readonly session: number;
-    /** how long the websocket service waits for the authentication of a new websocket */
-    readonly authentication: number;
-    /** how long to wait between each time we ping the client to keep the session alive */
-    readonly ping: number;
-    /** how long to wait before we try to recover a session (consuming or producing media) after an error */
-    readonly recovery: number;
-    /** how long before a channel is closed after the last session leaves */
-    readonly channel: number;
-    /** how long to wait to gather messages before sending through the bus */
-    readonly busBatch: number;
-}
-
 // timeouts in milliseconds
-export const timeouts: TimeoutConfig = Object.freeze({
+export const timeouts = Object.freeze({
     // how long a session can take to respond (to a ping or to a connection attempt)
     session: 10_000,
     // how long the websocket service waits for the authentication of a new websocket
@@ -192,10 +220,54 @@ export const timeouts: TimeoutConfig = Object.freeze({
     // how long to wait before we try to recover a session (consuming or producing media) after an error
     recovery: 2_000,
     // how long before a channel is closed after the last session leaves
-    channel: 60 * 60_000,
+    channel: 60_000,
     // how long to wait to gather messages before sending through the bus
-    busBatch: process.env.JEST_WORKER_ID ? 10 : 300
+    busBatch: testingMode ? 10 : 300
 });
+
+/**
+ * Internal SFU directorie.
+ */
+export const dir = Object.freeze({
+    root: DATA_PATH,
+    recordings: path.join(DATA_PATH, "recordings"),
+    resources: path.join(DATA_PATH, "resources"),
+    debug: path.join(DATA_PATH, "debug")
+});
+
+export const recording = {
+    routingInterface: "127.0.0.1",
+    directory: dir.recordings,
+    enabled: RECORDING,
+    metadataFileName: "metadata.bin",
+    minDuration: 5 /* sec */ * 1000, // TODO should probably be raised in prod
+    maxDuration: 60 /* min */ * 60 * 1000,
+    fileTTL: 24 /* hours */ * 60 * 60 * 1000,
+    processingCooldown: 5 /* sec */ * 1000,
+    video: {
+        frameRate: "30",
+        codec: "libsvtav1",
+        preset: "8",
+        ext: "mp4",
+        mimeType: "video/mp4"
+    },
+    audio: {
+        codec: "libopus",
+        bitRate: "32k",
+        ext: "ogg",
+        mimeType: "audio/ogg"
+    },
+    /*
+     * Limits the amount of video streams recorded at once.
+     * Screen sharing has precedence over cameras and keeps only
+     * the most recent streams up to the configured limits.
+     *
+     * if screenLimit is increased,
+     * the mediaCompiler must implement a compatible layout (see _compileSegment)
+     */
+    cameraLimit: 4,
+    screenLimit: 1
+} as const;
 
 // how many errors can occur before the session is closed, recovery attempts will be made until this limit is reached
 export const maxSessionErrors: number = 6;
@@ -209,25 +281,10 @@ const baseProducerOptions: ProducerOptions = {
     zeroRtpOnPause: true
 };
 
-/**
- * RTC configuration interface
- */
-export interface RtcConfig {
-    readonly workerSettings: WorkerSettings;
-    readonly rtcServerOptions: WebRtcServerOptions;
-    readonly rtcTransportOptions: {
-        readonly maxSctpMessageSize: number;
-        readonly sctpSendBufferSize: number;
-    };
-    readonly producerOptionsByKind: {
-        readonly audio: ProducerOptions;
-        readonly video: ProducerOptions;
-    };
-}
-
-export const rtc: RtcConfig = Object.freeze({
+export const rtc = Object.freeze({
     // https://mediasoup.org/documentation/v3/mediasoup/api/#WorkerSettings
     workerSettings: {
+        disableLiburing: true,
         logLevel: WORKER_LOG_LEVEL,
         rtcMinPort: RTC_MIN_PORT,
         rtcMaxPort: RTC_MAX_PORT
@@ -260,6 +317,11 @@ export const rtc: RtcConfig = Object.freeze({
         maxSctpMessageSize: MAX_BUF_IN,
         sctpSendBufferSize: MAX_BUF_OUT
     },
+    plainTransportOptions: {
+        listenIp: { ip: "0.0.0.0", announcedIp: PUBLIC_IP },
+        rtcpMux: true,
+        comedia: false
+    },
     producerOptionsByKind: {
         /** Audio producer options */
         audio: baseProducerOptions,
@@ -273,8 +335,14 @@ export const rtc: RtcConfig = Object.freeze({
                 videoGoogleMaxBitrate: MAX_VIDEO_BITRATE * 2
             },
             encodings: [
-                { scaleResolutionDownBy: 4, maxBitrate: Math.floor(MAX_VIDEO_BITRATE / 4) },
-                { scaleResolutionDownBy: 2, maxBitrate: Math.floor(MAX_VIDEO_BITRATE / 2) },
+                {
+                    scaleResolutionDownBy: 4,
+                    maxBitrate: Math.floor(MAX_VIDEO_BITRATE / 4)
+                },
+                {
+                    scaleResolutionDownBy: 2,
+                    maxBitrate: Math.floor(MAX_VIDEO_BITRATE / 2)
+                },
                 { scaleResolutionDownBy: 1, maxBitrate: MAX_VIDEO_BITRATE }
             ]
         }
