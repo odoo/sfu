@@ -8,6 +8,8 @@
   "scripts": {
     "build": "rollup -c",
     "start": "node --experimental-transform-types ./src/server.ts",
+    "profiling:cpu": "mkdir -p ./profiling && node --cpu-prof --cpu-prof-dir=./profiling --cpu-prof-name=sfu.cpuprofile --experimental-transform-types ./src/server.ts",
+    "profiling:heap": "mkdir -p ./profiling && node --heap-prof --heap-prof-dir=./profiling --heap-prof-name=sfu.heapprofile --heapsnapshot-signal=SIGUSR2 --experimental-transform-types ./src/server.ts",
     "test": "LOG_LEVEL=none node ./node_modules/.bin/jest -i",
     "test:dev": "LOG_LEVEL=warn node ./node_modules/.bin/jest --detectOpenHandles --verbose --collectCoverage",
     "test:watch": "LOG_LEVEL=verbose node ./node_modules/.bin/jest --watch -i"
