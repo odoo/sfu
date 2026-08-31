@@ -19,11 +19,15 @@ import {
     WS_CLOSE_CODE
 } from "#src/shared/enums.ts";
 import type {
+    AvailableFeatures,
+    BusMessage,
     DownloadStates,
     JSONSerializable,
-    StreamType,
-    BusMessage,
+    RecordingActionAcknowledgement,
+    RecordingState,
     RequestMessage,
+    StartupData,
+    StreamType,
     WebSocketCredentials
 } from "#src/shared/types";
 import type { TransportConfig, SessionId, SessionInfo } from "#src/models/session.ts";
@@ -147,6 +151,18 @@ const ACTIVE_STATES = new Set<SfuClientState>([
 export class SfuClient extends EventTarget {
     /** Connection errors encountered */
     public errors: Error[] = [];
+    public availableFeatures: AvailableFeatures = {
+        rtc: false,
+        transcription: false,
+        audioRecording: false,
+        videoRecording: false
+    };
+    public recordingState: RecordingState = {
+        recording: false,
+        audio: false,
+        transcription: false,
+        video: false
+    };
     /** Current client state */
     private _state: SfuClientState = SfuClientState.DISCONNECTED;
     /** Communication bus */
@@ -262,6 +278,21 @@ export class SfuClient extends EventTarget {
         await Promise.all(proms);
         return stats;
     }
+
+    async startRecording(
+        options: { audio?: boolean; video?: boolean; transcription?: boolean } = {}
+    ): Promise<RecordingActionAcknowledgement> {
+        // eslint-disable-next-line no-console -- Browser consumers need an explicit unsupported API warning.
+        console.warn("SfuClient.startRecording is not implemented");
+        return false;
+    }
+
+    async stopRecording(): Promise<RecordingActionAcknowledgement> {
+        // eslint-disable-next-line no-console -- Browser consumers need an explicit unsupported API warning.
+        console.warn("SfuClient.stopRecording is not implemented");
+        return false;
+    }
+
     /**
      * Updates the server with the info of the session (isTalking, isCameraOn,...) so that it can broadcast it to the
      * other call participants.
@@ -467,7 +498,14 @@ export class SfuClient extends EventTarget {
              */
             webSocket.addEventListener(
                 "message",
-                () => {
+                (message) => {
+                    if (message.data) {
+                        const { availableFeatures, recordingState } = JSON.parse(
+                            message.data
+                        ) as StartupData;
+                        this.availableFeatures = availableFeatures;
+                        this.recordingState = recordingState;
+                    }
                     resolve(new Bus(webSocket));
                 },
                 { once: true }

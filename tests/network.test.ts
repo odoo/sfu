@@ -37,6 +37,61 @@ describe("Full network", () => {
         jest.useRealTimers();
         await network.close();
     });
+    test("The client exposes unavailable recording controls", async () => {
+        const warning = jest.spyOn(global.console, "warn").mockImplementation(() => {});
+        try {
+            const channelUUID = await network.getChannelUUID();
+            const { sfuClient } = await network.connect(channelUUID, 1);
+
+            expect(sfuClient.availableFeatures).toEqual({
+                rtc: true,
+                transcription: false,
+                audioRecording: false,
+                videoRecording: false
+            });
+            expect(sfuClient.recordingState).toEqual({
+                recording: false,
+                audio: false,
+                transcription: false,
+                video: false
+            });
+            await expect(sfuClient.startRecording({ audio: true })).resolves.toBe(false);
+            await expect(sfuClient.stopRecording()).resolves.toBe(false);
+            expect(warning).toHaveBeenNthCalledWith(
+                1,
+                "SfuClient.startRecording is not implemented"
+            );
+            expect(warning).toHaveBeenNthCalledWith(
+                2,
+                "SfuClient.stopRecording is not implemented"
+            );
+        } finally {
+            warning.mockRestore();
+        }
+    });
+    test("The client accepts a legacy empty startup message", async () => {
+        const stringify = JSON.stringify;
+        const stringifySpy = jest.spyOn(JSON, "stringify").mockImplementation((value) => {
+            if (
+                typeof value === "object" &&
+                value !== null &&
+                "availableFeatures" in value &&
+                "recordingState" in value
+            ) {
+                return "";
+            }
+            return stringify(value);
+        });
+        try {
+            const channelUUID = await network.getChannelUUID();
+            const { sfuClient } = await network.connect(channelUUID, 2);
+
+            expect(sfuClient.state).toBe(SFU_CLIENT_STATE.CONNECTED);
+            expect(sfuClient.availableFeatures.rtc).toBe(false);
+        } finally {
+            stringifySpy.mockRestore();
+        }
+    });
     test("The session of the server closes when the client is disconnected", async () => {
         const channelUUID = await network.getChannelUUID();
         const user1 = await network.connect(channelUUID, 1);

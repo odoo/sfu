@@ -69,6 +69,17 @@ const sfu = new SfuClient();
     typeof producerStats["camera"] === "RTCStatsReport"; // true
     // see https://w3c.github.io/webrtc-pc/#rtcstatsreport-object
     ```
+- availableFeatures / recordingState
+    ```js
+    sfu.availableFeatures.audioRecording; // false
+    sfu.recordingState.recording; // false
+    ```
+- startRecording() / stopRecording()
+    ```js
+    await sfu.startRecording({ audio: true }); // false
+    await sfu.stopRecording(); // false
+    ```
+    These compatibility methods warn because recording is not implemented.
 - @fires "update"
     ```js
     sfu.addEventListener("update", ({ detail: { name, payload } }) => {

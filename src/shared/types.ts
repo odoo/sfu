@@ -15,6 +15,27 @@ export type WebSocketCredentials = {
     jwt: string;
 };
 
+export type RecordingState = {
+    recording: boolean;
+    audio: boolean;
+    transcription: boolean;
+    video: boolean;
+};
+
+export type StartupData = {
+    availableFeatures: AvailableFeatures;
+    recordingState: RecordingState;
+};
+
+export type AvailableFeatures = {
+    rtc: boolean;
+    transcription: boolean;
+    audioRecording: boolean;
+    videoRecording: boolean;
+};
+
+export type RecordingActionAcknowledgement = boolean;
+
 import type { SessionId, SessionInfo, TransportConfig } from "#src/models/session.ts";
 
 export type DownloadStates = Partial<Record<StreamType, boolean>>;

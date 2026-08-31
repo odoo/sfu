@@ -57,6 +57,41 @@ describe("WebSocket Service", () => {
         const [code] = await once(ws, "close");
         expect(code).toBe(WS_CLOSE_CODE.AUTHENTICATION_FAILED);
     });
+    test("Sends startup data after authentication", async () => {
+        const channelUUID = await network.getChannelUUID({ useWebRtc: false });
+        const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);
+        await once(ws, "open");
+
+        ws.send(
+            JSON.stringify({
+                channelUUID,
+                jwt: network.makeChannelJwt(channelUUID, {
+                    sfu_channel_uuid: channelUUID,
+                    session_id: 1
+                })
+            })
+        );
+
+        const [message] = await once(ws, "message");
+        expect(JSON.parse(message.toString())).toEqual({
+            availableFeatures: {
+                rtc: false,
+                transcription: false,
+                audioRecording: false,
+                videoRecording: false
+            },
+            recordingState: {
+                recording: false,
+                audio: false,
+                transcription: false,
+                video: false
+            }
+        });
+
+        const close = once(ws, "close");
+        ws.close();
+        await close;
+    });
     test("Closes connection when Channel does not exist", async () => {
         const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);
         await once(ws, "open");

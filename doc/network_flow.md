@@ -38,7 +38,7 @@ sequenceDiagram
     Auth-->>WS: claims { session_id }
     WS->>Ch: Channel.join(uuid, session_id)
     Ch-->>WS: session
-    WS-->>C1: connection ready
+    WS-->>C1: startupData { availableFeatures, recordingState }
 
     Note over OS,Sess: 4. WebRTC Transport Initialization
     Sess->>Sess: createWebRtcTransport (CTS/STC)
@@ -103,7 +103,23 @@ Clients connect to the SFU via WebSocket and authenticate with their JWT.
    ```json
    { "jwt": "<signed-jwt>", "channelUUID": "<uuid>" }
    ```
-3. The SFU acknowledges the authenticated connection.
+3. The SFU acknowledges authentication with startup data:
+   ```json
+   {
+     "availableFeatures": {
+       "rtc": true,
+       "transcription": false,
+       "audioRecording": false,
+       "videoRecording": false
+     },
+     "recordingState": {
+       "recording": false,
+       "audio": false,
+       "transcription": false,
+       "video": false
+     }
+   }
+   ```
 
 ### 4. WebRTC Transport Initialization
 

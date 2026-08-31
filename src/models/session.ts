@@ -20,7 +20,13 @@ import {
     SERVER_REQUEST,
     STREAM_TYPE
 } from "#src/shared/enums.ts";
-import type { BusMessage, JSONSerializable, RequestMessage, StreamType } from "#src/shared/types";
+import type {
+    BusMessage,
+    JSONSerializable,
+    RequestMessage,
+    StartupData,
+    StreamType
+} from "#src/shared/types";
 import type { Bus } from "#src/shared/bus.ts";
 import type { Channel } from "#src/models/channel.ts";
 
@@ -166,6 +172,23 @@ export class Session extends EventEmitter {
         this._handleMessage = this._handleMessage.bind(this);
         this._handleRequest = this._handleRequest.bind(this);
         this.setMaxListeners(config.CHANNEL_SIZE * 2);
+    }
+
+    get startupData(): StartupData {
+        return {
+            availableFeatures: {
+                rtc: Boolean(this._channel.router),
+                transcription: false,
+                audioRecording: false,
+                videoRecording: false
+            },
+            recordingState: {
+                recording: false,
+                audio: false,
+                transcription: false,
+                video: false
+            }
+        };
     }
 
     get name(): string {
