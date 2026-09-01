@@ -96,6 +96,16 @@ export function base64Encode(data: StringLike): string {
     return data.toString("base64url");
 }
 
+/**
+ * @throws {AuthenticationError} when no SFU authentication key is available.
+ */
+export function deriveChannelKey(seed: StringLike, key: StringLike = jwtKey!): Buffer {
+    if (!key) {
+        throw new AuthenticationError("JWT signing key is not set");
+    }
+    return crypto.createHmac("sha256", b64toBuffer(key)).update(b64toBuffer(seed)).digest();
+}
+
 function base64Decode(str: string): Buffer {
     return Buffer.from(str, "base64url");
 }

@@ -20,12 +20,14 @@ sequenceDiagram
     Note over OS,Sess: 1. Channel Creation
     OS->>HTTP: GET /v1/channel<br>Authorization: Bearer <JWT>
     HTTP->>Auth: verify(JWT)
-    Auth-->>HTTP: claims { iss, key? }
+    Auth-->>HTTP: claims { iss, key?, keySeed? }
+    HTTP->>Auth: derive key from non-empty keySeed<br>or use legacy key
     HTTP->>Ch: Channel.create(iss, options)
     Ch-->>HTTP: channel { uuid, router }
     HTTP-->>OS: { uuid, url }
 
     Note over OS,Sess: 2. JWT Distribution
+    OS->>OS: derive channel key from AUTH_KEY and keySeed when provided
     OS->>OS: sign JWTs with channel key
     OS-->>C1: JWT + SFU URL
     OS-->>C2: JWT + SFU URL
@@ -69,7 +71,7 @@ The Odoo server initiates a channel by calling `GET /v1/channel` with a signed (
 The SFU:
 1. Verifies the JWT using the global `AUTH_KEY`
 2. Creates (or retrieves) a channel identified by the `iss` claim
-3. Uses the `key` claim as the channel key, or the global `AUTH_KEY` if the claim is omitted
+3. Uses a non-empty `keySeed` to derive the channel key. Otherwise it uses the legacy `key` claim or global `AUTH_KEY`.
 
 reponds with:
 ```json
@@ -82,7 +84,9 @@ reponds with:
 
 ### 2. JWT Distribution
 
-The Odoo server uses the channel key to sign JWTs for its clients. These JWTs are distributed to clients along with the SFU URL. If the channel JWT omitted the `key` claim, the global `AUTH_KEY` is the channel key.
+The Odoo server uses the channel key to sign JWTs for its clients. When `keySeed` is non-empty Odoo and the SFU derive the same channel key from `AUTH_KEY` and `keySeed`. These JWTs are distributed to clients along with the SFU URL. If neither `keySeed` nor `key` has a non-empty value the global `AUTH_KEY` is the channel key.
+
+The derived key is not included in the provisioning JWT and cannot be computed from `keySeed` without the global `AUTH_KEY`. The legacy `key` claim remains supported for compatibility but includes the channel key in the provisioning JWT. A non-empty `keySeed` takes precedence over `key`.
 
 **JWT Claims for Clients:**
 ```json

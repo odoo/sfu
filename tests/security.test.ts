@@ -1,6 +1,7 @@
 import { describe, beforeEach, afterEach, expect } from "@jest/globals";
 
 import { Channel } from "#src/models/channel";
+import * as auth from "#src/services/auth";
 
 import { AUTH_KEY, LocalNetwork } from "#tests/utils/network";
 
@@ -29,11 +30,42 @@ describe("Security", () => {
         await expect(network.connect(channelUUID, 3, { key: "wrong-key" })).rejects.toThrow();
         expect(channel!.sessions.size).toBe(0);
     });
+    test("can join a channel with its derived key", async () => {
+        const keySeed = Buffer.from("channel-specific-seed").toString("base64");
+        const key = auth.deriveChannelKey(keySeed);
+        const channelUUID = await network.getChannelUUID({ keySeed });
+        const channel = Channel.records.get(channelUUID);
+        await network.connect(channelUUID, 4, { key });
+        expect(channel!.sessions.size).toBe(1);
+    });
     test("can join a channel with its legacy key", async () => {
         const key = Buffer.from("legacy-channel-key").toString("base64");
         const channelUUID = await network.getChannelUUID({ key });
         const channel = Channel.records.get(channelUUID);
         await network.connect(channelUUID, 4, { key });
+        expect(channel!.sessions.size).toBe(1);
+    });
+    test("prefers a channel key seed over a legacy key", async () => {
+        const keySeed = Buffer.from("channel-specific-seed").toString("base64");
+        const key = Buffer.from("legacy-channel-key").toString("base64");
+        const channelUUID = await network.getChannelUUID({ key, keySeed });
+        const channel = Channel.records.get(channelUUID);
+        await expect(network.connect(channelUUID, 4, { key })).rejects.toThrow();
+        expect(channel!.sessions.size).toBe(0);
+        await network.connect(channelUUID, 4);
+        expect(channel!.sessions.size).toBe(1);
+    });
+    test("uses a legacy key when the channel key seed is empty", async () => {
+        const key = Buffer.from("legacy-channel-key").toString("base64");
+        const channelUUID = await network.getChannelUUID({ key, keySeed: "" });
+        const channel = Channel.records.get(channelUUID);
+        await network.connect(channelUUID, 4, { key });
+        expect(channel!.sessions.size).toBe(1);
+    });
+    test("uses the global key when the channel key seed is empty", async () => {
+        const channelUUID = await network.getChannelUUID({ keySeed: "" });
+        const channel = Channel.records.get(channelUUID);
+        await network.connect(channelUUID, 4, { key: AUTH_KEY });
         expect(channel!.sessions.size).toBe(1);
     });
 });

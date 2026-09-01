@@ -25,6 +25,7 @@ type RouteCallback = (
 ) => Promise<ServerResponse> | ServerResponse;
 type HttpChannelClaims = {
     key?: string;
+    keySeed?: string;
 };
 type HttpDisconnectClaims = {
     sessionIdsByChannel: Record<string, SessionId[]>;
@@ -119,8 +120,11 @@ function setupRoutes(routeListener: RouteListener): void {
                     res.statusCode = 403; // forbidden
                     return res.end();
                 }
+                const channelKey = claims.keySeed
+                    ? auth.deriveChannelKey(claims.keySeed)
+                    : claims.key;
                 const channel = await Channel.create(remoteAddress, claims.iss, {
-                    key: claims.key,
+                    key: channelKey,
                     useWebRtc: searchParams.get("webRTC") !== "false"
                 });
                 res.setHeader("Content-Type", "application/json");

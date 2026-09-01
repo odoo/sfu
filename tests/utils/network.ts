@@ -65,22 +65,27 @@ export class LocalNetwork {
      * @param [param0] - options
      * @param [param0.useWebRtc=true] - Whether to enable WebRTC for the channel
      * @param [param0.key=AUTH_KEY] - Channel key
+     * @param [param0.keySeed] - Channel key seed
      * @returns Promise resolving to channel UUID
      */
     async getChannelUUID({
         useWebRtc = true,
-        key = AUTH_KEY
+        key,
+        keySeed
     }: {
         useWebRtc?: boolean;
         key?: string;
+        keySeed?: string;
     } = {}): Promise<string> {
         if (!this.port) {
             throw new Error("Network not started - call start() first");
         }
+        const legacyKey = key ?? (keySeed === undefined ? AUTH_KEY : undefined);
 
         const jwt = this.makeJwt({
             iss: `${this.url}/`,
-            key
+            key: legacyKey,
+            keySeed
         });
         const response = await fetch(
             `${this.url}/v${http.API_VERSION}/channel?webRTC=${useWebRtc}`,
@@ -97,8 +102,10 @@ export class LocalNetwork {
         }
 
         const result = (await response.json()) as { uuid: string };
-        if (key) {
-            this._channelKeys.set(result.uuid, Buffer.from(key, "base64"));
+        if (keySeed) {
+            this._channelKeys.set(result.uuid, auth.deriveChannelKey(keySeed, HMAC_KEY));
+        } else if (legacyKey) {
+            this._channelKeys.set(result.uuid, Buffer.from(legacyKey, "base64"));
         }
         return result.uuid;
     }
