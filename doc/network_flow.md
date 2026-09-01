@@ -145,3 +145,10 @@ the webrtc connection
 ### 6. Ready to Stream
 
 can call updateupload / updatedownload
+
+### Recording Compatibility
+
+The client sends `START_RECORDING` and `STOP_RECORDING` requests. This server
+recognizes both requests and responds with `false` because the recording
+backend is not present. A recording-capable server reports the resulting state
+with `CH_INFO_CHANGE` messages.

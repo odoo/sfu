@@ -686,6 +686,9 @@ export class Session extends EventEmitter {
                 this._broadcastInfo();
                 return { id: producer.id };
             }
+            case CLIENT_REQUEST.START_RECORDING:
+            case CLIENT_REQUEST.STOP_RECORDING:
+                return false;
             default:
                 logger.warn(`[${this.name}] Unknown request type: ${name}`);
                 throw new Error(`Unknown request type: ${name}`);

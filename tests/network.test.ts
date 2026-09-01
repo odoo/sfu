@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, jest } from "@jest/globals";
 import { FakeMediaStreamTrack } from "fake-mediastreamtrack";
 
 import { SESSION_CLOSE_CODE, SESSION_STATE } from "#src/models/session";
-import { STREAM_TYPE } from "#src/shared/enums.ts";
+import { CLIENT_REQUEST, SERVER_MESSAGE, STREAM_TYPE } from "#src/shared/enums.ts";
 import { Channel } from "#src/models/channel";
 import { CLIENT_UPDATE, SFU_CLIENT_STATE } from "#src/client";
 import { timeouts } from "#src/config";
@@ -37,37 +37,57 @@ describe("Full network", () => {
         jest.useRealTimers();
         await network.close();
     });
-    test("The client exposes unavailable recording controls", async () => {
-        const warning = jest.spyOn(global.console, "warn").mockImplementation(() => {});
-        try {
-            const channelUUID = await network.getChannelUUID();
-            const { sfuClient } = await network.connect(channelUUID, 1);
+    test("The server denies recording requests", async () => {
+        const channelUUID = await network.getChannelUUID();
+        const { session, sfuClient } = await network.connect(channelUUID, 1);
+        const onRequest = jest.fn(session.bus!.onRequest!);
+        session.bus!.onRequest = onRequest;
 
-            expect(sfuClient.availableFeatures).toEqual({
-                rtc: true,
-                transcription: false,
-                audioRecording: false,
-                videoRecording: false
-            });
-            expect(sfuClient.recordingState).toEqual({
-                recording: false,
-                audio: false,
-                transcription: false,
-                video: false
-            });
-            await expect(sfuClient.startRecording({ audio: true })).resolves.toBe(false);
-            await expect(sfuClient.stopRecording()).resolves.toBe(false);
-            expect(warning).toHaveBeenNthCalledWith(
-                1,
-                "SfuClient.startRecording is not implemented"
-            );
-            expect(warning).toHaveBeenNthCalledWith(
-                2,
-                "SfuClient.stopRecording is not implemented"
-            );
-        } finally {
-            warning.mockRestore();
-        }
+        expect(sfuClient.availableFeatures).toEqual({
+            rtc: true,
+            transcription: false,
+            audioRecording: false,
+            videoRecording: false
+        });
+        expect(sfuClient.recordingState).toEqual({
+            recording: false,
+            audio: false,
+            transcription: false,
+            video: false
+        });
+        await expect(sfuClient.startRecording({ audio: true })).resolves.toBe(false);
+        await expect(sfuClient.stopRecording()).resolves.toBe(false);
+        expect(onRequest).toHaveBeenNthCalledWith(1, {
+            name: CLIENT_REQUEST.START_RECORDING,
+            payload: { audio: true }
+        });
+        expect(onRequest).toHaveBeenNthCalledWith(2, {
+            name: CLIENT_REQUEST.STOP_RECORDING
+        });
+    });
+    test("The client applies recording state updates", async () => {
+        const channelUUID = await network.getChannelUUID();
+        const { session, sfuClient } = await network.connect(channelUUID, 2);
+        const state = {
+            recording: false,
+            audio: true,
+            transcription: false,
+            video: true
+        };
+        const update = nextUpdate(sfuClient, CLIENT_UPDATE.CHANNEL_INFO_CHANGE);
+
+        session.bus!.send({
+            name: SERVER_MESSAGE.CHANNEL_INFO_CHANGE,
+            payload: { state, stopCode: "recording_timeout" }
+        });
+
+        await expect(update).resolves.toMatchObject({
+            detail: {
+                name: CLIENT_UPDATE.CHANNEL_INFO_CHANGE,
+                payload: { state, stopCode: "recording_timeout" }
+            }
+        });
+        expect(sfuClient.recordingState).toEqual(state);
     });
     test("The client accepts a legacy empty startup message", async () => {
         const stringify = JSON.stringify;

@@ -76,14 +76,22 @@ const sfu = new SfuClient();
     ```
 - startRecording() / stopRecording()
     ```js
-    await sfu.startRecording({ audio: true }); // false
-    await sfu.stopRecording(); // false
+    const started = await sfu.startRecording({ audio: true });
+    const stopped = await sfu.stopRecording();
     ```
-    These compatibility methods warn because recording is not implemented.
+    Each promise resolves to whether the server accepted the request. A `false`
+    result means the client is disconnected or the server denied the request.
+    A `true` result only acknowledges acceptance. The `channel_info_change`
+    update carries the resulting state.
 - @fires "update"
     ```js
     sfu.addEventListener("update", ({ detail: { name, payload } }) => {
         switch (name) {
+            case "channel_info_change": {
+                const { recording, audio, transcription, video } = payload.state;
+                const { stopCode } = payload;
+                return;
+            }
             case "track":
                 {
                     const { sessionId, type, track, active } = payload;

@@ -25,6 +25,7 @@ import type {
     JSONSerializable,
     RecordingActionAcknowledgement,
     RecordingState,
+    RecordingStateUpdate,
     RequestMessage,
     StartupData,
     StreamType,
@@ -65,11 +66,14 @@ export enum CLIENT_UPDATE {
     /** A session has left the channel */
     DISCONNECT = "disconnect",
     /** Session info has changed */
-    INFO_CHANGE = "info_change"
+    INFO_CHANGE = "info_change",
+    /** Recording state has changed */
+    CHANNEL_INFO_CHANGE = "channel_info_change"
 }
 type ClientUpdatePayload =
     | { senderId: SessionId; message: JSONSerializable }
     | { sessionId: SessionId }
+    | RecordingStateUpdate
     | Record<SessionId, SessionInfo>
     | {
           type: StreamType;
@@ -282,15 +286,28 @@ export class SfuClient extends EventTarget {
     async startRecording(
         options: { audio?: boolean; video?: boolean; transcription?: boolean } = {}
     ): Promise<RecordingActionAcknowledgement> {
-        // eslint-disable-next-line no-console -- Browser consumers need an explicit unsupported API warning.
-        console.warn("SfuClient.startRecording is not implemented");
-        return false;
+        if (this.state !== SfuClientState.CONNECTED) {
+            return false;
+        }
+        return this._bus!.request(
+            {
+                name: CLIENT_REQUEST.START_RECORDING,
+                payload: options
+            },
+            { batch: true }
+        );
     }
 
     async stopRecording(): Promise<RecordingActionAcknowledgement> {
-        // eslint-disable-next-line no-console -- Browser consumers need an explicit unsupported API warning.
-        console.warn("SfuClient.stopRecording is not implemented");
-        return false;
+        if (this.state !== SfuClientState.CONNECTED) {
+            return false;
+        }
+        return this._bus!.request(
+            {
+                name: CLIENT_REQUEST.STOP_RECORDING
+            },
+            { batch: true }
+        );
     }
 
     /**
@@ -635,6 +652,10 @@ export class SfuClient extends EventTarget {
             }
             case SERVER_MESSAGE.INFO_CHANGE:
                 this._updateClient(CLIENT_UPDATE.INFO_CHANGE, payload);
+                break;
+            case SERVER_MESSAGE.CHANNEL_INFO_CHANGE:
+                this.recordingState = payload.state;
+                this._updateClient(CLIENT_UPDATE.CHANNEL_INFO_CHANGE, payload);
                 break;
         }
     }
