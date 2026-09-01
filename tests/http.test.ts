@@ -71,7 +71,7 @@ describe("HTTP", () => {
         expect(response.ok).toBe(true);
         const { uuid, url } = await response.json();
         expect(Channel.records.get(uuid)?.key?.toString("base64")).toBe(
-            auth.deriveChannelKey(keySeed)
+            auth.deriveChannelKey(keySeed).toString("base64")
         );
         expect(url).toBe(`http://${config.PUBLIC_IP}:${config.PORT}`);
     });

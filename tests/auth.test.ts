@@ -75,20 +75,25 @@ describe("Auth Service", () => {
         const payload = auth.verify(THIRD_PARTY_TOKEN.token, THIRD_PARTY_TOKEN.key);
         expect(payload).toEqual(THIRD_PARTY_TOKEN.payload);
     });
-    test("should derive Odoo channel keys", () => {
-        const key = "u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng=";
-        const seed =
-            "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZg==";
-        expect(auth.deriveChannelKey(seed, key)).toBe(
+    test.each([
+        [
+            "standard Base64",
+            "u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng=",
+            "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZg==",
             "HENUokImFacg/rZ/mJ7kQZxMVsffKHTdI2x1MqdMjI8="
-        );
-        expect(
-            auth.deriveChannelKey(
-                "__7__v_-__7__v_-__7__v_-__7__v_-__7__v_-__4",
-                "-__7__v_-__7__v_-__7__v_-__7__v_-__7__v_-_8"
-            )
-        ).toBe("rO7BLYI5td5yDmpFtuL3EEJkipz1UM3rC2OJYrJpvTk=");
-    });
+        ],
+        [
+            "Base64url",
+            "-__7__v_-__7__v_-__7__v_-__7__v_-__7__v_-_8",
+            "__7__v_-__7__v_-__7__v_-__7__v_-__7__v_-__4",
+            "rO7BLYI5td5yDmpFtuL3EEJkipz1UM3rC2OJYrJpvTk="
+        ]
+    ])(
+        "should derive an Odoo-compatible channel key from %s input",
+        (_encoding, key, seed, expected) => {
+            expect(auth.deriveChannelKey(seed, key).toString("base64")).toBe(expected);
+        }
+    );
     test("should reject a token signed with the wrong key", () => {
         const payload = {
             sub: "1234567890",

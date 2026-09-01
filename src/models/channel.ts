@@ -4,10 +4,11 @@ import crypto from "node:crypto";
 import type { Router, WebRtcServer } from "mediasoup/node/lib/types";
 
 import * as config from "#src/config.ts";
-import { getAllowedCodecs, Logger } from "#src/utils/utils.ts";
+import { b64toBuffer, getAllowedCodecs, Logger } from "#src/utils/utils.ts";
 import { AuthenticationError, OvercrowdedError } from "#src/utils/errors.ts";
 import { Session, SESSION_CLOSE_CODE, type SessionId } from "#src/models/session.ts";
 import { getWorker, type RtcWorker } from "#src/services/rtc.ts";
+import type { StringLike } from "#src/shared/types.ts";
 
 const logger = new Logger("CHANNEL");
 
@@ -45,7 +46,7 @@ export type ChannelStats = {
 };
 type ChannelCreateOptions = {
     /** Optional signing key for channel authentication */
-    key?: string;
+    key?: StringLike;
     /** Whether to enable WebRTC functionality */
     useWebRtc?: boolean;
 };
@@ -203,7 +204,7 @@ export class Channel extends EventEmitter {
         this.remoteAddress = remoteAddress;
         this._worker = worker;
         this.router = router;
-        this.key = key ? Buffer.from(key, "base64") : undefined;
+        this.key = key ? b64toBuffer(key) : undefined;
         this.uuid = crypto.randomUUID();
         this.name = `${remoteAddress}*${this.uuid.slice(-5)}`;
         this._onSessionClose = this._onSessionClose.bind(this);

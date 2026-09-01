@@ -97,15 +97,13 @@ export function base64Encode(data: StringLike): string {
 }
 
 /**
- * @throws {AuthenticationError} If no SFU authentication key is available
+ * @throws {AuthenticationError} when no SFU authentication key is available.
  */
-export function deriveChannelKey(seed: StringLike, key: StringLike = jwtKey!): string {
+export function deriveChannelKey(seed: StringLike, key: StringLike = jwtKey!): Buffer {
     if (!key) {
         throw new AuthenticationError("JWT signing key is not set");
     }
-    const keyBuffer = Buffer.isBuffer(key) ? key : Buffer.from(key, "base64");
-    const seedBuffer = Buffer.isBuffer(seed) ? seed : Buffer.from(seed, "base64");
-    return crypto.createHmac("sha256", keyBuffer).update(seedBuffer).digest("base64");
+    return crypto.createHmac("sha256", b64toBuffer(key)).update(b64toBuffer(seed)).digest();
 }
 
 function base64Decode(str: string): Buffer {
