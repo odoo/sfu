@@ -107,7 +107,10 @@ Clients connect to the SFU via WebSocket and authenticate with their JWT.
    ```json
    { "jwt": "<signed-jwt>", "channelUUID": "<uuid>" }
    ```
-3. The SFU acknowledges authentication with startup data:
+3. The SFU verifies the token with the selected channel key. When credentials
+   contain `channelUUID`, the signed `sfu_channel_uuid` claim is required and
+   must match it. A mismatch fails authentication.
+4. The SFU acknowledges authentication with startup data:
    ```json
    {
      "availableFeatures": {

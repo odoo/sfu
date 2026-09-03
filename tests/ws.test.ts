@@ -57,6 +57,29 @@ describe("WebSocket Service", () => {
         const [code] = await once(ws, "close");
         expect(code).toBe(WS_CLOSE_CODE.AUTHENTICATION_FAILED);
     });
+    test.each([
+        ["missing", undefined],
+        ["different", "different-channel-uuid"]
+    ])("Closes connection when JWT channel UUID is %s", async (_description, jwtChannelUUID) => {
+        const channelUUID = await network.getChannelUUID({ useWebRtc: false });
+        const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);
+        await once(ws, "open");
+
+        const close = once(ws, "close");
+        ws.send(
+            JSON.stringify({
+                channelUUID,
+                jwt: network.makeChannelJwt(channelUUID, {
+                    sfu_channel_uuid: jwtChannelUUID,
+                    session_id: 1
+                })
+            })
+        );
+
+        const [code] = await close;
+        expect(code).toBe(WS_CLOSE_CODE.AUTHENTICATION_FAILED);
+        expect(Channel.records.get(channelUUID)?.sessions.size).toBe(0);
+    });
     test("Sends startup data after authentication", async () => {
         const channelUUID = await network.getChannelUUID({ useWebRtc: false });
         const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);

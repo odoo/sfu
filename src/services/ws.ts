@@ -127,6 +127,7 @@ export function close(): void {
  *  - channel capacity is reached.
  * @throws {AuthenticationError}  when:
  *  - JWT verification fails.
+ *  - supplied channel UUID does not match the signed claim.
  *  - channel access fails.
  */
 function connect(webSocket: WebSocket, credentials: WebSocketCredentials): Session {
@@ -134,6 +135,9 @@ function connect(webSocket: WebSocket, credentials: WebSocketCredentials): Sessi
     let channel = channelUUID ? Channel.records.get(channelUUID) : undefined;
     const authResult = verify<WSConnectClaims>(jwt, channel?.key);
     const { sfu_channel_uuid, session_id } = authResult;
+    if (channelUUID !== undefined && channelUUID !== sfu_channel_uuid) {
+        throw new AuthenticationError("Channel UUID does not match JWT claim");
+    }
     if (!channelUUID && sfu_channel_uuid) {
         // Cases where the channelUUID is not provided in the credentials for backwards compatibility with version 1.1 and earlier.
         channel = Channel.records.get(sfu_channel_uuid);
