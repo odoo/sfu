@@ -3,7 +3,8 @@ import { EventEmitter } from "node:events";
 import { expect, describe, jest } from "@jest/globals";
 
 import { Bus } from "#src/shared/bus";
-import type { JSONSerializable, BusMessage } from "#src/shared/types";
+import { CLIENT_REQUEST, STREAM_TYPE } from "#src/shared/enums.ts";
+import type { JSONSerializable, BusMessage, RequestMessage } from "#src/shared/types";
 
 class MockTargetWebSocket extends EventTarget {
     send(message: JSONSerializable) {
@@ -68,20 +69,23 @@ describe("Bus API", () => {
         const { aliceSocket, bobSocket } = mockSocketPair();
         const aliceBus = new Bus(aliceSocket as unknown as WebSocket);
         const bobBus = new Bus(bobSocket as unknown as WebSocket);
-        //@ts-expect-error we do not need to return for the test
-        bobBus.onRequest = (message: JSONSerializable) => {
-            if (message === "ping") {
-                return "pong";
+        bobBus.onRequest = async ({ name }) =>
+            name === CLIENT_REQUEST.INIT_PRODUCER ? { id: "producer" } : undefined;
+        const response = await aliceBus.request({
+            name: CLIENT_REQUEST.INIT_PRODUCER,
+            payload: {
+                type: STREAM_TYPE.AUDIO,
+                kind: "audio",
+                rtpParameters: { codecs: [] }
             }
-        };
-        const response = await aliceBus.request("ping" as unknown as BusMessage);
-        expect(response).toBe("pong");
+        });
+        expect(response).toEqual({ id: "producer" });
     });
     test("promises are rejected when the bus is closed", async () => {
         const { aliceSocket } = mockSocketPair();
         const aliceBus = new Bus(aliceSocket as unknown as WebSocket);
         let rejected = false;
-        const promise = aliceBus.request("ping" as unknown as BusMessage);
+        const promise = aliceBus.request("ping" as unknown as RequestMessage);
         aliceBus.close();
         try {
             await promise;
@@ -96,7 +100,7 @@ describe("Bus API", () => {
         const { aliceSocket } = mockSocketPair();
         const aliceBus = new Bus(aliceSocket as unknown as WebSocket);
         const timeout = 500;
-        const promise = aliceBus.request("hello" as unknown as BusMessage, { timeout });
+        const promise = aliceBus.request("hello" as unknown as RequestMessage, { timeout });
         jest.advanceTimersByTime(timeout);
         await expect(promise).rejects.toThrow();
         jest.useRealTimers();

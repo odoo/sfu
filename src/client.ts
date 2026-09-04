@@ -24,6 +24,9 @@ import type {
     JSONSerializable,
     RecordingFlags,
     RecordingStateUpdate,
+    RequestMessage,
+    RequestName,
+    ResponseFrom,
     StartupData,
     StreamType
 } from "#src/shared/types";
@@ -294,13 +297,13 @@ export class SfuClient extends EventTarget {
         if (this.state !== SfuClientState.CONNECTED) {
             throw new Error("SFU client is not connected");
         }
-        return (await this._bus!.request(
+        return this._bus!.request(
             {
                 name: CLIENT_REQUEST.SET_RECORDING,
                 payload: options
             },
             { batch: true }
-        )) as boolean;
+        );
     }
 
     /**
@@ -546,10 +549,10 @@ export class SfuClient extends EventTarget {
         });
         transport.on("produce", async ({ kind, rtpParameters, appData }, callback, errback) => {
             try {
-                const result = (await this._bus!.request({
+                const result = await this._bus!.request({
                     name: CLIENT_REQUEST.INIT_PRODUCER,
                     payload: { type: appData.type as StreamType, kind, rtpParameters }
-                })) as { id: string };
+                });
                 callback({ id: result.id });
             } catch (error) {
                 errback(error as Error);
@@ -626,7 +629,7 @@ export class SfuClient extends EventTarget {
                 this._updateClient(CLIENT_UPDATE.BROADCAST, payload);
                 break;
             case SERVER_MESSAGE.SESSION_LEAVE: {
-                const { sessionId } = payload as { sessionId: SessionId };
+                const { sessionId } = payload;
                 this._removeConsumers(sessionId);
                 this._updateClient(CLIENT_UPDATE.DISCONNECT, payload);
                 break;
@@ -641,7 +644,10 @@ export class SfuClient extends EventTarget {
         }
     }
 
-    private async _handleRequest({ name, payload }: BusMessage): Promise<JSONSerializable | void> {
+    private async _handleRequest({
+        name,
+        payload
+    }: RequestMessage): Promise<ResponseFrom<RequestName>> {
         switch (name) {
             case SERVER_REQUEST.INIT_CONSUMER: {
                 const { id, kind, producerId, rtpParameters, sessionId, type, active } = payload;
@@ -683,7 +689,7 @@ export class SfuClient extends EventTarget {
                 this._makeSTCTransport(stcConfig);
                 this._makeCTSTransport(ctsConfig);
                 this.state = SfuClientState.CONNECTED;
-                return this._device!.rtpCapabilities as JSONSerializable;
+                return this._device!.rtpCapabilities;
             }
             case SERVER_REQUEST.PING:
                 return; // Just respond to keep connection alive
