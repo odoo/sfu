@@ -1,28 +1,27 @@
 import crypto from "node:crypto";
 
 import * as config from "#src/config.ts";
-import { Logger } from "#src/utils/utils.ts";
+import { Logger, b64toBuffer } from "#src/utils/utils.ts";
 import { AuthenticationError } from "#src/utils/errors.ts";
-import type { SessionId } from "#src/models/session.ts";
 import type { StringLike } from "#src/shared/types.ts";
 
 /**
  * JsonWebToken (JOSE) header
  * @see https://datatracker.ietf.org/doc/html/rfc7519#section-5
  */
-interface JWTHeader {
+type JWTHeader = {
     /** Algorithm used to sign the token */
     alg: string;
     /** Type of the token, usually "JWT" */
     typ: string;
-}
+};
 /**
  * JsonWebToken claims
  * @see https://datatracker.ietf.org/doc/html/rfc7519#section-4
  */
-interface RegisteredJWTClaims {
+export type JWTClaims = {
     /** Expiration time (in seconds since epoch) */
-    exp?: number;
+    exp: number;
     /** Issued at (in seconds since epoch) */
     iat?: number;
     /** Not before (in seconds since epoch) */
@@ -35,37 +34,25 @@ interface RegisteredJWTClaims {
     aud?: string;
     /** JWT ID */
     jti?: string;
-}
-/**
- * Private JWT claims specific to the SFU
- */
-interface PrivateJWTClaims {
-    sfu_channel_uuid?: string;
-    session_id?: SessionId;
-    ice_servers?: object[];
-    sessionIdsByChannel?: Record<string, SessionId[]>;
-    /** If provided when requesting a channel, this key will be used instead of the global key to verify JWTs related to this channel */
-    key?: string;
-}
-export type JWTClaims = RegisteredJWTClaims & PrivateJWTClaims;
+};
 
-interface ParsedJWT {
+type ParsedJWT<T> = {
     /** JWT header */
     header: JWTHeader;
     /** JWT claims/payload */
-    claims: JWTClaims;
+    claims: JWTClaims & T;
     /** Signature buffer */
     signature: Buffer;
     /** Data that was signed (header.payload) */
     signedData: string;
-}
+};
 /**
  * JWT signing options
  */
-interface SignOptions {
+type SignOptions = {
     /** Algorithm to use for signing */
     algorithm?: ALGORITHM;
-}
+};
 /**
  * Supported signing algorithms
  */
@@ -84,34 +71,43 @@ const ALGORITHM_FUNCTIONS: Record<ALGORITHM, (data: string, key: Buffer) => Buff
 let jwtKey: Buffer | undefined;
 const logger = new Logger("AUTH");
 
-export function start(key?: string | Buffer): void {
-    const keyB64str = key || config.AUTH_KEY;
-    if (!keyB64str) {
+/**
+ * Initializes the authentication signing key.
+ *
+ * @throws {Error} when no signing key is available.
+ */
+export function start(key?: StringLike): void {
+    const authKeyB64str = key || config.AUTH_KEY;
+    if (!authKeyB64str) {
         throw new Error("AUTH_KEY is required for authentication service");
     }
-
-    jwtKey = Buffer.isBuffer(keyB64str) ? keyB64str : Buffer.from(keyB64str, "base64");
-    logger.info("auth key set");
+    jwtKey = b64toBuffer(authKeyB64str);
+    logger.info(`ready with ${jwtKey.length} bytes auth key`);
 }
 
 export function close(): void {
     jwtKey = undefined;
 }
 
-export function base64Encode(data: Buffer | string): string {
+export function base64Encode(data: StringLike): string {
     if (typeof data === "string") {
         data = Buffer.from(data);
     }
-    return data.toString("base64");
+    return data.toString("base64url");
+}
+
+/**
+ * @throws {AuthenticationError} when no SFU authentication key is available.
+ */
+export function deriveChannelKey(seed: StringLike, key: StringLike = jwtKey!): Buffer {
+    if (!key) {
+        throw new AuthenticationError("JWT signing key is not set");
+    }
+    return crypto.createHmac("sha256", b64toBuffer(key)).update(b64toBuffer(seed)).digest();
 }
 
 function base64Decode(str: string): Buffer {
-    let output = str;
-    const paddingLength = 4 - (output.length % 4);
-    if (paddingLength < 4) {
-        output += "=".repeat(paddingLength);
-    }
-    return Buffer.from(output, "base64");
+    return Buffer.from(str, "base64url");
 }
 
 /**
@@ -121,19 +117,19 @@ function base64Decode(str: string): Buffer {
  * @param key - Optional key, defaults to the configured jwtKey
  * @param options - Signing options
  * @returns The signed JsonWebToken
- * @throws {AuthenticationError} If signing fails
+ * @throws {AuthenticationError} when:
+ *  - no key is provided.
+ *  - the algorithm is not implemented.
  */
-export function sign(
-    claims: JWTClaims,
+export function sign<T>(
+    claims: JWTClaims & T,
     key: StringLike = jwtKey!,
-    options: SignOptions = {}
+    { algorithm = ALGORITHM.HS256 }: SignOptions = {}
 ): string {
-    const { algorithm = ALGORITHM.HS256 } = options;
-
     if (!key) {
         throw new AuthenticationError("JWT signing key is not set");
     }
-    const keyBuffer = Buffer.isBuffer(key) ? key : Buffer.from(key, "base64");
+    const keyBuffer = b64toBuffer(key);
     const header: JWTHeader = { alg: algorithm, typ: "JWT" };
     const headerB64 = base64Encode(JSON.stringify(header));
     const claimsB64 = base64Encode(JSON.stringify(claims));
@@ -148,17 +144,20 @@ export function sign(
 }
 
 /**
- * @throws {AuthenticationError} If token format is invalid
+ * @throws {AuthenticationError} when the token does not have 3 sections or cannot be decoded/parsing fails.
  */
-function parseJwt(token: string): ParsedJWT {
+function parseJwt<T>(token: string): ParsedJWT<T> {
     const parts = token.split(".");
     if (parts.length !== 3) {
         throw new AuthenticationError("Invalid JWT format");
     }
     const [headerB64, claimsB64, signatureB64] = parts;
     try {
-        const header = JSON.parse(base64Decode(headerB64).toString()) as JWTHeader;
-        const claims = JSON.parse(base64Decode(claimsB64).toString()) as JWTClaims;
+        const header = JSON.parse(base64Decode(headerB64).toString()) as JWTHeader | null;
+        const claims = JSON.parse(base64Decode(claimsB64).toString()) as (JWTClaims & T) | null;
+        if (!header || !claims) {
+            throw new AuthenticationError("Invalid JWT format");
+        }
         const signature = base64Decode(signatureB64);
         const signedData = `${headerB64}.${claimsB64}`;
         return { header, claims, signature, signedData };
@@ -179,16 +178,23 @@ function safeEqual(a: Buffer, b: Buffer): boolean {
 }
 
 /**
- * @throws {AuthenticationError} If verification fails
+ * @throws {AuthenticationError} when:
+ *  - no verification key is provided.
+ *  - token parsing fails.
+ *  - the JOSE algorithm is not supported.
+ *  - signature validation fails.
+ *  - `exp` is missing, invalid, or has been reached.
+ *  - `nbf` is in the future.
+ *  - `iat` is too far ahead.
  */
-export function verify(jsonWebToken: string, key: StringLike = jwtKey!): JWTClaims {
+export function verify<T>(jsonWebToken: string, key: StringLike = jwtKey!): T & JWTClaims {
     if (!key) {
         throw new AuthenticationError("JWT verification key is not set");
     }
-    const keyBuffer = Buffer.isBuffer(key) ? key : Buffer.from(key, "base64");
-    let parsedJWT: ParsedJWT;
+    const keyBuffer = b64toBuffer(key);
+    let parsedJWT: ParsedJWT<T>;
     try {
-        parsedJWT = parseJwt(jsonWebToken);
+        parsedJWT = parseJwt<T>(jsonWebToken);
     } catch {
         throw new AuthenticationError("Invalid JWT format");
     }
@@ -203,7 +209,10 @@ export function verify(jsonWebToken: string, key: StringLike = jwtKey!): JWTClai
     }
     // Note: exp, iat, and nbf are in seconds (NumericDate per RFC7519)
     const now = Math.floor(Date.now() / 1000);
-    if (claims.exp && claims.exp < now) {
+    if (!Number.isFinite(claims.exp)) {
+        throw new AuthenticationError("Invalid expiration time");
+    }
+    if (claims.exp <= now) {
         throw new AuthenticationError("Token expired");
     }
     if (claims.nbf && claims.nbf > now) {

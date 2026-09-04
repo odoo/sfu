@@ -1,16 +1,19 @@
 import * as mediasoup from "mediasoup";
-import type { WebRtcServerOptions } from "mediasoup/node/lib/types";
 
 import * as config from "#src/config.ts";
 import { Logger } from "#src/utils/utils.ts";
 
-export interface RtcWorker extends mediasoup.types.Worker {
-    appData: {
-        webRtcServer?: mediasoup.types.WebRtcServer;
-    };
-}
+type RtcAppData = mediasoup.types.AppData & {
+    webRtcServer?: mediasoup.types.WebRtcServer;
+};
+export type RtcWorker = mediasoup.types.Worker<RtcAppData>;
 
-const logger = new Logger("RTC");
+/**
+ * Manages the mediasoup workers used by RTC channels.
+ */
+
+const logger = new Logger("RESOURCES");
+
 const workers = new Set<RtcWorker>();
 
 export async function start(): Promise<void> {
@@ -24,7 +27,7 @@ export async function start(): Promise<void> {
     );
 }
 
-export function close(): void {
+export async function close(): Promise<void> {
     for (const worker of workers) {
         worker.appData.webRtcServer?.close();
         worker.close();
@@ -33,10 +36,8 @@ export function close(): void {
 }
 
 async function makeWorker(): Promise<void> {
-    const worker = (await mediasoup.createWorker(config.rtc.workerSettings)) as RtcWorker;
-    worker.appData.webRtcServer = await worker.createWebRtcServer(
-        config.rtc.rtcServerOptions as WebRtcServerOptions
-    );
+    const worker: RtcWorker = await mediasoup.createWorker<RtcAppData>(config.rtc.workerSettings);
+    worker.appData.webRtcServer = await worker.createWebRtcServer(config.rtc.rtcServerOptions);
     workers.add(worker);
     worker.once("died", (error: Error) => {
         logger.error(`worker died: ${error.message} ${error.stack ?? ""}`);
@@ -52,11 +53,11 @@ async function makeWorker(): Promise<void> {
 }
 
 /**
- * @throws {Error} If no workers are available
+ * @throws {Error} when no worker can be selected.
  */
-export async function getWorker(): Promise<mediasoup.types.Worker> {
+export async function getWorker(): Promise<RtcWorker> {
     const proms = [];
-    let leastUsedWorker: mediasoup.types.Worker | undefined;
+    let leastUsedWorker: RtcWorker | undefined;
     let lowestUsage = Infinity;
     for (const worker of workers) {
         proms.push(
@@ -73,6 +74,6 @@ export async function getWorker(): Promise<mediasoup.types.Worker> {
     if (!leastUsedWorker) {
         throw new Error("No mediasoup workers available");
     }
-    logger.debug(`worker ${leastUsedWorker!.pid} with ${lowestUsage} ru_maxrss was selected`);
+    logger.verbose(`worker ${leastUsedWorker!.pid} with ${lowestUsage} ru_maxrss was selected`);
     return leastUsedWorker;
 }
