@@ -1,9 +1,16 @@
 import type { WebSocket as NodeWebSocket } from "ws";
 
-import type { JSONSerializable, BusMessage } from "./types";
+import type {
+    JSONSerializable,
+    BusMessage,
+    RequestMessage,
+    RequestName,
+    ResponseFrom
+} from "./types";
+type BusResponse = ResponseFrom<RequestName>;
 export interface Payload {
     /** The actual message content */
-    message: BusMessage;
+    message: BusMessage | JSONSerializable | BusResponse;
     /** Request ID if this message expects a response */
     needResponse?: string;
     /** Response ID if this message is responding to a request */
@@ -46,11 +53,9 @@ export class Bus {
     /** Global ID counter for Bus instances */
     private static _idCount = 0;
     /** Message handler for incoming messages */
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     public onMessage?: (message: BusMessage) => void;
     /** Request handler for incoming requests */
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    public onRequest?: (request: BusMessage) => Promise<any | void>;
+    public onRequest?: (request: RequestMessage) => Promise<BusResponse>;
     /** Unique bus instance identifier */
     public readonly id: number = Bus._idCount++;
     /** Request counter for generating unique request IDs */
@@ -96,8 +101,10 @@ export class Bus {
     /**
      * Sends a request and waits for a response
      */
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    request(message: BusMessage, options: RequestOptions = {}): Promise<JSONSerializable> {
+    request<T extends RequestName>(
+        message: RequestMessage<T>,
+        options: RequestOptions = {}
+    ): Promise<ResponseFrom<T>> {
         const { timeout = 5000, batch } = options;
         const requestId = this._getNextRequestId();
         return new Promise((resolve, reject) => {
@@ -138,8 +145,7 @@ export class Bus {
     }
 
     private _sendPayload(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        message: BusMessage,
+        message: Payload["message"],
         options: {
             needResponse?: string;
             responseTo?: string;
@@ -212,11 +218,11 @@ export class Bus {
             }
         } else if (needResponse) {
             // This is a request that expects a response
-            const response = await this.onRequest?.(message);
-            this._sendPayload(response!, { responseTo: needResponse });
+            const response = await this.onRequest?.(message as RequestMessage);
+            this._sendPayload(response, { responseTo: needResponse });
         } else {
             // This is a plain message
-            this.onMessage?.(message);
+            this.onMessage?.(message as BusMessage);
         }
     }
 }
