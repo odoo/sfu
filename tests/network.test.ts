@@ -4,9 +4,9 @@ import { afterEach, beforeEach, describe, expect, jest } from "@jest/globals";
 import { FakeMediaStreamTrack } from "fake-mediastreamtrack";
 
 import { SESSION_CLOSE_CODE, SESSION_STATE } from "#src/models/session";
-import { STREAM_TYPE } from "#src/shared/enums.ts";
+import { CLIENT_REQUEST, SERVER_MESSAGE, STREAM_TYPE } from "#src/shared/enums.ts";
 import { Channel } from "#src/models/channel";
-import { SFU_CLIENT_STATE } from "#src/client";
+import { CLIENT_UPDATE, SFU_CLIENT_STATE } from "#src/client";
 import { timeouts } from "#src/config";
 
 import { LocalNetwork } from "#tests/utils/network";
@@ -30,6 +30,29 @@ describe("Full network", () => {
         const user1 = await network.connect(channelUUID, 1);
         const [firstStateChange] = await once(user1.session, "stateChange");
         expect(firstStateChange).toBe(SESSION_STATE.CONNECTED);
+        expect(user1.sfuClient.availableFeatures.rtc).toBe(true);
+        expect(user1.sfuClient.recordingState.recording).toBe(false);
+        const onRequest = jest.fn(user1.session.bus!.onRequest!);
+        user1.session.bus!.onRequest = onRequest;
+        await expect(user1.sfuClient.startRecording({ audio: true })).resolves.toBe(false);
+        await expect(user1.sfuClient.stopRecording()).resolves.toBe(false);
+        expect(onRequest).toHaveBeenNthCalledWith(1, {
+            name: CLIENT_REQUEST.START_RECORDING,
+            payload: { audio: true }
+        });
+        expect(onRequest).toHaveBeenNthCalledWith(2, {
+            name: CLIENT_REQUEST.STOP_RECORDING
+        });
+        const recordingState = { ...user1.sfuClient.recordingState, recording: true };
+        const update = once(user1.sfuClient, "update");
+        user1.session.bus!.send({
+            name: SERVER_MESSAGE.CHANNEL_INFO_CHANGE,
+            payload: { state: recordingState, stopCode: "recording_timeout" }
+        });
+        const [event] = await update;
+        expect(event.detail.name).toBe(CLIENT_UPDATE.CHANNEL_INFO_CHANGE);
+        expect(event.detail.payload.stopCode).toBe("recording_timeout");
+        expect(user1.sfuClient.recordingState).toEqual(recordingState);
         const user2 = await network.connect(channelUUID, 2);
         const [secondStateChange] = await once(user2.session, "stateChange");
         expect(secondStateChange).toBe(SESSION_STATE.CONNECTED);

@@ -18,7 +18,15 @@ import {
     SERVER_REQUEST,
     WS_CLOSE_CODE
 } from "#src/shared/enums.ts";
-import type { JSONSerializable, StreamType, BusMessage } from "#src/shared/types";
+import type {
+    AvailableFeatures,
+    BusMessage,
+    JSONSerializable,
+    RecordingState,
+    RecordingStateUpdate,
+    StartupData,
+    StreamType
+} from "#src/shared/types";
 import type { TransportConfig, SessionId, SessionInfo } from "#src/models/session";
 
 interface Consumers {
@@ -55,11 +63,14 @@ export enum CLIENT_UPDATE {
     /** A session has left the channel */
     DISCONNECT = "disconnect",
     /** Session info has changed */
-    INFO_CHANGE = "info_change"
+    INFO_CHANGE = "info_change",
+    /** Recording state has changed */
+    CHANNEL_INFO_CHANGE = "channel_info_change"
 }
 type ClientUpdatePayload =
     | { senderId: SessionId; message: JSONSerializable }
     | { sessionId: SessionId }
+    | RecordingStateUpdate
     | Record<SessionId, SessionInfo>
     | {
           type: StreamType;
@@ -141,6 +152,18 @@ const ACTIVE_STATES = new Set<SfuClientState>([
 export class SfuClient extends EventTarget {
     /** Connection errors encountered */
     public errors: Error[] = [];
+    public availableFeatures: AvailableFeatures = {
+        rtc: false,
+        transcription: false,
+        audioRecording: false,
+        videoRecording: false
+    };
+    public recordingState: RecordingState = {
+        recording: false,
+        audio: false,
+        transcription: false,
+        video: false
+    };
     /** Current client state */
     private _state: SfuClientState = SfuClientState.DISCONNECTED;
     /** Communication bus */
@@ -255,6 +278,33 @@ export class SfuClient extends EventTarget {
         }
         await Promise.all(proms);
         return stats;
+    }
+
+    async startRecording(
+        options: { audio?: boolean; video?: boolean; transcription?: boolean } = {}
+    ): Promise<boolean> {
+        if (this.state !== SfuClientState.CONNECTED) {
+            return false;
+        }
+        return (await this._bus!.request(
+            {
+                name: CLIENT_REQUEST.START_RECORDING,
+                payload: options
+            },
+            { batch: true }
+        )) as boolean;
+    }
+
+    async stopRecording(): Promise<boolean> {
+        if (this.state !== SfuClientState.CONNECTED) {
+            return false;
+        }
+        return (await this._bus!.request(
+            {
+                name: CLIENT_REQUEST.STOP_RECORDING
+            },
+            { batch: true }
+        )) as boolean;
     }
 
     /**
@@ -445,7 +495,14 @@ export class SfuClient extends EventTarget {
              */
             webSocket.addEventListener(
                 "message",
-                () => {
+                (message) => {
+                    if (message.data) {
+                        const { availableFeatures, recordingState } = JSON.parse(
+                            message.data
+                        ) as StartupData;
+                        this.availableFeatures = availableFeatures;
+                        this.recordingState = recordingState;
+                    }
                     resolve(new Bus(webSocket));
                 },
                 { once: true }
@@ -575,6 +632,10 @@ export class SfuClient extends EventTarget {
             }
             case SERVER_MESSAGE.INFO_CHANGE:
                 this._updateClient(CLIENT_UPDATE.INFO_CHANGE, payload);
+                break;
+            case SERVER_MESSAGE.CHANNEL_INFO_CHANGE:
+                this.recordingState = payload.state;
+                this._updateClient(CLIENT_UPDATE.CHANNEL_INFO_CHANGE, payload);
                 break;
         }
     }

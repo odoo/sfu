@@ -24,7 +24,8 @@ export enum SERVER_MESSAGE {
     /** Signals the clients that one of the session in their channel has left */
     SESSION_LEAVE = "SESSION_LEAVE",
     /** Signals the clients that the info (talking, mute,...) of one of the session in their channel has changed */
-    INFO_CHANGE = "S_INFO_CHANGE"
+    INFO_CHANGE = "S_INFO_CHANGE",
+    CHANNEL_INFO_CHANGE = "CH_INFO_CHANGE"
 }
 
 export enum CLIENT_REQUEST {
@@ -33,7 +34,9 @@ export enum CLIENT_REQUEST {
     /** Requests the server to connect the server-to-client transport */
     CONNECT_STC_TRANSPORT = "CONNECT_STC_TRANSPORT",
     /** Requests the creation of a consumer that is used to upload a track to the server */
-    INIT_PRODUCER = "INIT_PRODUCER"
+    INIT_PRODUCER = "INIT_PRODUCER",
+    START_RECORDING = "START_RECORDING",
+    STOP_RECORDING = "STOP_RECORDING"
 }
 
 export enum CLIENT_MESSAGE {

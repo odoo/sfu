@@ -10,6 +10,37 @@ export type StreamType = "audio" | "camera" | "screen";
 
 export type StringLike = Buffer | string;
 
+export type RecordingState = {
+    recording: boolean;
+    audio: boolean;
+    transcription: boolean;
+    video: boolean;
+};
+
+export type RecordingStopCode =
+    | "user_request"
+    | "channel_closed"
+    | "recording_timeout"
+    | "recording_failed"
+    | "disk_space_exhausted";
+
+export type RecordingStateUpdate = {
+    state: RecordingState;
+    stopCode?: RecordingStopCode;
+};
+
+export type AvailableFeatures = {
+    rtc: boolean;
+    transcription: boolean;
+    audioRecording: boolean;
+    videoRecording: boolean;
+};
+
+export type StartupData = {
+    availableFeatures: AvailableFeatures;
+    recordingState: RecordingState;
+};
+
 import type { DownloadStates } from "#src/client.ts";
 import type { SessionId, SessionInfo, TransportConfig } from "#src/models/session.ts";
 
@@ -50,11 +81,20 @@ export type BusMessage =
           payload: { type: StreamType; kind: MediaKind; rtpParameters: RtpParameters };
       }
     | {
+          name: typeof CLIENT_REQUEST.START_RECORDING;
+          payload: { audio?: boolean; video?: boolean; transcription?: boolean };
+      }
+    | { name: typeof CLIENT_REQUEST.STOP_RECORDING; payload?: never }
+    | {
           name: typeof SERVER_MESSAGE.BROADCAST;
           payload: { senderId: SessionId; message: JSONSerializable };
       }
     | { name: typeof SERVER_MESSAGE.SESSION_LEAVE; payload: { sessionId: SessionId } }
     | { name: typeof SERVER_MESSAGE.INFO_CHANGE; payload: Record<SessionId, SessionInfo> }
+    | {
+          name: typeof SERVER_MESSAGE.CHANNEL_INFO_CHANGE;
+          payload: RecordingStateUpdate;
+      }
     | {
           name: typeof SERVER_REQUEST.INIT_CONSUMER;
           payload: {

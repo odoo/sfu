@@ -128,9 +128,9 @@ function connect(webSocket: WebSocket, credentials: Credentials): Session {
     if (!session_id) {
         throw new AuthenticationError("Malformed JWT payload");
     }
-    webSocket.send(""); // client can start using ws after this message.
     const bus = new Bus(webSocket, { batchDelay: config.timeouts.busBatch });
     const { session } = Channel.join(channel.uuid, session_id);
+    webSocket.send(JSON.stringify(session.startupData));
     session.once("close", ({ code }: { code: string }) => {
         let wsCloseCode = WS_CLOSE_CODE.CLEAN;
         switch (code) {
