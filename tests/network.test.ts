@@ -4,9 +4,9 @@ import { afterEach, beforeEach, describe, expect, jest } from "@jest/globals";
 import { FakeMediaStreamTrack } from "fake-mediastreamtrack";
 
 import { SESSION_CLOSE_CODE, SESSION_STATE } from "#src/models/session";
-import { STREAM_TYPE } from "#src/shared/enums.ts";
+import { CLIENT_REQUEST, SERVER_MESSAGE, STREAM_TYPE } from "#src/shared/enums.ts";
 import { Channel } from "#src/models/channel";
-import { SFU_CLIENT_STATE } from "#src/client";
+import { CLIENT_UPDATE, SFU_CLIENT_STATE } from "#src/client";
 import { timeouts } from "#src/config";
 
 import { LocalNetwork } from "#tests/utils/network";
@@ -36,6 +36,55 @@ describe("Full network", () => {
         const user3 = await network.connect(channelUUID, 3);
         const [thirdStateChange] = await once(user3.session, "stateChange");
         expect(thirdStateChange).toBe(SESSION_STATE.CONNECTED);
+    });
+    test("The server denies recording updates", async () => {
+        const channelUUID = await network.getChannelUUID();
+        const { session, sfuClient } = await network.connect(channelUUID, 1);
+        await once(session, "stateChange");
+        const onRequest = jest.fn(session.bus!.onRequest!);
+        session.bus!.onRequest = onRequest;
+        expect(sfuClient.availableFeatures).toEqual({
+            rtc: true,
+            recording: {
+                audio: false,
+                transcription: false,
+                video: false
+            }
+        });
+        expect(sfuClient.recordingState).toEqual({
+            audio: false,
+            transcription: false,
+            video: false
+        });
+        for (const options of [
+            { audio: true },
+            { transcription: false },
+            { audio: false, video: false, transcription: false }
+        ]) {
+            onRequest.mockClear();
+            await expect(sfuClient.setRecording(options)).resolves.toBe(false);
+            expect(onRequest).toHaveBeenCalledTimes(1);
+            expect(onRequest).toHaveBeenCalledWith({
+                name: CLIENT_REQUEST.SET_RECORDING,
+                payload: options
+            });
+        }
+    });
+    test("The client applies recording state updates", async () => {
+        const channelUUID = await network.getChannelUUID();
+        const { session, sfuClient } = await network.connect(channelUUID, 1);
+        const recordingState = { ...sfuClient.recordingState, audio: true };
+        const update = once(sfuClient, "update");
+
+        session.bus!.send({
+            name: SERVER_MESSAGE.CHANNEL_INFO_CHANGE,
+            payload: { state: recordingState, stopCode: "recording_timeout" }
+        });
+
+        const [event] = await update;
+        expect(event.detail.name).toBe(CLIENT_UPDATE.CHANNEL_INFO_CHANGE);
+        expect(event.detail.payload.stopCode).toBe("recording_timeout");
+        expect(sfuClient.recordingState).toEqual(recordingState);
     });
     test("The session of the server closes when the client is disconnected", async () => {
         const channelUUID = await network.getChannelUUID();

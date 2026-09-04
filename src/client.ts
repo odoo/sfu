@@ -18,7 +18,15 @@ import {
     SERVER_REQUEST,
     WS_CLOSE_CODE
 } from "#src/shared/enums.ts";
-import type { JSONSerializable, StreamType, BusMessage } from "#src/shared/types";
+import type {
+    AvailableFeatures,
+    BusMessage,
+    JSONSerializable,
+    RecordingFlags,
+    RecordingStateUpdate,
+    StartupData,
+    StreamType
+} from "#src/shared/types";
 import type { TransportConfig, SessionId, SessionInfo } from "#src/models/session";
 
 interface Consumers {
@@ -55,11 +63,14 @@ export enum CLIENT_UPDATE {
     /** A session has left the channel */
     DISCONNECT = "disconnect",
     /** Session info has changed */
-    INFO_CHANGE = "info_change"
+    INFO_CHANGE = "info_change",
+    /** Recording state has changed */
+    CHANNEL_INFO_CHANGE = "channel_info_change"
 }
 type ClientUpdatePayload =
     | { senderId: SessionId; message: JSONSerializable }
     | { sessionId: SessionId }
+    | RecordingStateUpdate
     | Record<SessionId, SessionInfo>
     | {
           type: StreamType;
@@ -141,6 +152,19 @@ const ACTIVE_STATES = new Set<SfuClientState>([
 export class SfuClient extends EventTarget {
     /** Connection errors encountered */
     public errors: Error[] = [];
+    public availableFeatures: AvailableFeatures = {
+        rtc: true,
+        recording: {
+            audio: false,
+            transcription: false,
+            video: false
+        }
+    };
+    public recordingState: RecordingFlags = {
+        audio: false,
+        transcription: false,
+        video: false
+    };
     /** Current client state */
     private _state: SfuClientState = SfuClientState.DISCONNECTED;
     /** Communication bus */
@@ -255,6 +279,28 @@ export class SfuClient extends EventTarget {
         }
         await Promise.all(proms);
         return stats;
+    }
+
+    /**
+     * Requests changes to the selected recording outputs.
+     * Omitted flags keep their current values. Set all flags to false to stop recording.
+     * The channel_info_change update carries the resulting state.
+     *
+     * @param options - Recording outputs to enable or disable
+     * @returns Whether the server accepted the request
+     * @throws {Error} If disconnected, the request times out or the Bus closes
+     */
+    async setRecording(options: Partial<RecordingFlags>): Promise<boolean> {
+        if (this.state !== SfuClientState.CONNECTED) {
+            throw new Error("SFU client is not connected");
+        }
+        return (await this._bus!.request(
+            {
+                name: CLIENT_REQUEST.SET_RECORDING,
+                payload: options
+            },
+            { batch: true }
+        )) as boolean;
     }
 
     /**
@@ -445,7 +491,19 @@ export class SfuClient extends EventTarget {
              */
             webSocket.addEventListener(
                 "message",
-                () => {
+                ({ data }) => {
+                    if (data) {
+                        try {
+                            const { availableFeatures, recordingState } = JSON.parse(
+                                data
+                            ) as StartupData;
+                            this.availableFeatures = availableFeatures;
+                            this.recordingState = recordingState;
+                        } catch (error) {
+                            reject(error);
+                            return;
+                        }
+                    }
                     resolve(new Bus(webSocket));
                 },
                 { once: true }
@@ -575,6 +633,10 @@ export class SfuClient extends EventTarget {
             }
             case SERVER_MESSAGE.INFO_CHANGE:
                 this._updateClient(CLIENT_UPDATE.INFO_CHANGE, payload);
+                break;
+            case SERVER_MESSAGE.CHANNEL_INFO_CHANGE:
+                this.recordingState = payload.state;
+                this._updateClient(CLIENT_UPDATE.CHANNEL_INFO_CHANGE, payload);
                 break;
         }
     }
