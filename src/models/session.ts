@@ -20,7 +20,7 @@ import {
     SERVER_REQUEST,
     STREAM_TYPE
 } from "#src/shared/enums.ts";
-import type { JSONSerializable, StreamType, BusMessage } from "#src/shared/types";
+import type { JSONSerializable, StreamType, BusMessage, StartupData } from "#src/shared/types";
 import type { Bus } from "#src/shared/bus.ts";
 import type { Channel } from "#src/models/channel.ts";
 
@@ -163,6 +163,24 @@ export class Session extends EventEmitter {
 
     get name(): string {
         return `${this._channel.name}:${this.id}@${this.remote}`;
+    }
+
+    get startupData(): StartupData {
+        return {
+            availableFeatures: {
+                rtc: Boolean(this._channel.router),
+                recording: {
+                    audio: false,
+                    transcription: false,
+                    video: false
+                }
+            },
+            recordingState: {
+                audio: false,
+                transcription: false,
+                video: false
+            }
+        };
     }
 
     get state(): SESSION_STATE {
@@ -640,6 +658,8 @@ export class Session extends EventEmitter {
                 this._broadcastInfo();
                 return { id: producer.id };
             }
+            case CLIENT_REQUEST.SET_RECORDING:
+                return false;
             default:
                 logger.warn(`[${this.name}] Unknown request type: ${name}`);
                 throw new Error(`Unknown request type: ${name}`);

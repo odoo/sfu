@@ -197,6 +197,20 @@ const sfu = new SfuClient();
     typeof producerStats["camera"] === "RTCStatsReport"; // true
     // see https://w3c.github.io/webrtc-pc/#rtcstatsreport-object
     ```
+- setRecording(options)
+    ```js
+    await sfu.setRecording({ audio: true, video: true });
+    await sfu.setRecording({ transcription: false });
+    await sfu.setRecording({ audio: false, video: false, transcription: false });
+    ```
+    Omitted flags keep their current values. Set all flags to false to stop recording.
+    The returned boolean acknowledges acceptance. The `channel_info_change` update
+    reports the resulting state. This server advertises recording as unavailable
+    and returns `false` for recording requests.
+    The `availableFeatures.recording` object uses the same `audio`, `transcription`
+    and `video` flags as `recordingState`, but reports capabilities rather than
+    active outputs.
+
 - @fires "update"
     ```js
     sfu.addEventListener("update", ({ detail: { name, payload } }) => {
