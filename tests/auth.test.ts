@@ -66,6 +66,14 @@ describe("Auth Service", () => {
         const result = auth.verify(token, alternateKey);
         expect(result).toEqual(payload);
     });
+    test("should derive the Odoo channel key", () => {
+        const key = "u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng=";
+        const seed =
+            "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZg==";
+        expect(auth.deriveChannelKey(seed, key)).toBe(
+            "HENUokImFacg/rZ/mJ7kQZxMVsffKHTdI2x1MqdMjI8="
+        );
+    });
     test("should reject a token signed with the wrong key", () => {
         const payload = { sub: "1234567890", name: "Test User" };
         const token = auth.sign(payload, alternateKey);

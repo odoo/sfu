@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, jest } from "@jest/globals";
 import { SESSION_STATE } from "#src/models/session";
 import { Channel } from "#src/models/channel";
 import * as config from "#src/config";
+import * as auth from "#src/services/auth";
 import { API_VERSION } from "#src/services/http";
 
 import { LocalNetwork, makeJwt } from "#tests/utils/network";
@@ -59,19 +60,23 @@ describe("HTTP", () => {
         ]);
     });
     test("/channel", async () => {
+        const keySeed = Buffer.from("channel-specific-seed").toString("base64");
         const response = await fetch(`http://${HTTP_INTERFACE}:${PORT}/v${API_VERSION}/channel`, {
             method: "GET",
             headers: {
                 Authorization:
                     "jwt " +
                     makeJwt({
-                        iss: `http://${HTTP_INTERFACE}:${PORT}/`
+                        iss: `http://${HTTP_INTERFACE}:${PORT}/`,
+                        keySeed
                     })
             }
         });
         expect(response.ok).toBe(true);
         const { uuid, url } = await response.json();
-        expect(Channel.records.get(uuid)).toBeDefined();
+        expect(Channel.records.get(uuid)?.key?.toString("base64")).toBe(
+            auth.deriveChannelKey(keySeed)
+        );
         expect(url).toBe(`http://${config.PUBLIC_IP}:${config.PORT}`);
     });
     test("/noop", async () => {

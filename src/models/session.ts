@@ -20,7 +20,13 @@ import {
     SERVER_REQUEST,
     STREAM_TYPE
 } from "#src/shared/enums.ts";
-import type { JSONSerializable, StreamType, BusMessage } from "#src/shared/types";
+import type {
+    JSONSerializable,
+    StreamType,
+    BusMessage,
+    RequestMessage,
+    StartupData
+} from "#src/shared/types";
 import type { Bus } from "#src/shared/bus.ts";
 import type { Channel } from "#src/models/channel.ts";
 
@@ -159,6 +165,23 @@ export class Session extends EventEmitter {
         this._handleMessage = this._handleMessage.bind(this);
         this._handleRequest = this._handleRequest.bind(this);
         this.setMaxListeners(config.CHANNEL_SIZE * 2);
+    }
+
+    get startupData(): StartupData {
+        return {
+            availableFeatures: {
+                rtc: Boolean(this._channel.router),
+                transcription: false,
+                audioRecording: false,
+                videoRecording: false
+            },
+            recordingState: {
+                recording: false,
+                audio: false,
+                transcription: false,
+                video: false
+            }
+        };
     }
 
     get name(): string {
@@ -323,7 +346,7 @@ export class Session extends EventEmitter {
                 this._ctsTransport?.close();
                 this._stcTransport?.close();
             });
-            this._clientCapabilities = (await this.bus!.request({
+            this._clientCapabilities = await this.bus!.request({
                 name: SERVER_REQUEST.INIT_TRANSPORTS,
                 payload: {
                     capabilities: this._channel.router!.rtpCapabilities,
@@ -331,7 +354,7 @@ export class Session extends EventEmitter {
                     ctsConfig: this._createTransportConfig(this._ctsTransport),
                     producerOptionsByKind: config.rtc.producerOptionsByKind
                 }
-            })) as RtpCapabilities;
+            });
             await Promise.all([
                 this._ctsTransport.setMaxIncomingBitrate(config.MAX_BITRATE_IN),
                 this._stcTransport.setMaxOutgoingBitrate(config.MAX_BITRATE_OUT)
@@ -598,7 +621,10 @@ export class Session extends EventEmitter {
         }
     }
 
-    private async _handleRequest({ name, payload }: BusMessage): Promise<JSONSerializable | void> {
+    private async _handleRequest({
+        name,
+        payload
+    }: RequestMessage): Promise<JSONSerializable | void> {
         switch (name) {
             case CLIENT_REQUEST.CONNECT_STC_TRANSPORT: {
                 const { dtlsParameters } = payload;
@@ -640,6 +666,9 @@ export class Session extends EventEmitter {
                 this._broadcastInfo();
                 return { id: producer.id };
             }
+            case CLIENT_REQUEST.START_RECORDING:
+            case CLIENT_REQUEST.STOP_RECORDING:
+                return false;
             default:
                 logger.warn(`[${this.name}] Unknown request type: ${name}`);
                 throw new Error(`Unknown request type: ${name}`);
