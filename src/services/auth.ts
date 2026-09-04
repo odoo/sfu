@@ -46,6 +46,7 @@ interface PrivateJWTClaims {
     sessionIdsByChannel?: Record<string, SessionId[]>;
     /** If provided when requesting a channel, this key will be used instead of the global key to verify JWTs related to this channel */
     key?: string;
+    keySeed?: string;
 }
 export type JWTClaims = RegisteredJWTClaims & PrivateJWTClaims;
 
@@ -103,6 +104,18 @@ export function base64Encode(data: Buffer | string): string {
         data = Buffer.from(data);
     }
     return data.toString("base64");
+}
+
+/**
+ * @throws {AuthenticationError} If no SFU authentication key is available
+ */
+export function deriveChannelKey(seed: StringLike, key: StringLike = jwtKey!): string {
+    if (!key) {
+        throw new AuthenticationError("JWT signing key is not set");
+    }
+    const keyBuffer = Buffer.isBuffer(key) ? key : Buffer.from(key, "base64");
+    const seedBuffer = Buffer.isBuffer(seed) ? seed : Buffer.from(seed, "base64");
+    return crypto.createHmac("sha256", keyBuffer).update(seedBuffer).digest("base64");
 }
 
 function base64Decode(str: string): Buffer {
