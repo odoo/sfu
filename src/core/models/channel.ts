@@ -6,8 +6,8 @@ import type { Router, WebRtcServer } from "mediasoup/node/lib/types";
 import * as config from "#src/config.ts";
 import { getAllowedCodecs, Logger } from "#src/utils/utils.ts";
 import { AuthenticationError, OvercrowdedError } from "#src/utils/errors.ts";
-import { Session, SESSION_CLOSE_CODE, type SessionId } from "#src/models/session.ts";
-import { getWorker, type RtcWorker } from "#src/services/rtc.ts";
+import { Session, SESSION_CLOSE_CODE, type SessionId } from "#src/core/models/session.ts";
+import { getWorker, type RtcWorker } from "#src/core/services/resources.ts";
 
 const logger = new Logger("CHANNEL");
 

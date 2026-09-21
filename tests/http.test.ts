@@ -2,11 +2,11 @@ import { afterEach, beforeEach, describe, expect, jest, test } from "@jest/globa
 import { FakeMediaStreamTrack } from "fake-mediastreamtrack";
 
 import { STREAM_TYPE } from "#src/shared/enums.ts";
-import { SESSION_STATE } from "#src/models/session.ts";
-import { Channel } from "#src/models/channel.ts";
+import { SESSION_STATE } from "#src/core/models/session.ts";
+import { Channel } from "#src/core/models/channel.ts";
 import * as config from "#src/config";
-import * as auth from "#src/services/auth";
-import { API_VERSION } from "#src/services/http";
+import * as auth from "#src/core/services/auth";
+import { API_VERSION } from "#src/core/services/http";
 
 import { LocalNetwork, makeJwt } from "#tests/utils/network";
 import { withMockEnv } from "#tests/utils/utils";
@@ -249,7 +249,7 @@ describe("HTTP Proxy", () => {
     test("X-Forwarded-For updates remoteAddress", async () => {
         restoreProxy = withMockEnv({ PROXY: "true" });
         const { LocalNetwork: LocalNetworkProxy } = await import("#tests/utils/network");
-        const { Channel: ChannelProxy } = await import("#src/models/channel");
+        const { Channel: ChannelProxy } = await import("#src/core/models/channel");
 
         network = new LocalNetworkProxy();
         await network.start();

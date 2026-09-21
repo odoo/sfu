@@ -30,7 +30,7 @@ import type {
     StartupData,
     StreamType
 } from "#src/shared/types";
-import type { TransportConfig, SessionId, SessionInfo } from "#src/models/session";
+import type { TransportConfig, SessionId, SessionInfo } from "#src/core/models/session";
 
 interface Consumers {
     audio: Consumer | null;

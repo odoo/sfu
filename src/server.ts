@@ -1,10 +1,10 @@
 import { inspect } from "node:util";
 
-import * as rtc from "#src/services/rtc.ts";
-import * as http from "#src/services/http.ts";
-import * as auth from "#src/services/auth.ts";
+import * as resources from "#src/core/services/resources.ts";
+import * as http from "#src/core/services/http.ts";
+import * as auth from "#src/core/services/auth.ts";
 import { Logger } from "#src/utils/utils.ts";
-import { Channel } from "#src/models/channel.ts";
+import { Channel } from "#src/core/models/channel.ts";
 
 const logger = new Logger("SERVER", { logLevel: "all" });
 
@@ -13,7 +13,7 @@ async function run(): Promise<void> {
     cleanupPromise = undefined;
     logger.info(`starting server - PID: ${process.pid}`);
     auth.start();
-    await rtc.start();
+    await resources.start();
     await http.start();
 }
 
@@ -23,7 +23,7 @@ function cleanup(): Promise<void> {
     cleanupPromise ??= (async () => {
         await http.close();
         await Channel.closeAll();
-        await rtc.close();
+        await resources.close();
         auth.close();
         logger.info("cleanup complete");
     })();

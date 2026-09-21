@@ -10,5 +10,5 @@
     "noCheck": true
   },
   "include": ["src/client.ts", "src/shared/**/*"],
-  "exclude": ["tests/**/*", "src/server.ts", "src/services/**/*", "src/models/**/*"]
+  "exclude": ["tests/**/*", "src/server.ts", "src/core/services/**/*", "src/core/models/**/*"]
 }
