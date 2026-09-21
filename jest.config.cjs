@@ -5,6 +5,7 @@ module.exports = {
     openHandlesTimeout: 10000,
     maxWorkers: 4,
     preset: "ts-jest",
+    setupFiles: ["<rootDir>/tests/setup.ts"],
     testEnvironment: "node",
     extensionsToTreatAsEsm: [".ts"]
 };

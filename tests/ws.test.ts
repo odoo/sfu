@@ -1,37 +1,40 @@
-import { afterEach, beforeEach, describe, expect, jest, test } from "@jest/globals";
-import { WebSocket } from "ws";
 import { once } from "node:events";
 
-import { LocalNetwork, makeJwt } from "#tests/utils/network";
+import { afterEach, beforeEach, describe, expect, jest, test } from "@jest/globals";
+import { WebSocket } from "ws";
+
 import { Channel } from "#src/models/channel";
 import { WS_CLOSE_CODE } from "#src/shared/enums";
 import { OvercrowdedError } from "#src/utils/errors";
 import { timeouts } from "#src/config";
 import { __testing__ as wsTesting } from "#src/services/ws";
 
-const HTTP_INTERFACE = "0.0.0.0";
-const PORT = 62345;
+import { LocalNetwork } from "#tests/utils/network";
+import { waitFor } from "#tests/utils/utils";
 
 describe("WebSocket Service", () => {
     let network: LocalNetwork;
     beforeEach(async () => {
         network = new LocalNetwork();
-        await network.start(HTTP_INTERFACE, PORT);
+        await network.start();
     });
-    afterEach(() => {
-        network.close();
+    afterEach(async () => {
         jest.useRealTimers();
+        await network.close();
     });
     test("Closes connection if authentication times out", async () => {
-        jest.useFakeTimers({ advanceTimers: true });
-        const ws = new WebSocket(`ws://localhost:${PORT}`);
+        jest.useFakeTimers({
+            doNotFake: ["nextTick", "queueMicrotask", "setImmediate"]
+        });
+        const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);
         await once(ws, "open");
+        const close = once(ws, "close");
         jest.advanceTimersByTime(timeouts.authentication + 100);
-        const [code] = await once(ws, "close");
+        const [code] = await close;
         expect(code).toBe(WS_CLOSE_CODE.TIMEOUT);
     });
     test("Closes connection on invalid JSON message", async () => {
-        const ws = new WebSocket(`ws://localhost:${PORT}`);
+        const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);
         await once(ws, "open");
 
         ws.send("not json");
@@ -41,7 +44,7 @@ describe("WebSocket Service", () => {
         expect(wsTesting.unauthenticatedWebSocketCount).toBe(0);
     });
     test("Closes connection on invalid auth credentials (invalid JWT)", async () => {
-        const ws = new WebSocket(`ws://localhost:${PORT}`);
+        const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);
         await once(ws, "open");
 
         ws.send(
@@ -55,11 +58,11 @@ describe("WebSocket Service", () => {
         expect(code).toBe(WS_CLOSE_CODE.AUTHENTICATION_FAILED);
     });
     test("Closes connection when Channel does not exist", async () => {
-        const ws = new WebSocket(`ws://localhost:${PORT}`);
+        const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);
         await once(ws, "open");
 
         const channelUUID = "non-existent-uuid";
-        const jwt = makeJwt({
+        const jwt = network.makeChannelJwt(channelUUID, {
             sfu_channel_uuid: channelUUID,
             session_id: 1
         });
@@ -76,10 +79,10 @@ describe("WebSocket Service", () => {
     });
     test("Closes connection when JWT payload is malformed (missing session_id)", async () => {
         const channelUUID = await network.getChannelUUID();
-        const ws = new WebSocket(`ws://localhost:${PORT}`);
+        const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);
         await once(ws, "open");
 
-        const jwt = makeJwt({
+        const jwt = network.makeChannelJwt(channelUUID, {
             sfu_channel_uuid: channelUUID
         });
 
@@ -95,14 +98,14 @@ describe("WebSocket Service", () => {
     });
     test("Closes connection with CHANNEL_FULL when channel is overcrowded", async () => {
         const channelUUID = await network.getChannelUUID();
-        const ws = new WebSocket(`ws://localhost:${PORT}`);
+        const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);
         await once(ws, "open");
 
         const joinSpy = jest.spyOn(Channel, "join").mockImplementationOnce(() => {
             throw new OvercrowdedError("Channel is full");
         });
 
-        const jwt = makeJwt({
+        const jwt = network.makeChannelJwt(channelUUID, {
             sfu_channel_uuid: channelUUID,
             session_id: 1
         });
@@ -119,14 +122,13 @@ describe("WebSocket Service", () => {
         joinSpy.mockRestore();
     });
     test("Handles early disconnect before authentication timeout", async () => {
-        jest.useFakeTimers({ advanceTimers: true });
-        const ws = new WebSocket(`ws://localhost:${PORT}`);
+        const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);
         await once(ws, "open");
+        expect(wsTesting.unauthenticatedWebSocketCount).toBe(1);
 
         ws.close();
         await once(ws, "close");
-
-        jest.advanceTimersByTime(timeouts.authentication + 100);
-        expect(ws.readyState).toBe(WebSocket.CLOSED);
+        await waitFor(() => wsTesting.unauthenticatedWebSocketCount === 0);
+        expect(wsTesting.unauthenticatedWebSocketCount).toBe(0);
     });
 });
