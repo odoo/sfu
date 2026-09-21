@@ -1,6 +1,6 @@
 import { describe, beforeEach, afterEach, expect } from "@jest/globals";
 
-import { Channel } from "#src/models/channel";
+import { Channel } from "#src/core/models/channel";
 
 import { AUTH_KEY, LocalNetwork } from "#tests/utils/network";
 

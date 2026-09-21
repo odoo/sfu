@@ -3,9 +3,9 @@ import { once } from "node:events";
 import { afterEach, beforeEach, describe, expect, jest } from "@jest/globals";
 import { FakeMediaStreamTrack } from "fake-mediastreamtrack";
 
-import { SESSION_CLOSE_CODE, SESSION_STATE } from "#src/models/session";
+import { SESSION_CLOSE_CODE, SESSION_STATE } from "#src/core/models/session";
 import { CLIENT_REQUEST, SERVER_MESSAGE, STREAM_TYPE } from "#src/shared/enums.ts";
-import { Channel } from "#src/models/channel";
+import { Channel } from "#src/core/models/channel";
 import { CLIENT_UPDATE, SFU_CLIENT_STATE } from "#src/client";
 import { timeouts } from "#src/config";
 import type { Bus } from "#src/shared/bus";
