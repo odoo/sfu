@@ -610,7 +610,7 @@ export class Session extends EventEmitter {
                     this.bus!.send(
                         {
                             name: SERVER_MESSAGE.INFO_CHANGE,
-                            payload,
+                            payload
                         },
                         { batch: true }
                     );
