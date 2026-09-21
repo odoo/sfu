@@ -1,12 +1,13 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "target": "es2019",
+    "target": "es2022",
     "module": "es6",
     "declaration": false,
     "sourceMap": false,
+    "allowImportingTsExtensions": false,
     "noEmit": false,
-    "allowImportingTsExtensions": false
+    "noCheck": true
   },
   "include": ["src/client.ts", "src/shared/**/*"],
   "exclude": ["tests/**/*", "src/server.ts", "src/services/**/*", "src/models/**/*"]
