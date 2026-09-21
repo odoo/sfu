@@ -1,13 +1,19 @@
 import os from "node:os";
+import path from "node:path";
 
 import type { RouterRtpCodecCapability } from "mediasoup/node/lib/types";
 // eslint-disable-next-line node/no-unpublished-import
 import type { ProducerOptions } from "mediasoup-client/lib/Producer";
 
 const FALSY_INPUT = new Set(["disable", "false", "none", "no", "0"]);
+const envFlag = (value?: string) => {
+    const normalized = value?.trim().toLowerCase();
+    return Boolean(normalized && !FALSY_INPUT.has(normalized));
+};
 type LogLevel = "none" | "error" | "warn" | "info" | "debug" | "verbose";
 type WorkerLogLevel = "none" | "error" | "warn" | "debug";
 const testingMode = Boolean(process.env.JEST_WORKER_ID);
+export const tmpDir = path.join(os.tmpdir(), "odoo_sfu");
 
 // ------------------------------------------------------------
 // ------------------   ENV VARIABLES   -----------------------
@@ -19,6 +25,12 @@ const testingMode = Boolean(process.env.JEST_WORKER_ID);
  * e.g: AUTH_KEY=u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng=
  */
 export const AUTH_KEY: string = process.env.AUTH_KEY!;
+
+/**
+ * A key used for encrypting/decrypting data locally, if not set one will be randomly generated.
+ * It MUST be a 32bytes base64 key, for example generated from `openssl rand 32 | base64`
+ */
+export const LOCAL_KEY: string | undefined = process.env.LOCAL_KEY;
 
 /**
  * This env variable is <<REQUIRED>>, the server needs to communicate its public IP to the clients as this is the IP
@@ -143,6 +155,45 @@ export const LOG_COLOR: boolean = process.env.LOG_COLOR
     ? Boolean(process.env.LOG_COLOR)
     : process.stdout.isTTY;
 
+// ---------------------------------------------------------------------
+// ------------------   RECORDING ENV VARS   ---------------------------
+// ---------------------------------------------------------------------
+
+/**
+ * Whether the recording feature is enabled, false by default.
+ */
+export const RECORDING: boolean = envFlag(process.env.RECORDING);
+
+/**
+ * Optional disk reservation per recording in decimal megabytes. When unset or empty,
+ * reserve the configured maximum duration and input bitrates instead.
+ * This admission budget is not a limit on bytes written.
+ */
+export const RECORDING_RESERVATION_MB: number | undefined = process.env.RECORDING_RESERVATION_MB
+    ? Number(process.env.RECORDING_RESERVATION_MB)
+    : undefined;
+
+/**
+ * Base path used by local SFU storage directories, defaults to `${tmpDir}`.
+ */
+export const DATA_PATH: string = process.env.DATA_PATH || tmpDir;
+/**
+ * Lower bound for the range of ports that the SFU server can use for dynamic ports, used for
+ * routing streams to internal processes (recording).
+ */
+export const DYNAMIC_MIN_PORT: number =
+    (process.env.DYNAMIC_MIN_PORT && Number(process.env.DYNAMIC_MIN_PORT)) || 50000;
+/**
+ * Upper bound for the range of ports that the SFU server can use for dynamic ports
+ */
+export const DYNAMIC_MAX_PORT: number =
+    (process.env.DYNAMIC_MAX_PORT && Number(process.env.DYNAMIC_MAX_PORT)) || 59999;
+/**
+ * If set, generates `.log` files alongside all ffmpeg file outputs.
+ * eg: `recording_1768377901321.mp4` will have an associated `recording_1768377901321.mp4.log`
+ */
+export const FFMPEG_LOGGING = envFlag(process.env.FFMPEG_LOGGING);
+
 // ---------------------------------
 // ---------- CHECKS ---------------
 // ---------------------------------
@@ -158,6 +209,16 @@ if (!testingMode) {
             "PUBLIC_IP env variable is required, clients cannot establish webRTC connections without it"
         );
     }
+}
+if (RECORDING && !(DYNAMIC_MAX_PORT < RTC_MIN_PORT || DYNAMIC_MIN_PORT > RTC_MAX_PORT)) {
+    throw new Error("Dynamic ports overlap with RTC ports");
+}
+if (
+    RECORDING_RESERVATION_MB !== undefined &&
+    (RECORDING_RESERVATION_MB <= 0 ||
+        !Number.isSafeInteger(Math.ceil(RECORDING_RESERVATION_MB * 1_000_000)))
+) {
+    throw new Error("RECORDING_RESERVATION_MB must be positive with a safe integer byte size");
 }
 
 // ------------------------------------------------------------
@@ -175,10 +236,54 @@ export const timeouts = Object.freeze({
     // how long to wait before we try to recover a session (consuming or producing media) after an error
     recovery: 2_000,
     // how long before a channel is closed after the last session leaves
-    channel: 60 * 60_000,
+    channel: 60 /* min */ * 60_000,
     // how long to wait to gather messages before sending through the bus
     busBatch: testingMode ? 10 : 300
 });
+
+/**
+ * Internal SFU directorie.
+ */
+export const dir = Object.freeze({
+    root: DATA_PATH,
+    recordings: path.join(DATA_PATH, "recordings"),
+    resources: path.join(DATA_PATH, "resources"),
+    debug: path.join(DATA_PATH, "debug")
+});
+
+export const recording = {
+    routingInterface: "127.0.0.1",
+    directory: dir.recordings,
+    enabled: RECORDING,
+    metadataFileName: "metadata.bin",
+    minDuration: 5 /* sec */ * 1000, // TODO should probably be raised in prod
+    maxDuration: 60 /* min */ * 60 * 1000,
+    fileTTL: 24 /* hours */ * 60 * 60 * 1000,
+    processingCooldown: 5 /* sec */ * 1000,
+    video: {
+        frameRate: "30",
+        codec: "libsvtav1",
+        preset: "8",
+        ext: "mp4",
+        mimeType: "video/mp4"
+    },
+    audio: {
+        codec: "libopus",
+        bitRate: "32k",
+        ext: "ogg",
+        mimeType: "audio/ogg"
+    },
+    /*
+     * Limits the amount of video streams recorded at once.
+     * Screen sharing has precedence over cameras and keeps only
+     * the most recent streams up to the configured limits.
+     *
+     * if screenLimit is increased,
+     * the mediaCompiler must implement a compatible layout (see _compileSegment)
+     */
+    cameraLimit: 4,
+    screenLimit: 1
+} as const;
 
 // how many errors can occur before the session is closed, recovery attempts will be made until this limit is reached
 export const maxSessionErrors: number = 6;
@@ -227,6 +332,11 @@ export const rtc = Object.freeze({
     rtcTransportOptions: {
         maxSctpMessageSize: MAX_BUF_IN,
         sctpSendBufferSize: MAX_BUF_OUT
+    },
+    plainTransportOptions: {
+        listenIp: { ip: "0.0.0.0", announcedIp: PUBLIC_IP },
+        rtcpMux: true,
+        comedia: false
     },
     producerOptionsByKind: {
         /** Audio producer options */
