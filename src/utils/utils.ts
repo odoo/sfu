@@ -48,6 +48,10 @@ export interface ParseBodyOptions {
     json?: boolean;
 }
 
+export function b64toBuffer(b64str: string | Buffer): Buffer {
+    return Buffer.isBuffer(b64str) ? b64str : Buffer.from(b64str, "base64");
+}
+
 export class Logger {
     private readonly _name: string;
     private readonly _colorize: (text: string, color?: string) => string;
