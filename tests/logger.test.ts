@@ -3,13 +3,12 @@ import { beforeAll, afterAll, describe, jest, afterEach, expect } from "@jest/gl
 import { Logger } from "#src/utils/utils";
 
 describe("Logger", () => {
-    let mockLog: jest.SpiedFunction<typeof console.log>;
     let messages: string[] = [];
     beforeAll(() => {
-        mockLog = jest.spyOn(global.console, "log").mockImplementation((message) => {
+        jest.spyOn(global.console, "log").mockImplementation((message) => {
             messages.push(message);
         });
-        mockLog = jest.spyOn(global.console, "error").mockImplementation((message) => {
+        jest.spyOn(global.console, "error").mockImplementation((message) => {
             messages.push(message);
         });
         jest.useFakeTimers().setSystemTime(new Date("2023-09-15 08:29:00.000 UTC"));
@@ -18,7 +17,7 @@ describe("Logger", () => {
         messages = [];
     });
     afterAll(() => {
-        mockLog.mockRestore();
+        jest.restoreAllMocks();
         jest.useRealTimers();
     });
     test("Logger has expected format", () => {
