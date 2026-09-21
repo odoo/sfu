@@ -3,11 +3,11 @@ import { once } from "node:events";
 import { afterEach, beforeEach, describe, expect, jest, test } from "@jest/globals";
 import { WebSocket } from "ws";
 
-import { Channel } from "#src/models/channel";
+import { Channel } from "#src/core/models/channel";
 import { WS_CLOSE_CODE } from "#src/shared/enums";
 import { OvercrowdedError } from "#src/utils/errors";
 import { timeouts } from "#src/config";
-import { __testing__ as wsTesting } from "#src/services/ws";
+import { __testing__ as wsTesting } from "#src/core/services/ws";
 
 import { LocalNetwork } from "#tests/utils/network";
 import { waitFor } from "#tests/utils/utils";

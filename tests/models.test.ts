@@ -2,18 +2,18 @@ import { once } from "node:events";
 
 import { describe, beforeEach, afterEach, expect } from "@jest/globals";
 
-import * as rtc from "#src/services/rtc";
-import { Channel } from "#src/models/channel";
+import * as resources from "#src/core/services/resources";
+import { Channel } from "#src/core/models/channel";
 import { CHANNEL_SIZE } from "#src/config";
 import { OvercrowdedError } from "#src/utils/errors";
 
 describe("Models", () => {
     beforeEach(async () => {
-        await rtc.start();
+        await resources.start();
     });
     afterEach(async () => {
         await Channel.closeAll();
-        await rtc.close();
+        await resources.close();
     });
     test("clears the channel when its last session leaves", async () => {
         const channel = await Channel.create("testRemote", "testIssuer");

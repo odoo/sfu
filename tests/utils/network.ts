@@ -3,12 +3,12 @@ import { once } from "node:events";
 import { WebSocket } from "ws";
 import { Device, FakeHandler, testFakeParameters } from "mediasoup-client";
 
-import * as auth from "#src/services/auth";
-import * as http from "#src/services/http";
-import * as rtc from "#src/services/rtc";
+import * as auth from "#src/core/services/auth";
+import * as http from "#src/core/services/http";
+import * as resources from "#src/core/services/resources";
 import { SfuClient, SfuClientState } from "#src/client";
-import { Channel } from "#src/models/channel";
-import { Session, SESSION_STATE } from "#src/models/session";
+import { Channel } from "#src/core/models/channel";
+import { Session, SESSION_STATE } from "#src/core/models/session";
 import { StringLike } from "#src/shared/types.ts";
 
 /**
@@ -55,7 +55,7 @@ export class LocalNetwork {
     private readonly _sfuClients: SfuClient[] = [];
 
     async start(): Promise<void> {
-        await rtc.start();
+        await resources.start();
         this.port = await http.start({ httpInterface: this.hostname, port: 0 });
         auth.start(AUTH_KEY);
     }
@@ -211,7 +211,7 @@ export class LocalNetwork {
 
         auth.close();
         await http.close();
-        await rtc.close();
+        await resources.close();
 
         this.port = undefined;
     }

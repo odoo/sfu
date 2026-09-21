@@ -125,7 +125,7 @@ See [server.js](./src/server.js) for more details.
   );
     ```
 
-See [http.js](./src/services/http.js) for more details.
+See [http.ts](./src/core/services/http.ts) for more details.
 
 ## Client API (bundle)
 
