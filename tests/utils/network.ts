@@ -7,7 +7,6 @@ import * as rtc from "#src/services/rtc";
 import { SfuClient, SfuClientState } from "#src/client";
 import { Channel } from "#src/models/channel";
 import type { Session } from "#src/models/session";
-import type { JWTClaims } from "#src/services/auth";
 import { StringLike } from "#src/shared/types.ts";
 
 /**
@@ -23,8 +22,15 @@ const HMAC_KEY = Buffer.from(HMAC_B64_KEY, "base64");
  * @param [key] - Key to sign the JWT with
  * @returns Signed JWT string
  */
-export function makeJwt(data: JWTClaims, key: StringLike = HMAC_KEY): string {
-    return auth.sign(data, key, { algorithm: auth.ALGORITHM.HS256 });
+export function makeJwt<T extends object>(data: T, key: StringLike = HMAC_KEY): string {
+    return auth.sign(
+        {
+            exp: Math.floor(Date.now() / 1000) + 60,
+            ...data
+        },
+        key,
+        { algorithm: auth.ALGORITHM.HS256 }
+    );
 }
 
 /**
@@ -51,7 +57,7 @@ export class LocalNetwork {
     public port?: number;
 
     /** JWT creation function (can be overridden for testing) */
-    public makeJwt: (data: JWTClaims, key?: StringLike) => string = makeJwt;
+    public makeJwt: <T extends object>(data: T, key?: StringLike) => string = makeJwt;
 
     /** Active SFU client instances */
     private readonly _sfuClients: SfuClient[] = [];
