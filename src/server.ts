@@ -1,3 +1,5 @@
+import { inspect } from "node:util";
+
 import * as rtc from "#src/services/rtc.ts";
 import * as http from "#src/services/http.ts";
 import * as auth from "#src/services/auth.ts";
@@ -7,34 +9,40 @@ import { Channel } from "#src/models/channel.ts";
 const logger = new Logger("SERVER", { logLevel: "all" });
 
 async function run(): Promise<void> {
+    await cleanupPromise;
+    cleanupPromise = undefined;
+    logger.info(`starting server - PID: ${process.pid}`);
     auth.start();
     await rtc.start();
     await http.start();
-    logger.info(`ready - PID: ${process.pid}`);
 }
 
-function cleanup(): void {
-    Channel.closeAll();
-    http.close();
-    rtc.close();
-    logger.info("cleanup complete");
+let cleanupPromise: Promise<void> | undefined;
+
+function cleanup(): Promise<void> {
+    cleanupPromise ??= (async () => {
+        await http.close();
+        await Channel.closeAll();
+        await rtc.close();
+        auth.close();
+        logger.info("cleanup complete");
+    })();
+    return cleanupPromise;
 }
 
 const processHandlers = {
-    exit: cleanup,
     uncaughtException: (error: Error) => {
         logger.error(`uncaught exception ${error.name}: ${error.message} ${error.stack ?? ""}`);
     },
     SIGINT: cleanup,
+    SIGTERM: cleanup,
     // 8, restarts the server
     SIGFPE: async () => {
-        cleanup();
+        await cleanup();
         await run();
     },
     // 14, soft reset: only kicks all sessions, but keeps services alive
-    SIGALRM: () => {
-        Channel.closeAll();
-    },
+    SIGALRM: () => Channel.closeAll(),
     // 29, prints server stats
     SIGIO: async () => {
         let globalIncomingBitrate = 0;
@@ -66,7 +74,23 @@ const processHandlers = {
 // ==================== PROCESS ====================
 process.title = "odoo_sfu";
 for (const [signal, handler] of Object.entries(processHandlers)) {
-    process.on(signal, handler);
+    process.on(signal, (error: Error) => {
+        Promise.resolve()
+            .then(() => handler(error))
+            .catch((error: unknown) => {
+                logger.error(`${signal} handler failed: ${inspect(error)}`);
+            });
+    });
 }
-await run();
+// Covers awaited startup failures from authentication setup, worker creation or HTTP binding.
+// Later callback failures reach the process handler above.
+try {
+    await run();
+} catch (error) {
+    process.exitCode = 1;
+    await cleanup().catch((cleanupError: unknown) => {
+        logger.error(`Startup cleanup failed: ${inspect(cleanupError)}`);
+    });
+    throw error;
+}
 // ==================== ======= ====================
