@@ -8,7 +8,12 @@ import { WS_CLOSE_CODE } from "#src/shared/enums.ts";
 import { Bus } from "#src/shared/bus.ts";
 import { Logger, extractRequestInfo } from "#src/utils/utils.ts";
 import { AuthenticationError, OvercrowdedError } from "#src/utils/errors.ts";
-import { Session, SESSION_CLOSE_CODE, type SessionId } from "#src/core/models/session.ts";
+import {
+    Session,
+    SESSION_CLOSE_CODE,
+    type SessionId,
+    type SessionPermissions
+} from "#src/core/models/session.ts";
 import { Channel } from "#src/core/models/channel.ts";
 import { verify } from "#src/core/services/auth.ts";
 import type { WebSocketCredentials } from "#src/shared/types.ts";
@@ -16,6 +21,9 @@ import type { WebSocketCredentials } from "#src/shared/types.ts";
 type WSConnectClaims = {
     sfu_channel_uuid: string;
     session_id: SessionId;
+    user_id?: number;
+    label?: string;
+    permissions?: SessionPermissions;
 };
 type AuthenticationPayload = WebSocketCredentials | string;
 
@@ -128,12 +136,13 @@ export function close(): void {
  * @throws {AuthenticationError}  when:
  *  - JWT verification fails.
  *  - channel access fails.
+ *  - session_id is missing or a provided user_id is not a positive safe integer.
  */
 function connect(webSocket: WebSocket, credentials: WebSocketCredentials): Session {
     const { channelUUID, jwt } = credentials;
     let channel = channelUUID ? Channel.records.get(channelUUID) : undefined;
     const authResult = verify<WSConnectClaims>(jwt, channel?.key);
-    const { sfu_channel_uuid, session_id } = authResult;
+    const { sfu_channel_uuid, session_id, user_id, label, permissions } = authResult;
     if (!channelUUID && sfu_channel_uuid) {
         // Cases where the channelUUID is not provided in the credentials for backwards compatibility with version 1.1 and earlier.
         channel = Channel.records.get(sfu_channel_uuid);
@@ -146,12 +155,19 @@ function connect(webSocket: WebSocket, credentials: WebSocketCredentials): Sessi
     if (!channel) {
         throw new AuthenticationError("Channel does not exist");
     }
-    if (!session_id) {
+    if (
+        !session_id ||
+        (user_id !== undefined && (!Number.isSafeInteger(user_id) || user_id <= 0))
+    ) {
         throw new AuthenticationError("Malformed JWT payload");
     }
     const bus = new Bus(webSocket, { batchDelay: config.timeouts.busBatch });
-    const { session } = Channel.join(channel.uuid, session_id);
-    webSocket.send(JSON.stringify(session.startupData));
+    const { session } = Channel.join(channel.uuid, session_id, {
+        label,
+        userId: user_id,
+        permissions
+    });
+    webSocket.send(JSON.stringify(session.startupData)); // client can start using ws after this message.
     session.once(Session.Events.CLOSE, ({ code }: { code: string }) => {
         let wsCloseCode = WS_CLOSE_CODE.CLEAN;
         switch (code) {

@@ -6,6 +6,7 @@ import { FakeMediaStreamTrack } from "fake-mediastreamtrack";
 import { SESSION_CLOSE_CODE, SESSION_STATE } from "#src/core/models/session";
 import { CLIENT_REQUEST, SERVER_MESSAGE, STREAM_TYPE } from "#src/shared/enums.ts";
 import { Channel } from "#src/core/models/channel";
+import { STOP_CODE } from "#src/recording/models/recorder.ts";
 import { CLIENT_UPDATE, SFU_CLIENT_STATE } from "#src/client";
 import { timeouts } from "#src/config";
 import type { Bus } from "#src/shared/bus";
@@ -37,7 +38,7 @@ describe("Full network", () => {
         jest.useRealTimers();
         await network.close();
     });
-    test("The server denies recording updates", async () => {
+    test("The server denies recording updates when recording is disabled", async () => {
         const channelUUID = await network.getChannelUUID();
         const { session, sfuClient } = await network.connect(channelUUID, 1);
         const onRequest = jest.fn(session.bus!.onRequest!);
@@ -50,11 +51,7 @@ describe("Full network", () => {
                 video: false
             }
         });
-        expect(sfuClient.recordingState).toEqual({
-            audio: false,
-            transcription: false,
-            video: false
-        });
+        expect(sfuClient.recordingState).toEqual({});
         for (const options of [
             { audio: true },
             { transcription: false },
@@ -77,13 +74,35 @@ describe("Full network", () => {
 
         session.bus!.send({
             name: SERVER_MESSAGE.CHANNEL_INFO_CHANGE,
-            payload: { state: recordingState, stopCode: "recording_timeout" }
+            payload: { state: recordingState, stopCode: STOP_CODE.RECORDING_TIMEOUT }
         });
 
         const [event] = await update;
         expect(event.detail.name).toBe(CLIENT_UPDATE.CHANNEL_INFO_CHANGE);
         expect(event.detail.payload.stopCode).toBe("recording_timeout");
         expect(sfuClient.recordingState).toEqual(recordingState);
+    });
+    test("The client accepts a legacy empty startup message", async () => {
+        const stringify = JSON.stringify;
+        const stringifySpy = jest.spyOn(JSON, "stringify").mockImplementation((value) => {
+            if (
+                typeof value === "object" &&
+                value !== null &&
+                "availableFeatures" in value &&
+                "recordingState" in value
+            ) {
+                return "";
+            }
+            return stringify(value);
+        });
+        try {
+            const channelUUID = await network.getChannelUUID();
+            const { sfuClient } = await network.connect(channelUUID, 2);
+            expect(sfuClient.state).toBe(SFU_CLIENT_STATE.CONNECTED);
+            expect(sfuClient.availableFeatures.rtc).toBe(true);
+        } finally {
+            stringifySpy.mockRestore();
+        }
     });
     test("The session of the server closes when the client is disconnected", async () => {
         const channelUUID = await network.getChannelUUID();

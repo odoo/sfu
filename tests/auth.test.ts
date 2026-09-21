@@ -75,18 +75,21 @@ describe("Auth Service", () => {
         const payload = auth.verify(THIRD_PARTY_TOKEN.token, THIRD_PARTY_TOKEN.key);
         expect(payload).toEqual(THIRD_PARTY_TOKEN.payload);
     });
-    test("should derive Odoo channel keys", () => {
-        const key = "u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng=";
-        const seed =
+    test("should derive the shared Odoo channel key", () => {
+        const authKey = "u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng=";
+        const channelSeed =
             "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZg==";
-        expect(auth.deriveChannelKey(seed, key)).toBe(
+
+        expect(auth.deriveChannelKey(channelSeed, authKey).toString("base64")).toBe(
             "HENUokImFacg/rZ/mJ7kQZxMVsffKHTdI2x1MqdMjI8="
         );
         expect(
-            auth.deriveChannelKey(
-                "__7__v_-__7__v_-__7__v_-__7__v_-__7__v_-__4",
-                "-__7__v_-__7__v_-__7__v_-__7__v_-__7__v_-_8"
-            )
+            auth
+                .deriveChannelKey(
+                    "__7__v_-__7__v_-__7__v_-__7__v_-__7__v_-__4",
+                    "-__7__v_-__7__v_-__7__v_-__7__v_-__7__v_-_8"
+                )
+                .toString("base64")
         ).toBe("rO7BLYI5td5yDmpFtuL3EEJkipz1UM3rC2OJYrJpvTk=");
     });
     test("should reject a token signed with the wrong key", () => {
@@ -170,5 +173,47 @@ describe("Auth Service", () => {
     test("verifying should fail with an unsupported algorithm", () => {
         const token = "eyJhbGciOiJFUzUxMiIsInR5cCI6IkpXVCJ9.e30.AA";
         expect(() => auth.verify(token, testKey)).toThrow("Unsupported algorithm: ES512");
+    });
+
+    test("should encrypt and decrypt a string", () => {
+        const text = "Hello World";
+        const encrypted = auth.encrypt(text);
+        const decrypted = auth.decrypt(encrypted);
+        expect(decrypted).toBe(text);
+        expect(encrypted).not.toBe(text);
+    });
+
+    test("should produce different ciphertexts for same input (random IV)", () => {
+        const text = "Hello World";
+        const encrypted1 = auth.encrypt(text);
+        const encrypted2 = auth.encrypt(text);
+        expect(encrypted1).not.toBe(encrypted2);
+        expect(auth.decrypt(encrypted1)).toBe(text);
+        expect(auth.decrypt(encrypted2)).toBe(text);
+    });
+
+    test("should throw error when decrypting invalid format", () => {
+        expect(() => auth.decrypt("invalid-format")).toThrow("Invalid encrypted format");
+    });
+
+    test("should throw when decrypting with a wrong key", () => {
+        const text = "Secret Message";
+        const key1 = crypto.randomBytes(32);
+        const key2 = crypto.randomBytes(32);
+        const encrypted = auth.encrypt(text, key1);
+        expect(() => auth.decrypt(encrypted, key2)).toThrow();
+    });
+
+    test("should throw when encrypted content is tampered with", () => {
+        const text = "Secret Message";
+        const encrypted = auth.encrypt(text);
+        const [iv, tag, data] = encrypted.split(":");
+
+        // Tamper with data part (bit-flip)
+        const tamperedData = Buffer.from(data, "hex");
+        tamperedData[0] ^= 1;
+        const tamperedEncrypted = `${iv}:${tag}:${tamperedData.toString("hex")}`;
+
+        expect(() => auth.decrypt(tamperedEncrypted)).toThrow();
     });
 });

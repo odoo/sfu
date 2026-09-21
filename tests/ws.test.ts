@@ -65,7 +65,8 @@ describe("WebSocket Service", () => {
         const channelUUID = "non-existent-uuid";
         const jwt = network.makeChannelJwt(channelUUID, {
             sfu_channel_uuid: channelUUID,
-            session_id: 1
+            session_id: 1,
+            permissions: {}
         });
 
         ws.send(
@@ -84,13 +85,15 @@ describe("WebSocket Service", () => {
         async (bareJwt) => {
             const channelUUID = await network.getChannelUUID({
                 useWebRtc: false,
-                key: bareJwt ? "" : undefined
+                key: bareJwt ? "" : undefined,
+                recordingAddress: ""
             });
             const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);
             await once(ws, "open");
             const jwt = network.makeChannelJwt(channelUUID, {
                 sfu_channel_uuid: channelUUID,
-                session_id: 1
+                session_id: 1,
+                permissions: {}
             });
             ws.send(JSON.stringify(bareJwt ? jwt : { channelUUID, jwt }));
             const [message] = await once(ws, "message");
@@ -103,11 +106,7 @@ describe("WebSocket Service", () => {
                         video: false
                     }
                 },
-                recordingState: {
-                    audio: false,
-                    transcription: false,
-                    video: false
-                }
+                recordingState: {}
             });
             expect(wsTesting.unauthenticatedWebSocketCount).toBe(0);
             const close = once(ws, "close");
@@ -121,7 +120,8 @@ describe("WebSocket Service", () => {
         await once(ws, "open");
 
         const jwt = network.makeChannelJwt(channelUUID, {
-            sfu_channel_uuid: channelUUID
+            sfu_channel_uuid: channelUUID,
+            permissions: {}
         });
 
         ws.send(
@@ -135,6 +135,35 @@ describe("WebSocket Service", () => {
         expect(code).toBe(WS_CLOSE_CODE.AUTHENTICATION_FAILED);
         expect(wsTesting.unauthenticatedWebSocketCount).toBe(0);
     });
+    test.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, "1", null, true])(
+        "Closes connection when user_id is invalid (%p)",
+        async (userId) => {
+            const channelUUID = await network.getChannelUUID({ useWebRtc: false });
+            const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);
+            await once(ws, "open");
+
+            const jwt = network.makeChannelJwt(channelUUID, {
+                sfu_channel_uuid: channelUUID,
+                session_id: 1,
+                user_id: userId,
+                permissions: {}
+            });
+
+            ws.send(JSON.stringify({ channelUUID, jwt }));
+
+            const [code] = await once(ws, "close");
+            expect(code).toBe(WS_CLOSE_CODE.AUTHENTICATION_FAILED);
+            expect(wsTesting.unauthenticatedWebSocketCount).toBe(0);
+        }
+    );
+    test.each([undefined, 42, Number.MAX_SAFE_INTEGER])(
+        "Forwards optional user_id to the session (%p)",
+        async (userId) => {
+            const channelUUID = await network.getChannelUUID({ useWebRtc: false });
+            const { session } = await network.connect(channelUUID, 1, { userId });
+            expect(session.userId).toBe(userId);
+        }
+    );
     test("Closes connection with CHANNEL_FULL when channel is overcrowded", async () => {
         const channelUUID = await network.getChannelUUID();
         const ws = new WebSocket(`ws://${network.hostname}:${network.port}`);
@@ -146,7 +175,8 @@ describe("WebSocket Service", () => {
 
         const jwt = network.makeChannelJwt(channelUUID, {
             sfu_channel_uuid: channelUUID,
-            session_id: 1
+            session_id: 1,
+            permissions: {}
         });
 
         ws.send(

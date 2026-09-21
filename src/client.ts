@@ -293,7 +293,7 @@ export class SfuClient extends EventTarget {
      * @returns Whether the server accepted the request
      * @throws {Error} If disconnected, the request times out or the Bus closes
      */
-    async setRecording(options: Partial<RecordingFlags>): Promise<boolean> {
+    async setRecording(options: RecordingFlags): Promise<boolean> {
         if (this.state !== SfuClientState.CONNECTED) {
             throw new Error("SFU client is not connected");
         }
