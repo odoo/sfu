@@ -6,5 +6,6 @@ module.exports = {
     maxWorkers: 4,
     preset: "ts-jest",
     testEnvironment: "node",
-    extensionsToTreatAsEsm: [".ts"]
+    extensionsToTreatAsEsm: [".ts"],
+    setupFiles: ["<rootDir>/tests/setup.ts"]
 };
