@@ -111,9 +111,14 @@ function setupRoutes(routeListener: RouteListener): void {
      * ### Query Parameters
      * - optional:`webRTC` defaults to `"true"`.
      *      When set to `"false"`, disables WebRTC setup and creates a non-media channel.
+     * - optional:`recordingAddress`.
+     *      If provided, enables recording and specifies the address
+     *      that the SFU can contact to get routing instructions for the recording.
      *
      * ### Responses
      * - `200 OK` returns `{ uuid: string, url: string }`
+     * - `400 Bad Request` invalid recording callback URL
+     * - `400 Bad Request` provided a `recordingAddress` without a `key` or `keySeed` claim
      * - `401 Unauthorized` missing or invalid Authorization header
      * - `403 Forbidden` missing `iss` claim
      * - `500 Internal Server Error` failed to create the channel
@@ -135,12 +140,35 @@ function setupRoutes(routeListener: RouteListener): void {
                     res.statusCode = 403; // forbidden
                     return res.end();
                 }
+                const recordingAddress = searchParams.get("recordingAddress");
                 const channelKey = claims.keySeed
                     ? auth.deriveChannelKey(claims.keySeed)
                     : claims.key;
+                if (recordingAddress && !channelKey) {
+                    logger.warn(
+                        `${remoteAddress}: missing key or key seed when creating channel with recording address`
+                    );
+                    res.statusCode = 400; // bad request
+                    return res.end();
+                }
+                if (recordingAddress) {
+                    const recordingUrl = URL.parse(recordingAddress);
+                    if (
+                        !recordingUrl ||
+                        !["http:", "https:"].includes(recordingUrl.protocol) ||
+                        recordingUrl.username ||
+                        recordingUrl.password
+                    ) {
+                        res.statusCode = 400;
+                        return res.end(
+                            "Invalid recordingAddress: expected an HTTP(S) URL without credentials"
+                        );
+                    }
+                }
                 const channel = await Channel.create(remoteAddress, claims.iss, {
                     key: channelKey,
-                    useWebRtc: searchParams.get("webRTC") !== "false"
+                    useWebRtc: searchParams.get("webRTC") !== "false",
+                    recordingAddress
                 });
                 res.setHeader("Content-Type", "application/json");
                 res.statusCode = 200;

@@ -16,6 +16,7 @@ import { StringLike } from "#src/shared/types.ts";
  */
 export const AUTH_KEY = "u6bsUQEWrHdKIuYplirRnbBmLbrKV5PxKG7DtA71mng=";
 const HMAC_KEY = Buffer.from(AUTH_KEY, "base64");
+const CHANNEL_KEY_SEED = Buffer.from("odoo-channel-key-seed").toString("base64");
 
 /**
  * Creates a JWT token for testing
@@ -64,26 +65,32 @@ export class LocalNetwork {
      * Creates a new channel and returns its UUID
      * @param [param0] - options
      * @param [param0.useWebRtc=true] - Whether to enable WebRTC for the channel
-     * @param [param0.key=AUTH_KEY] - Channel key
+     * @param [param0.keySeed=CHANNEL_KEY_SEED] - Channel key seed
      * @returns Promise resolving to channel UUID
      */
     async getChannelUUID({
         useWebRtc = true,
-        key = AUTH_KEY
+        key,
+        keySeed,
+        recordingAddress = "http://recording.local"
     }: {
         useWebRtc?: boolean;
         key?: string;
+        keySeed?: string;
+        recordingAddress?: string;
     } = {}): Promise<string> {
         if (!this.port) {
             throw new Error("Network not started - call start() first");
         }
+        const channelKeySeed = keySeed ?? (key === undefined ? CHANNEL_KEY_SEED : undefined);
 
         const jwt = this.makeJwt({
             iss: `${this.url}/`,
-            key
+            key,
+            keySeed: channelKeySeed
         });
         const response = await fetch(
-            `${this.url}/v${http.API_VERSION}/channel?webRTC=${useWebRtc}`,
+            `${this.url}/v${http.API_VERSION}/channel?webRTC=${useWebRtc}&recordingAddress=${recordingAddress}`,
             {
                 method: "GET",
                 headers: {
@@ -97,7 +104,9 @@ export class LocalNetwork {
         }
 
         const result = (await response.json()) as { uuid: string };
-        if (key) {
+        if (channelKeySeed) {
+            this._channelKeys.set(result.uuid, auth.deriveChannelKey(channelKeySeed, HMAC_KEY));
+        } else if (key) {
             this._channelKeys.set(result.uuid, Buffer.from(key, "base64"));
         }
         return result.uuid;
@@ -113,13 +122,17 @@ export class LocalNetwork {
      * @param channelUUID - Channel UUID to connect to
      * @param sessionId - Session identifier
      * @param [param2.key] - Channel key
+     * @param [param2.userId] - User represented by the session
      * @returns Promise resolving to connection result
      * @throws {Error} If either endpoint closes before connecting
      */
     async connect(
         channelUUID: string,
         sessionId: number,
-        { key = this._channelKeys.get(channelUUID) }: { key?: StringLike } = {}
+        {
+            key = this._channelKeys.get(channelUUID),
+            userId
+        }: { key?: StringLike; userId?: number } = {}
     ) {
         if (!this.port) {
             throw new Error("Network not started - call start() first");
@@ -169,7 +182,13 @@ export class LocalNetwork {
             this.makeJwt(
                 {
                     sfu_channel_uuid: channelUUID,
-                    session_id: sessionId
+                    session_id: sessionId,
+                    user_id: userId,
+                    permissions: {
+                        audioRecording: true,
+                        videoRecording: true,
+                        transcription: true
+                    }
                 },
                 key
             ),

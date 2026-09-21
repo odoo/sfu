@@ -1,3 +1,6 @@
+import type { DownloadStates } from "#src/client.ts";
+import type { STOP_CODE } from "#src/recording/models/recorder.ts";
+
 export type JSONSerializable =
     | string
     | number
@@ -16,34 +19,25 @@ export type WebSocketCredentials = {
 };
 
 export type RecordingFlags = {
-    audio: boolean;
-    transcription: boolean;
-    video: boolean;
+    audio?: boolean;
+    transcription?: boolean;
+    video?: boolean;
 };
-
-export type RecordingStopCode =
-    | "user_request"
-    | "channel_closed"
-    | "recording_timeout"
-    | "recording_failed"
-    | "disk_space_exhausted";
 
 export type RecordingStateUpdate = {
     state: RecordingFlags;
-    stopCode?: RecordingStopCode;
-};
-
-export type AvailableFeatures = {
-    rtc: boolean;
-    recording: RecordingFlags;
+    stopCode?: STOP_CODE;
 };
 
 export type StartupData = {
     availableFeatures: AvailableFeatures;
     recordingState: RecordingFlags;
 };
+export type AvailableFeatures = {
+    rtc: boolean;
+    recording: RecordingFlags;
+};
 
-import type { DownloadStates } from "#src/client.ts";
 import type { SessionId, SessionInfo, TransportConfig } from "#src/core/models/session.ts";
 
 import type {
@@ -84,7 +78,7 @@ export type BusMessage =
       }
     | {
           name: typeof CLIENT_REQUEST.SET_RECORDING;
-          payload: Partial<RecordingFlags>;
+          payload: RecordingFlags;
       }
     | {
           name: typeof SERVER_MESSAGE.BROADCAST;

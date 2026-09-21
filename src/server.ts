@@ -3,6 +3,7 @@ import { inspect } from "node:util";
 import * as resources from "#src/core/services/resources.ts";
 import * as http from "#src/core/services/http.ts";
 import * as auth from "#src/core/services/auth.ts";
+import * as scheduler from "#src/recording/services/scheduler.ts";
 import { Logger } from "#src/utils/utils.ts";
 import { Channel } from "#src/core/models/channel.ts";
 
@@ -15,14 +16,17 @@ async function run(): Promise<void> {
     auth.start();
     await resources.start();
     await http.start();
+    await scheduler.start();
 }
 
 let cleanupPromise: Promise<void> | undefined;
 
 function cleanup(): Promise<void> {
     cleanupPromise ??= (async () => {
+        const schedulerClosing = scheduler.close();
         await http.close();
         await Channel.closeAll();
+        await schedulerClosing;
         await resources.close();
         auth.close();
         logger.info("cleanup complete");
@@ -82,8 +86,9 @@ for (const [signal, handler] of Object.entries(processHandlers)) {
             });
     });
 }
-// Covers awaited startup failures from authentication setup, worker creation or HTTP binding.
-// Later callback failures reach the process handler above.
+// covers awaited startup failures such as authentication setup, recording
+// directory creation, mediasoup worker creation or HTTP binding. Later callback failures
+// reach the process handler above.
 try {
     await run();
 } catch (error) {

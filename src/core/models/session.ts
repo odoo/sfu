@@ -1,11 +1,13 @@
 import { EventEmitter } from "node:events";
 
 import type {
+    AppData,
     Consumer,
     DtlsParameters,
     IceCandidate,
     IceParameters,
     Producer,
+    Router,
     RtpCapabilities,
     SctpParameters,
     WebRtcTransport
@@ -21,12 +23,12 @@ import {
     STREAM_TYPE
 } from "#src/shared/enums.ts";
 import type {
-    StreamType,
     BusMessage,
     RequestMessage,
     RequestName,
     ResponseFrom,
-    StartupData
+    StartupData,
+    StreamType
 } from "#src/shared/types";
 import type { Bus } from "#src/shared/bus.ts";
 import type { Channel } from "#src/core/models/channel.ts";
@@ -63,6 +65,16 @@ export enum SESSION_CLOSE_CODE {
     KICKED = "kicked",
     ERROR = "error"
 }
+export type SessionPermissions = {
+    transcription?: boolean;
+    audioRecording?: boolean;
+    videoRecording?: boolean;
+};
+export type SessionOptions = {
+    label?: string;
+    userId?: number;
+    permissions?: SessionPermissions;
+};
 export type TransportConfig = {
     /** Transport identifier */
     id: string;
@@ -83,13 +95,17 @@ type Consumers = {
     /** Screen sharing consumer */
     [STREAM_TYPE.SCREEN]: Consumer | null;
 };
+export type SessionAppData = AppData & {
+    router: Router;
+};
+export type SessionProducer = Producer<SessionAppData>;
 type Producers = {
     /** Audio producer */
-    [STREAM_TYPE.AUDIO]: Producer | null;
+    [STREAM_TYPE.AUDIO]: SessionProducer | null;
     /** Camera video producer */
-    [STREAM_TYPE.CAMERA]: Producer | null;
+    [STREAM_TYPE.CAMERA]: SessionProducer | null;
     /** Screen sharing producer */
-    [STREAM_TYPE.SCREEN]: Producer | null;
+    [STREAM_TYPE.SCREEN]: SessionProducer | null;
 };
 type SessionCloseOptions = {
     /** Close code indicating reason for termination */
@@ -114,17 +130,22 @@ const logger = new Logger("SESSION");
  *
  * @fires Session#stateChange - Emitted when session state changes
  * @fires Session#close - Emitted when session is closed
+ * @fires Session#producer - Emitted when a new producer is created
  * @fires Session#handledError - Emitted when an error is handled
  */
 export class Session extends EventEmitter {
     static readonly Events = {
         STATE_CHANGE: "stateChange",
         CLOSE: "close",
-        HANDLED_ERROR: "handledError"
+        HANDLED_ERROR: "handledError",
+        PRODUCER: "producer"
     } as const;
 
     /** Communication bus for WebSocket messaging */
     public bus?: Bus;
+    /** A human-friendly way to identify the session, optionally provided by the remote server */
+    public label?: string;
+    public readonly userId?: number;
     /** Unique session identifier */
     public readonly id: SessionId;
     /** Session information visible to other participants */
@@ -149,6 +170,11 @@ export class Session extends EventEmitter {
         camera: null,
         screen: null
     };
+    public readonly permissions: SessionPermissions = Object.seal({
+        transcription: false,
+        audioRecording: false,
+        videoRecording: false
+    });
     /** Parent channel containing this session */
     private readonly _channel: Channel;
     /** Recovery timeouts for failed consumers */
@@ -157,10 +183,15 @@ export class Session extends EventEmitter {
     /**
      * @param id - Unique session identifier
      * @param channel - Parent channel containing this session
+     * @param options - Session options set at creation
      */
-    constructor(id: SessionId, channel: Channel) {
+    constructor(id: SessionId, channel: Channel, options: SessionOptions = {}) {
+        const { label, userId, permissions } = options;
         super();
         this.id = id;
+        this.label = label;
+        this.userId = userId;
+        this.updatePermissions(permissions);
         this._channel = channel;
         this.info = Object.seal({
             isRaisingHand: undefined,
@@ -175,30 +206,41 @@ export class Session extends EventEmitter {
         this.setMaxListeners(config.CHANNEL_SIZE * 2);
     }
 
-    get name(): string {
-        return `${this._channel.name}:${this.id}@${this.remote}`;
-    }
-
     get startupData(): StartupData {
         return {
             availableFeatures: {
                 rtc: Boolean(this._channel.router),
                 recording: {
-                    audio: false,
-                    transcription: false,
-                    video: false
+                    audio: this.canAudioRecord,
+                    transcription: this.canTranscriptionRecord,
+                    video: this.canVideoRecord
                 }
             },
-            recordingState: {
-                audio: false,
-                transcription: false,
-                video: false
-            }
+            recordingState: this._channel.recordingState
         };
+    }
+    get canAudioRecord(): boolean {
+        return Boolean(this._channel.recorder && this.permissions.audioRecording);
+    }
+
+    get canVideoRecord(): boolean {
+        return Boolean(this.canAudioRecord && this.permissions.videoRecording);
+    }
+
+    get canTranscriptionRecord(): boolean {
+        return Boolean(this.canAudioRecord && this.permissions.transcription);
+    }
+
+    get name(): string {
+        return `${this._channel.name}:${this.id}@${this.remote}`;
     }
 
     get state(): SESSION_STATE {
         return this._state;
+    }
+
+    get router() {
+        return this._channel.router;
     }
 
     set state(state: SESSION_STATE) {
@@ -208,6 +250,20 @@ export class Session extends EventEmitter {
          * @type {{ state: SESSION_STATE }}
          */
         this.emit(Session.Events.STATE_CHANGE, state);
+    }
+
+    updatePermissions(permissions: SessionPermissions | undefined): void {
+        if (!permissions) {
+            return;
+        }
+        for (const key of Object.keys(this.permissions) as (keyof SessionPermissions)[]) {
+            const newVal = permissions[key];
+            if (newVal === undefined) {
+                continue;
+            }
+            this.permissions[key] = Boolean(permissions[key]);
+            logger.verbose(`Permissions updated: ${key} = ${this.permissions[key]}`);
+        }
     }
 
     async getProducerBitRates(): Promise<ProducerBitRates> {
@@ -662,11 +718,12 @@ export class Session extends EventEmitter {
                 const { type, kind, rtpParameters } = payload;
                 this.producers[type]?.close();
                 this.producers[type] = null;
-                let producer: Producer;
+                let producer: SessionProducer;
                 try {
-                    producer = await this._ctsTransport!.produce({
+                    producer = await this._ctsTransport!.produce<SessionAppData>({
                         kind,
-                        rtpParameters
+                        rtpParameters,
+                        appData: { router: this._channel.router! }
                     });
                 } catch (error) {
                     this._handleError(error as Error);
@@ -686,10 +743,32 @@ export class Session extends EventEmitter {
                 logger.verbose(`[${this.name}] producing ${type}: ${codec?.mimeType}`);
                 this._updateRemoteConsumers();
                 this._broadcastInfo();
+                /**
+                 * @event Session#producer
+                 * @type {{ type: StreamType, producer: Producer }}
+                 */
+                this.emit(Session.Events.PRODUCER, { type, producer });
                 return { id: producer.id };
             }
             case CLIENT_REQUEST.SET_RECORDING:
-                return false;
+                return (
+                    this._channel.recorder?.setRecording(
+                        {
+                            audio: payload.audio == null ? undefined : Boolean(payload.audio),
+                            video: payload.video == null ? undefined : Boolean(payload.video),
+                            transcription:
+                                payload.transcription == null
+                                    ? undefined
+                                    : Boolean(payload.transcription)
+                        },
+                        {
+                            audio: this.canAudioRecord,
+                            video: this.canVideoRecord,
+                            transcription: this.canTranscriptionRecord
+                        },
+                        this.userId
+                    ) ?? false
+                );
             default:
                 logger.warn(`[${this.name}] Unknown request type: ${name}`);
                 throw new Error(`Unknown request type: ${name}`);
