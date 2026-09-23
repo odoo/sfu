@@ -435,6 +435,7 @@ export class SfuClient extends EventTarget {
         this.state = SfuClientState.CONNECTING;
         try {
             this._bus = await this._createBus();
+            this._connectRetryDelay = INITIAL_RECONNECT_DELAY;
             this.state = SfuClientState.AUTHENTICATED;
         } catch {
             this._handleConnectionEnd();
@@ -614,6 +615,9 @@ export class SfuClient extends EventTarget {
             case WS_CLOSE_CODE.KICKED:
                 this._close();
                 return;
+        }
+        if (this.state === SfuClientState.RECOVERING) {
+            return;
         }
         this.state = SfuClientState.RECOVERING;
         // Retry connecting with an exponential backoff.
