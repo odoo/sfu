@@ -5,18 +5,23 @@
     "tests/**/*"
   ],
   "compilerOptions": {
-    // Custom
-    "target": "ES2022",
-    "lib": ["ES2022", "DOM"],
+    "target": "ES2024",
+    "lib": [
+      "ES2024",
+      "DOM"
+    ],
     "module": "ESNext",
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "#src/*": ["./src/*"],
-      "#tests/*": ["./tests/*"]
+      "#src/*": [
+        "./src/*"
+      ],
+      "#tests/*": [
+        "./tests/*"
+      ]
     },
-    "outDir": "dist",
     "strict": true,
     "forceConsistentCasingInFileNames": true,
     "noUnusedLocals": true,
@@ -30,8 +35,6 @@
     ],
     "esModuleInterop": true,
     "resolveJsonModule": true,
-    "declaration": true,
-    "declarationDir": "dist/types",
     "preserveConstEnums": false,
   }
 }

@@ -1,20 +1,23 @@
 import http, { IncomingMessage, ServerResponse } from "node:http";
+import { once } from "node:events";
+import type { AddressInfo } from "node:net";
 
-import * as ws from "#src/services/ws.ts";
-import * as auth from "#src/services/auth.ts";
+import * as ws from "#src/core/services/ws.ts";
+import * as auth from "#src/core/services/auth.ts";
 import * as config from "#src/config.ts";
 import { Logger, parseBody, extractRequestInfo } from "#src/utils/utils.ts";
-import { SESSION_CLOSE_CODE } from "#src/models/session.ts";
-import { Channel, type ChannelStats } from "#src/models/channel.ts";
+import { AuthenticationError } from "#src/utils/errors.ts";
+import { SESSION_CLOSE_CODE, type SessionId } from "#src/core/models/session.ts";
+import { Channel, type ChannelStats } from "#src/core/models/channel.ts";
 
-interface RequestInfo {
+type RequestInfo = {
     /** Remote client address */
     remoteAddress: string;
     protocol: "http" | "https";
     /** Host header value */
     host: string;
     searchParams: URLSearchParams;
-}
+};
 type RouteCallback = (
     req: IncomingMessage,
     res: ServerResponse,
@@ -30,33 +33,48 @@ interface RouteEntry extends RouteOptions {
     /** Allowed HTTP methods for this route */
     methods: string;
 }
-interface HttpStartOptions {
+type HttpChannelClaims = {
+    key?: string;
+    keySeed?: string;
+};
+type HttpDisconnectClaims = {
+    sessionIdsByChannel: Record<string, SessionId[]>;
+};
+type HttpStartOptions = {
     httpInterface?: string;
     port?: number;
-}
+};
 
 export const API_VERSION = 1;
 const logger = new Logger("HTTP");
 
 let httpServer: http.Server | undefined;
 
-export async function start(options: HttpStartOptions = {}): Promise<void> {
+export async function start(options: HttpStartOptions = {}): Promise<number> {
     const { httpInterface = config.HTTP_INTERFACE, port = config.PORT } = options;
-    logger.info("starting...");
     const routeListener = new RouteListener();
     setupRoutes(routeListener);
     httpServer = http.createServer(routeListener.listen);
-    await new Promise<void>((resolve) => {
-        httpServer!.listen(port, httpInterface, resolve);
-    });
-    logger.info(`http listening at ${httpInterface}:${port}`);
+    httpServer.listen(port, httpInterface);
+    await once(httpServer, "listening");
+    const listeningPort = (httpServer.address() as AddressInfo).port;
+    logger.info(`http listening at ${httpInterface}:${listeningPort}`);
     await ws.start({ server: httpServer });
+    return listeningPort;
 }
 
-export function close(): void {
+export async function close(): Promise<void> {
     ws.close();
-    httpServer?.close();
+    const server = httpServer;
     httpServer = undefined;
+    if (!server) {
+        return;
+    }
+    await new Promise<void>((resolve, reject) => {
+        server.close((error?: NodeJS.ErrnoException) =>
+            error && error.code !== "ERR_SERVER_NOT_RUNNING" ? reject(error) : resolve()
+        );
+    });
 }
 
 function setupRoutes(routeListener: RouteListener): void {
@@ -79,6 +97,32 @@ function setupRoutes(routeListener: RouteListener): void {
             return res.end(JSON.stringify(channelStats));
         }
     });
+    /**
+     * GET /v1/channel
+     *
+     * Provides a channel to host a rtc conference between user sessions.
+     *
+     * ### Headers
+     * - required:`Authorization: Bearer <JWT>`
+     *      The JWT must include an `exp` claim and an `iss` (issuer) claim identifying the caller.
+     *      `claim.iss` ensures idempotency: only one channel is created per unique issuer.
+     *      To create multiple channels, the caller must provide a distinct `iss` for each request.
+     *
+     * ### Query Parameters
+     * - optional:`webRTC` defaults to `"true"`.
+     *      When set to `"false"`, disables WebRTC setup and creates a non-media channel.
+     * - optional:`recordingAddress`.
+     *      If provided, enables recording and specifies the address
+     *      that the SFU can contact to get routing instructions for the recording.
+     *
+     * ### Responses
+     * - `200 OK` returns `{ uuid: string, url: string }`
+     * - `400 Bad Request` invalid recording callback URL
+     * - `400 Bad Request` provided a `recordingAddress` without a `key` or `keySeed` claim
+     * - `401 Unauthorized` missing or invalid Authorization header
+     * - `403 Forbidden` missing `iss` claim
+     * - `500 Internal Server Error` failed to create the channel
+     */
     routeListener.get(`/v${API_VERSION}/channel`, {
         callback: async (req, res, { host, protocol, remoteAddress, searchParams }) => {
             try {
@@ -87,21 +131,44 @@ function setupRoutes(routeListener: RouteListener): void {
                     logger.warn(
                         `${remoteAddress}: missing authorization header when creating channel`
                     );
-                    res.statusCode = 401; // unauthorized
+                    res.statusCode = 401;
                     return res.end();
                 }
-                const claims = auth.verify(jsonWebToken);
+                const claims = auth.verify<HttpChannelClaims>(jsonWebToken);
                 if (!claims.iss) {
                     logger.warn(`${remoteAddress}: missing issuer claim when creating channel`);
                     res.statusCode = 403; // forbidden
                     return res.end();
                 }
+                const recordingAddress = searchParams.get("recordingAddress");
                 const channelKey = claims.keySeed
                     ? auth.deriveChannelKey(claims.keySeed)
                     : claims.key;
+                if (recordingAddress && !channelKey) {
+                    logger.warn(
+                        `${remoteAddress}: missing key or key seed when creating channel with recording address`
+                    );
+                    res.statusCode = 400; // bad request
+                    return res.end();
+                }
+                if (recordingAddress) {
+                    const recordingUrl = URL.parse(recordingAddress);
+                    if (
+                        !recordingUrl ||
+                        !["http:", "https:"].includes(recordingUrl.protocol) ||
+                        recordingUrl.username ||
+                        recordingUrl.password
+                    ) {
+                        res.statusCode = 400;
+                        return res.end(
+                            "Invalid recordingAddress: expected an HTTP(S) URL without credentials"
+                        );
+                    }
+                }
                 const channel = await Channel.create(remoteAddress, claims.iss, {
                     key: channelKey,
-                    useWebRtc: searchParams.get("webRTC") !== "false"
+                    useWebRtc: searchParams.get("webRTC") !== "false",
+                    recordingAddress
                 });
                 res.setHeader("Content-Type", "application/json");
                 res.statusCode = 200;
@@ -113,12 +180,39 @@ function setupRoutes(routeListener: RouteListener): void {
                 );
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : String(error);
-                logger.warn(`[${remoteAddress}] failed to create channel: ${errorMessage}`);
-                res.statusCode = 500; // internal server error
+                if (error instanceof AuthenticationError) {
+                    logger.warn(
+                        `[${remoteAddress}] failed to authenticate channel request: ${errorMessage}`
+                    );
+                    res.statusCode = 401;
+                } else {
+                    logger.error(`[${remoteAddress}] failed to create channel: ${errorMessage}`);
+                    res.statusCode = 500; // internal server error
+                }
                 return res.end();
             }
         }
     });
+    /**
+     * POST /v1/disconnect
+     *
+     * Disconnects specific sessions from their respective channels.
+     * Only the creator of a channel (matching remote address) is authorized to disconnect sessions from it.
+     *
+     * ### Body
+     * - required: A string containing a signed JWT.
+     *
+     * ### JWT Claims
+     * - required: `exp: number`
+     *      Expiration time in seconds since the Unix epoch.
+     * - required: `sessionIdsByChannel: Record<string, SessionId[]>`
+     *      A mapping where keys are channel UUIDs and values are arrays of session IDs to be kicked.
+     *
+     * ### Responses
+     * - `200 OK` sessions successfully processed for disconnection.
+     * - `400 Bad Request` the request body is not a valid string.
+     * - `422 Unprocessable Entity` invalid JWT or error during processing.
+     */
     routeListener.post(`/v${API_VERSION}/disconnect`, {
         callback: async (req, res, { remoteAddress }) => {
             try {
@@ -127,9 +221,9 @@ function setupRoutes(routeListener: RouteListener): void {
                     res.statusCode = 400; // bad request
                     return res.end();
                 }
-                const claims = auth.verify(jsonWebToken);
+                const claims = auth.verify<HttpDisconnectClaims>(jsonWebToken);
                 for (const [channelUuid, sessionIds] of Object.entries(
-                    claims.sessionIdsByChannel!
+                    claims.sessionIdsByChannel
                 )) {
                     const channel = Channel.records.get(channelUuid);
                     if (!channel) {

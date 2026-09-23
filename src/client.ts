@@ -30,7 +30,7 @@ import type {
     StartupData,
     StreamType
 } from "#src/shared/types";
-import type { TransportConfig, SessionId, SessionInfo } from "#src/models/session";
+import type { TransportConfig, SessionId, SessionInfo } from "#src/core/models/session";
 
 interface Consumers {
     audio: Consumer | null;
@@ -293,7 +293,7 @@ export class SfuClient extends EventTarget {
      * @returns Whether the server accepted the request
      * @throws {Error} If disconnected, the request times out or the Bus closes
      */
-    async setRecording(options: Partial<RecordingFlags>): Promise<boolean> {
+    async setRecording(options: RecordingFlags): Promise<boolean> {
         if (this.state !== SfuClientState.CONNECTED) {
             throw new Error("SFU client is not connected");
         }
@@ -619,7 +619,7 @@ export class SfuClient extends EventTarget {
         // Retry connecting with an exponential backoff.
         this._connectRetryDelay =
             Math.min(this._connectRetryDelay * 1.5, MAXIMUM_RECONNECT_DELAY) + 1000 * Math.random();
-        const timeout = window.setTimeout(() => this._connect(), this._connectRetryDelay);
+        const timeout = setTimeout(() => this._connect(), this._connectRetryDelay);
         this._onCleanup(() => clearTimeout(timeout));
     }
 

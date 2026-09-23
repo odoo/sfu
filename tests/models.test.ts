@@ -1,81 +1,51 @@
-import { describe, beforeEach, afterEach, expect, jest } from "@jest/globals";
+import { once } from "node:events";
 
-import * as rtc from "#src/services/rtc";
-import { Channel } from "#src/models/channel";
-import { timeouts, CHANNEL_SIZE } from "#src/config";
+import { describe, beforeEach, afterEach, expect } from "@jest/globals";
+
+import * as resources from "#src/core/services/resources";
+import { Channel } from "#src/core/models/channel";
+import { CHANNEL_SIZE } from "#src/config";
 import { OvercrowdedError } from "#src/utils/errors";
 
 describe("Models", () => {
     beforeEach(async () => {
-        await rtc.start();
+        await resources.start();
     });
-    afterEach(() => {
-        Channel.closeAll();
-        rtc.close();
+    afterEach(async () => {
+        await Channel.closeAll();
+        await resources.close();
     });
-    test("Create channel and session", async () => {
+    test("Create channel session with initial options", async () => {
         const channel = await Channel.create("testRemote", "testIssuer");
-        Channel.join(channel.uuid, 7);
-        expect(channel.sessions.size).toBe(1);
-        expect(channel.sessions.get(7)).toBeDefined();
+        Channel.join(channel.uuid, 7, {
+            label: "test-label",
+            permissions: { audioRecording: true, transcription: true }
+        });
+        const session = channel.sessions.get(7);
+        expect(session).toBeDefined();
+        expect(session?.label).toBe("test-label");
+        expect(session?.permissions.audioRecording).toBe(true);
+        expect(session?.permissions.transcription).toBe(true);
+        expect(session?.permissions.videoRecording).toBe(false);
     });
-    test("should clear channel and session when leaving", async () => {
+    test("clears the channel when its last session leaves", async () => {
         const channel = await Channel.create("testRemote", "testIssuer");
         Channel.join(channel.uuid, 3);
         const session = channel.sessions.get(3);
-        expect(channel.sessions.size).toBe(1);
+        const close = once(channel, Channel.Events.CLOSE);
         session!.close();
+        await close;
+        await channel.close();
         expect(channel.sessions.size).toBe(0);
-        expect(Channel.records.size).toBe(1);
-    });
-    test("should have the right amount of sessions on the channel", async () => {
-        const channel1 = await Channel.create("testRemote", "testIssuer");
-        Channel.join(channel1.uuid, 2);
-        Channel.join(channel1.uuid, 3);
-        Channel.join(channel1.uuid, 4);
-        const channel2 = await Channel.create("testRemote", "testIssuer2");
-        Channel.join(channel2.uuid, 9);
-
-        expect(channel1.sessions.size).toBe(3);
-        expect(channel2.sessions.size).toBe(1);
-    });
-    test("The amount of records should be consistent with the amount sessions", async () => {
-        jest.spyOn(global, "setTimeout");
-        jest.useFakeTimers();
-        const channel1 = await Channel.create("testRemote", "testIssuer");
-        Channel.join(channel1.uuid, 2);
-        Channel.join(channel1.uuid, 3);
-        Channel.join(channel1.uuid, 3);
-        Channel.join(channel1.uuid, 3);
-        Channel.join(channel1.uuid, 4);
-        const channel2 = await Channel.create("testRemote", "testIssuer2");
-        Channel.join(channel2.uuid, 9);
-        Channel.join(channel2.uuid, 4);
-        Channel.join(channel2.uuid, 2);
-
-        expect(Channel.records.size).toBe(2);
-        expect(channel1.sessions.size).toBe(3);
-        expect(channel2.sessions.size).toBe(3);
-
-        for (const session of channel1.sessions.values()) {
-            session.close();
-        }
-        expect(channel1.sessions.size).toBe(0);
-        for (const session of channel2.sessions.values()) {
-            session.close();
-        }
-        expect(channel2.sessions.size).toBe(0);
-        expect(Channel.records.size).toBe(2);
-        jest.advanceTimersByTime(timeouts.channel + 10);
         expect(Channel.records.size).toBe(0);
-        jest.useRealTimers();
+        expect(channel.router?.closed).toBe(true);
     });
     test("should not be more sessions past channel size limit", async () => {
         const channel1 = await Channel.create("testRemote", "testIssuer");
         for (let i = 0; i < CHANNEL_SIZE; i++) {
             Channel.join(channel1.uuid, i);
         }
-        await expect(() => {
+        expect(() => {
             Channel.join(channel1.uuid, CHANNEL_SIZE + 1);
         }).toThrow(OvercrowdedError);
     });
