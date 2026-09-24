@@ -12,7 +12,8 @@ const ASCII = {
         green: "\x1b[32m",
         yellow: "\x1b[33m",
         white: "\x1b[37m",
-        default: "\x1b[0m"
+        default: "\x1b[0m",
+        blue: "\x1b[34m"
     }
 } as const;
 
@@ -25,15 +26,15 @@ export enum LogLevel {
     VERBOSE = "verbose"
 }
 
-export interface LoggerOptions {
+export type LoggerOptions = {
     logLevel?: LogLevel | string;
     timestamp?: boolean;
     useColors?: boolean;
-}
+};
 
 type LogFunction = (message: string) => void;
 
-export interface RequestInfo {
+export type RequestInfo = {
     /** Server host and port */
     host: string;
     pathname: string;
@@ -41,11 +42,15 @@ export interface RequestInfo {
     /** Remote client address */
     remoteAddress: string;
     searchParams: URLSearchParams;
-}
+};
 
-export interface ParseBodyOptions {
+export type ParseBodyOptions = {
     /** Whether to JSON parse the response */
     json?: boolean;
+};
+
+export function b64toBuffer(b64str: string | Buffer): Buffer {
+    return Buffer.isBuffer(b64str) ? b64str : Buffer.from(b64str, "base64");
 }
 
 export class Logger {
@@ -78,7 +83,7 @@ export class Logger {
         this._log(console.log, ":INFO:", text, ASCII.color.green);
     }
     debug(text: string): void {
-        this._log(console.log, ":DEBUG:", text);
+        this._log(console.log, ":DEBUG:", text, ASCII.color.blue);
     }
     verbose(text: string): void {
         this._log(console.log, ":VERBOSE:", text, ASCII.color.white);
@@ -141,6 +146,11 @@ export class Logger {
  * @param req - HTTP request object
  * @param options - Parsing options
  * @returns Promise resolving to parsed body (string or JSON)
+ * @throws {SyntaxError} from JSON.parse(...) when `json=true` and the payload is invalid JSON.
+ *
+ * TODO override definition: if this takes json=true as param,
+ * it returns Promise<JsonSerializable>, else returns Promise<string>
+ * this should allow calling this function without type narrowing with a string check
  */
 export function parseBody(
     req: IncomingMessage,
@@ -164,6 +174,7 @@ export function parseBody(
  *
  * @param req - HTTP request object
  * @returns Parsed request information
+ * @throws {Error} when req.url is missing or forwarded headers cannot be parsed.
  */
 export function extractRequestInfo(req: IncomingMessage): RequestInfo {
     if (!req.url) {
